@@ -47,7 +47,7 @@ python3 -m pytest  manapy -m "not parallel"
 To use Mumps solver
 
 ```sh
-sudo apt install libmumps-ptscotch-dev && pip install pymumps
+sudo apt install libmumps-ptscotch-dev
 ```
 
 
