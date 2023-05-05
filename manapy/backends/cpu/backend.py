@@ -28,9 +28,10 @@ def get_arg_types(func, precision):
 
 class Pythranjit(object):
 
-    def __init__(self, cache=False, **flags):
+    def __init__(self, cache=False, precision=None, **flags):
         self.flags = flags
         self.cache = cache
+        self.precision = precision
         
     def __call__(self, fun):
         # FIXME: gather global dependencies using pythran.analysis.imported_ids
@@ -47,9 +48,10 @@ class Pythranjit(object):
         m = hashlib.md5()
         m.update(src.encode())  # Encode the string before hashing
         
-        header = "#pythran export {}({})\n".format(fname, ", ".join(get_arg_types(fun)))
+        header = "#pythran export {}({})\n".format(fname, ", ".join(get_arg_types(fun, self.precision)))
         header += "import numpy as np \n"
         
+        print(header, src)
         output_dir = os.path.dirname(os.path.realpath(__file__))
         output_dir = os.path.join(module_dir , '.')
         
@@ -100,11 +102,11 @@ class CPUBackend(Backend):
             if multithread in ['default', 'forksafe', 'threadsafe', 'safe', 'omp', 'tbb']:
                 nb.config.THREADING_LAYER = multithread
     
-    def compile(self, func, signature=False, newbackend=None, outer=False):
+    def compile(self, func, signature=False, forcedbackend=None, outer=False):
         
         backend = self.backend
-        if newbackend is not None:
-            backend = newbackend
+        if forcedbackend is not None:
+            backend = forcedbackend
         
         if backend=="numba":
             if signature:
@@ -121,7 +123,8 @@ class CPUBackend(Backend):
                 return nb.jit(nopython=True, fastmath=True, parallel=True, signature_or_function=signature, cache=self.cache)(func)
         
         elif backend == "pythran":
-            J = Pythranjit(cache=self.cache)
+            print(func)
+            J = Pythranjit(cache=self.cache, precision=self.precision)
             return J(func)
         else:
             return func
