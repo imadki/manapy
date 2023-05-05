@@ -92,6 +92,11 @@ class Domain():
         
         self.backend =  CPUBackend(multithread=get("multithreading"), backend=get("backend"), 
                                    cache=get("cache"), precision=get("precision"))
+        
+        self.forcedbackend = "python"
+        if self.backend.backend != "python":
+            self.forcedbackend = "numba"
+            
         self.signature = get('signature')
         
         if get('precision') == "single":
@@ -221,8 +226,10 @@ class Domain():
         create the cells around each vertex & cells neighbor by vertex
         """
         
-        self._nodes._cellid, self._cells._cellnid =  self.backend.compile(create_node_cellid, signature=self.signature)(self._cells._nodeid, \
-                                                                         self._nodes._vertex, self._nbcells, self._nbnodes)        
+        self._nodes._cellid, \
+        self._cells._cellnid =  self.backend.compile(create_node_cellid, signature=self.signature, \
+                                                     forcedbackend=self.forcedbackend)(self._cells._nodeid, \
+                                                     self._nodes._vertex, self._nbcells, self._nbnodes)        
         
     def _define_eltypes(self):
         """
@@ -299,7 +306,9 @@ class Domain():
         # create the faces of each cell
         self._cells._faceid = -1*np.ones((self._nbcells, self._maxcellfid+1), dtype=np.int32)
         
-        self.backend.compile(create_cell_faceid, signature=self.signature)(self._nbcells, oldTonewIndex, cellf, self._cells._faceid, self._maxcellfid)
+        self.backend.compile(create_cell_faceid, signature=self.signature, \
+                             forcedbackend=self.forcedbackend)(self._nbcells, \
+                                                             oldTonewIndex, cellf, self._cells._faceid, self._maxcellfid)
         
         #creater cells left and right of each face
         self._faces._cellid = -1*np.ones((self._nbfaces, 2), dtype=np.int32)
