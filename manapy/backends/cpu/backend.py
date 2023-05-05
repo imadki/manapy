@@ -116,7 +116,7 @@ class CPUBackend(Backend):
             else:
                 signature = None
                     
-            if (self.multithread == 'single'):# or not outer):
+            if (self.multithread == 'single'):
                 return nb.jit(nopython=True, fastmath=True, signature_or_function=signature, cache=self.cache)(func)
            
             else:
