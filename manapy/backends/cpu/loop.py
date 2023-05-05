@@ -24,3 +24,19 @@ def make_parallel_loop1d(ne, func, n0=0):
                 
     return loop
             
+            
+def make_serial_loop1d(ne, func, n0=0, debug=False):
+    # Compile function
+    if debug:
+        # Don't JIT compile if debug mode
+        return lambda *args : func(n0, ne, *args)
+    else:
+        # Compile inner function
+        _func = nb.jit(nopython=True, fastmath=True)(func)
+
+        # Generate serial loop
+        def loop(*args):
+            _func(n0, ne, *args)
+
+        # Compile whole loop
+        return nb.jit(nopython=True, fastmath=True)(loop)
