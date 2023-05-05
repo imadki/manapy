@@ -1,7 +1,7 @@
 from numpy import sqrt, fabs, zeros, exp
 from numba import njit
 
-@njit
+#@njit
 def initialisation_gaussian_2d(ne,  u, v, P, center, Pinit):
 
     nbelements = len(center)
@@ -15,7 +15,7 @@ def initialisation_gaussian_2d(ne,  u, v, P, center, Pinit):
         u[i]  = 0.
         v[i]  = 0.
         P[i]  = Pinit * (.5 - xcent)
-@njit
+#@njit
 def initialisation_gaussian_3d(ne,  u, v, w, P, center, Pinit): 
 
 
