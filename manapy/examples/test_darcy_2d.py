@@ -46,7 +46,7 @@ dim = 2
 #backend numba or python
 #signature: add types to functions (make them faster) but compilation take time
 #cache: avoid recompilation in the next run
-running_conf = Struct(backend="numba", signature=True, cache=True, precision="single")
+running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="single")
 mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0,0,0])
 
 #Create the informations about cells, faces and nodes
@@ -149,6 +149,7 @@ while time < tfinal:
             u.update_halo_value()
             u.update_ghost_value()  
             u.interpolate_celltonode()
+            
             
             #save vtk files for the solution
             v.update_halo_value()

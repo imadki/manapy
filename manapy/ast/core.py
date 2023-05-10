@@ -35,8 +35,9 @@ class Variable():
         
         self.backend = self._domain.backend
         self.signature = self._domain.signature
-        self.precision  = self._domain.precision
+        self.float_precision  = self._domain.float_precision
         self.mpi_precision = self._domain.mpi_precision
+        self.forcedbackend = self._domain.forcedbackend
         
         self._dim = self.domain.dim
         self._comm   = self.domain.halos.comm_ptr
@@ -47,29 +48,29 @@ class Variable():
         self._nbhalos = self.domain.nbhalos
         self._nbghost = self.domain.nbfaces
         
-        self.cell = np.zeros(self.nbcells, dtype=self.precision)
-        self.node = np.zeros(self.nbnodes, dtype=self.precision)
-        self.face = np.zeros(self.nbfaces, dtype=self.precision)
-        self.ghost = np.zeros(self.nbfaces, dtype=self.precision)
-        self.halo = np.zeros(self.nbhalos, dtype=self.precision)
+        self.cell = np.zeros(self.nbcells, dtype=self.float_precision)
+        self.node = np.zeros(self.nbnodes, dtype=self.float_precision)
+        self.face = np.zeros(self.nbfaces, dtype=self.float_precision)
+        self.ghost = np.zeros(self.nbfaces, dtype=self.float_precision)
+        self.halo = np.zeros(self.nbhalos, dtype=self.float_precision)
         
-        self.gradcellx = np.zeros(self._nbcells, dtype=self.precision)
-        self.gradcelly = np.zeros(self._nbcells, dtype=self.precision)
-        self.gradcellz = np.zeros(self._nbcells, dtype=self.precision)
+        self.gradcellx = np.zeros(self._nbcells, dtype=self.float_precision)
+        self.gradcelly = np.zeros(self._nbcells, dtype=self.float_precision)
+        self.gradcellz = np.zeros(self._nbcells, dtype=self.float_precision)
         
-        self.gradhalocellx = np.zeros(self._nbhalos, dtype=self.precision)
-        self.gradhalocelly = np.zeros(self._nbhalos, dtype=self.precision)
-        self.gradhalocellz = np.zeros(self._nbhalos, dtype=self.precision)
+        self.gradhalocellx = np.zeros(self._nbhalos, dtype=self.float_precision)
+        self.gradhalocelly = np.zeros(self._nbhalos, dtype=self.float_precision)
+        self.gradhalocellz = np.zeros(self._nbhalos, dtype=self.float_precision)
         
-        self.gradfacex = np.zeros(self._nbfaces, dtype=self.precision)
-        self.gradfacey = np.zeros(self._nbfaces, dtype=self.precision)
-        self.gradfacez = np.zeros(self._nbfaces, dtype=self.precision)
+        self.gradfacex = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self.gradfacey = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self.gradfacez = np.zeros(self._nbfaces, dtype=self.float_precision)
         
-        self.psi = np.zeros(self._nbcells, dtype=self.precision)
-        self.psihalo = np.zeros(self._nbhalos, dtype=self.precision)
+        self.psi = np.zeros(self._nbcells, dtype=self.float_precision)
+        self.psihalo = np.zeros(self._nbhalos, dtype=self.float_precision)
         
-        self.halotosend  = np.zeros(len(self.domain.halos.halosint), dtype=self.precision)
-        self.haloghost = np.zeros(self.domain.halos.sizehaloghost, dtype=self.precision)
+        self.halotosend  = np.zeros(len(self.domain.halos.halosint), dtype=self.float_precision)
+        self.haloghost = np.zeros(self.domain.halos.sizehaloghost, dtype=self.float_precision)
         
         self._name    = name
         
@@ -78,10 +79,10 @@ class Variable():
                 self.__dict__[i] = np.zeros(self.nbcells)
        
         self._update_boundaries()
-        Variable.compile_func(self._dim, self.backend, self.signature)
+        Variable.compile_func(self._dim, self.backend, self.signature, self.forcedbackend)
         
     @classmethod
-    def compile_func(cls, dim, backend, signature):
+    def compile_func(cls, dim, backend, signature, forcedbackend):
         if not cls.is_called:
             # Perform the compilation using numba.jit or other numba decorators
             cls._facetocell    = backend.compile(facetocell, signature=signature)
@@ -108,8 +109,8 @@ class Variable():
             self._BCs = {"in":None, "out":None, "bottom":None, "upper":None, "front":None, "back":None}
 
         
-        self.domain.Pbordnode = np.zeros(self.domain.nbnodes, dtype=self.precision)
-        self.domain.Pbordface = np.zeros(self.domain.nbfaces, dtype=self.precision)
+        self.domain.Pbordnode = np.zeros(self.domain.nbnodes, dtype=self.float_precision)
+        self.domain.Pbordface = np.zeros(self.domain.nbfaces, dtype=self.float_precision)
         
         self.dirichletfaces = []
         self.neumannfaces = []
@@ -120,9 +121,9 @@ class Variable():
         self.BCneumannNH = []
         
         
-        valueface = np.zeros(self.domain._nbfaces, dtype=self.precision)
-        valuenode = np.zeros(self.domain._nbnodes, dtype=self.precision)
-        valuehalo = np.zeros(self.domain.halos.sizehaloghost, dtype=self.precision)
+        valueface = np.zeros(self.domain._nbfaces, dtype=self.float_precision)
+        valuenode = np.zeros(self.domain._nbnodes, dtype=self.float_precision)
+        valuehalo = np.zeros(self.domain.halos.sizehaloghost, dtype=self.float_precision)
         
         if self._BC is None:
             for loc in self._BCs.keys():
@@ -130,9 +131,9 @@ class Variable():
                     self.BCs[loc] = Boundary(BCtype = "periodic", BCloc=loc, BCvalueface=self.cell,  BCvaluenode =self.cell, 
                                              BCvaluehalo=self.halo, BCtypeindex=self.domain._BCs[loc][1], domain=self.domain)
                     
-                    self.BCs[loc].BCvalueface = np.array([], dtype=self.precision)
-                    self.BCs[loc].BCvaluenode = np.array([], dtype=self.precision)
-                    self.BCs[loc].BCvaluehalo = np.array([], dtype=self.precision)
+                    self.BCs[loc].BCvalueface = np.array([], dtype=self.float_precision)
+                    self.BCs[loc].BCvaluenode = np.array([], dtype=self.float_precision)
+                    self.BCs[loc].BCvaluehalo = np.array([], dtype=self.float_precision)
                    
                 else:
                     self.BCs[loc] = Boundary(BCtype = "neumann", BCloc=loc, BCvalueface=self.cell,  BCvaluenode =self.cell, 
@@ -273,9 +274,9 @@ class Variable():
                     self.BCs[loc] = Boundary(BCtype = bct, BCloc=loc, BCvalueface=self.cell,  BCvaluenode =self.cell, 
                                              BCvaluehalo=self.halo, BCtypeindex=self.domain._BCs[loc][1], domain=self.domain)
                     
-                    self.BCs[loc].BCvalueface = np.array([], dtype=self.precision)
-                    self.BCs[loc].BCvaluenode = np.array([], dtype=self.precision)
-                    self.BCs[loc].BCvaluehalo = np.array([], dtype=self.precision)
+                    self.BCs[loc].BCvalueface = np.array([], dtype=self.float_precision)
+                    self.BCs[loc].BCvaluenode = np.array([], dtype=self.float_precision)
+                    self.BCs[loc].BCvaluehalo = np.array([], dtype=self.float_precision)
                     
                     
                 elif bct == "slip":
@@ -501,8 +502,8 @@ class Variable():
             order = 1
         assert self.nbcells == len(exact), 'exact solution must have length of cells'
         
-        Error = np.zeros(self.nbcells, dtype=self.precision)
-        Ex = np.zeros(self.nbcells, dtype=self.precision)
+        Error = np.zeros(self.nbcells, dtype=self.float_precision)
+        Ex = np.zeros(self.nbcells, dtype=self.float_precision)
        
         for i in range(len(exact)):
             Error[i] = np.fabs(self.cell[i] - exact[i]) * self.domain.cells.volume[i]

@@ -100,9 +100,9 @@ def create_NormalFacesOfCell(centerc:'float[:,:]', centerf:'float[:,:]', faceid:
                              normal:'float[:,:]',  nbelements:'int32', nf:'float[:,:,:]',  maxcellfid:'int32'):
 
     #from numpy import np.zeros                                                                                                                                                                               
-    ss = np.zeros(3, dtype=np.float)
-    G  = np.zeros(3, dtype=np.float)
-    c  = np.zeros(3, dtype=np.float)
+    ss = np.zeros(3, dtype=np.float64)
+    G  = np.zeros(3, dtype=np.float64)
+    c  = np.zeros(3, dtype=np.float64)
 
     #compute the outgoing normal faces for each cell                                                                                                                                                       
     for i in range(nbelements):
@@ -225,7 +225,7 @@ def face_info_2d(cellidf, centerc, nodeidc, nodeidf, boundaryfaces, facenameoldf
 def create_2d_halo_structure(halosext:'int32[:,:]', nodeidf:'int32[:,:]', cellidf:'int32[:,:]', namef:'uint32[:]', namen:'uint32[:]',
                              loctoglobn:'int32[:]', size:'int32', nbcells:'int32', nbfaces:'int32', nbnodes:'int32'):
 
-    def find_tuple(lst, num1, num2):
+    def find_tuple(lst:'int32[:,:]', num1:'int32', num2:'int32'):
         for i in range(len(lst)):
             if (num1 in lst[i][1:-1] and num2 in lst[i][1:-1]):
                 return i
@@ -295,17 +295,17 @@ def update_pediodic_info_2d(centerf, cellidf, cellnidc, centerc, vertexn, cellid
     leftb = {}
     rightb = {}
     for i in periodicinfaces:
-        leftb[tuple([np.np.float(centerf[i][0]), np.float(centerf[i][1]), np.float(centerf[i][2])])] = cellidf[i][0]
+        leftb[tuple([np.float64(centerf[i][0]), np.float64(centerf[i][1]), np.float64(centerf[i][2])])] = cellidf[i][0]
     for i in periodicoutfaces:
-        rightb[tuple([np.np.float(centerf[i][0]), np.float(centerf[i][1]), np.float(centerf[i][2])])] = cellidf[i][0]
+        rightb[tuple([np.float64(centerf[i][0]), np.float64(centerf[i][1]), np.float64(centerf[i][2])])] = cellidf[i][0]
     
     shiftx = max(vertexn[:,0])
     maxcoordx = max(centerf[:,0])
     longper = np.zeros(len(centerc), dtype=np.int32)
     
     for i in periodicinfaces:
-        cellidf[i][1] = rightb[tuple([np.np.float(centerf[i][0] + maxcoordx ), np.float(centerf[i][1]), np.float(centerf[i][2])])]
-        periodicfidc[cellidf[i][0]] = cellidf[i][1]#rightb[np.np.float(centerf[i][1])]
+        cellidf[i][1] = rightb[tuple([np.float64(centerf[i][0] + maxcoordx ), np.float64(centerf[i][1]), np.float64(centerf[i][2])])]
+        periodicfidc[cellidf[i][0]] = cellidf[i][1]#rightb[np.float64(centerf[i][1])]
         for j in range(cellnidc[cellidf[i][1]][-1]):
             periodicnidc[cellidf[i][0]].append(cellnidc[cellidf[i][1]][j])
             longper[cellidf[i][0]] +=1
@@ -314,8 +314,8 @@ def update_pediodic_info_2d(centerf, cellidf, cellnidc, centerc, vertexn, cellid
                 shiftc[cell][0] = -1*shiftx
     
     for i in periodicoutfaces:
-        cellidf[i][1] = leftb[tuple([np.np.float(centerf[i][0] - maxcoordx), np.float(centerf[i][1]), np.float(centerf[i][2])])]
-        periodicfidc[cellidf[i][0]] = cellidf[i][1]#leftb[np.np.float(centerf[i][1])]
+        cellidf[i][1] = leftb[tuple([np.float64(centerf[i][0] - maxcoordx), np.float64(centerf[i][1]), np.float64(centerf[i][2])])]
+        periodicfidc[cellidf[i][0]] = cellidf[i][1]#leftb[np.float64(centerf[i][1])]
         for j in range(cellnidc[cellidf[i][1]][-1]):
             periodicnidc[cellidf[i][0]].append(cellnidc[cellidf[i][1]][j])
             longper[cellidf[i][0]] +=1
@@ -328,31 +328,31 @@ def update_pediodic_info_2d(centerf, cellidf, cellnidc, centerc, vertexn, cellid
     
     for i in periodicinnodes:
         for j in range(cellidn[i][-1]):
-            leftb.setdefault(tuple([np.float(vertexn[i][0]), np.float(vertexn[i][1]) , np.float(vertexn[i][2])]), []).append(cellidn[i][j])
+            leftb.setdefault(tuple([np.float64(vertexn[i][0]), np.float64(vertexn[i][1]) , np.float64(vertexn[i][2])]), []).append(cellidn[i][j])
     for i in periodicoutnodes:
         for j in range(cellidn[i][-1]):
-            rightb.setdefault(tuple([np.np.float(vertexn[i][0]), np.float(vertexn[i][1]) , np.float(vertexn[i][2])]), []).append(cellidn[i][j])
+            rightb.setdefault(tuple([np.float64(vertexn[i][0]), np.float64(vertexn[i][1]) , np.float64(vertexn[i][2])]), []).append(cellidn[i][j])
     
     for i in periodicinnodes:
-        periodicidn[i].extend(rightb[tuple([np.np.float(vertexn[i][0]) + maxcoordx, np.float(vertexn[i][1]) , np.float(vertexn[i][2])])])
+        periodicidn[i].extend(rightb[tuple([np.float64(vertexn[i][0]) + maxcoordx, np.float64(vertexn[i][1]) , np.float64(vertexn[i][2])])])
     for i in periodicoutnodes:    
-        periodicidn[i].extend(leftb[tuple([np.np.float(vertexn[i][0]) - maxcoordx, np.float(vertexn[i][1]) , np.float(vertexn[i][2])])])
+        periodicidn[i].extend(leftb[tuple([np.float64(vertexn[i][0]) - maxcoordx, np.float64(vertexn[i][1]) , np.float64(vertexn[i][2])])])
     
     ########################################################################################################
     #  TODO Periodic boundary (bottom and upper)
     leftb = {}
     rightb = {}
     for i in periodicupperfaces:
-        leftb[tuple([np.np.float(centerf[i][0]), np.float(centerf[i][1]), np.float(centerf[i][2])])] = cellidf[i][0]
+        leftb[tuple([np.float64(centerf[i][0]), np.float64(centerf[i][1]), np.float64(centerf[i][2])])] = cellidf[i][0]
     for i in periodicbottomfaces:
-        rightb[tuple([np.np.float(centerf[i][0]), np.float(centerf[i][1]), np.float(centerf[i][2])])] = cellidf[i][0]
+        rightb[tuple([np.float64(centerf[i][0]), np.float64(centerf[i][1]), np.float64(centerf[i][2])])] = cellidf[i][0]
     
     shifty = max(vertexn[:,1])
     maxcoordy = max(centerf[:,1])
     
     for i in periodicupperfaces:
-        cellidf[i][1] = rightb[tuple([np.np.float(centerf[i][0]), np.float(centerf[i][1]) - maxcoordy, np.float(centerf[i][2])])]
-        periodicfidc[cellidf[i][0]] = cellidf[i][1]#rightb[np.np.float(centerf[i][1])]
+        cellidf[i][1] = rightb[tuple([np.float64(centerf[i][0]), np.float64(centerf[i][1]) - maxcoordy, np.float64(centerf[i][2])])]
+        periodicfidc[cellidf[i][0]] = cellidf[i][1]#rightb[np.float64(centerf[i][1])]
         for j in range(cellnidc[cellidf[i][1]][-1]):
             periodicnidc[cellidf[i][0]].append(cellnidc[cellidf[i][1]][j])
             longper[cellidf[i][0]] +=1
@@ -360,8 +360,8 @@ def update_pediodic_info_2d(centerf, cellidf, cellnidc, centerc, vertexn, cellid
             if i != -1:
                 shiftc[cell][1] = -1*shifty
     for i in periodicbottomfaces:        
-        cellidf[i][1] = leftb[tuple([np.np.float(centerf[i][0]), np.float(centerf[i][1])  + maxcoordy, np.float(centerf[i][2])])]
-        periodicfidc[cellidf[i][0]] = cellidf[i][1]#leftb[np.np.float(centerf[i][1])]
+        cellidf[i][1] = leftb[tuple([np.float64(centerf[i][0]), np.float64(centerf[i][1])  + maxcoordy, np.float64(centerf[i][2])])]
+        periodicfidc[cellidf[i][0]] = cellidf[i][1]#leftb[np.float64(centerf[i][1])]
         for j in range(cellnidc[cellidf[i][1]][-1]):
             periodicnidc[cellidf[i][0]].append(cellnidc[cellidf[i][1]][j])
             longper[cellidf[i][0]] +=1
@@ -374,14 +374,14 @@ def update_pediodic_info_2d(centerf, cellidf, cellnidc, centerc, vertexn, cellid
     
     for i in periodicuppernodes:
         for j in range(cellidn[i][-1]):
-            leftb.setdefault(tuple([np.np.float(vertexn[i][0]), np.float(vertexn[i][1]) , np.float(vertexn[i][2])]), []).append(cellidn[i][j])
+            leftb.setdefault(tuple([np.float64(vertexn[i][0]), np.float64(vertexn[i][1]) , np.float64(vertexn[i][2])]), []).append(cellidn[i][j])
     for i in periodicbottomnodes:
-        rightb.setdefault(tuple([np.np.float(vertexn[i][0]), np.float(vertexn[i][1]) , np.float(vertexn[i][2])]), []).append(cellidn[i][j])
+        rightb.setdefault(tuple([np.float64(vertexn[i][0]), np.float64(vertexn[i][1]) , np.float64(vertexn[i][2])]), []).append(cellidn[i][j])
     
     for i in periodicuppernodes:
-        periodicidn[i].extend(rightb[tuple([np.np.float(vertexn[i][0]), np.float(vertexn[i][1]) - maxcoordy, np.float(vertexn[i][2])])])
+        periodicidn[i].extend(rightb[tuple([np.float64(vertexn[i][0]), np.float64(vertexn[i][1]) - maxcoordy, np.float64(vertexn[i][2])])])
     for i in periodicbottomnodes:    
-        periodicidn[i].extend(leftb[tuple([np.np.float(vertexn[i][0]), np.float(vertexn[i][1]) + maxcoordy , np.float(vertexn[i][2])])])
+        periodicidn[i].extend(leftb[tuple([np.float64(vertexn[i][0]), np.float64(vertexn[i][1]) + maxcoordy , np.float64(vertexn[i][2])])])
             
     ###########################################################################################    
     maxperiodiccell = 0
@@ -415,9 +415,9 @@ def update_pediodic_info_2d(centerf, cellidf, cellnidc, centerc, vertexn, cellid
     periodicnidc = np.asarray(periodicnidc, dtype=np.int32)
     periodicfidc = np.asarray(periodicfidc, dtype=np.int32)
     periodicidn = np.asarray(periodicidn, dtype=np.int32)
-###############################################################################
 
-@njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
+###############################################################################
+@njit("void(float64[:,:], float64[:,:,:])", fastmath=True, cache=True)
 def split_to_triangle(vertices, triangles):
     center = np.zeros(2)
     lv = vertices.shape[0]
@@ -433,6 +433,18 @@ def split_to_triangle(vertices, triangles):
 def Compute_2dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbcells:'int32',
                                  center:'float[:,:]', volume:'float[:]'):
     
+    
+    def split_to_triangle(vertices, triangles):
+        center = np.zeros(2)
+        lv = vertices.shape[0]
+        
+        center[0] = sum(vertices[:,0])/lv
+        center[1] = sum(vertices[:,1])/lv
+        
+        for i in range(lv):
+            triangles[i][0] = vertices[i]
+            triangles[i][1] = vertices[(i + 1) % lv]
+            triangles[i][2] = center
     
     vertices = np.zeros((4,2))
     triangles = np.zeros((4, 3,2))
@@ -508,8 +520,8 @@ def create_info_2dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
                         centerc:'float[:,:]', nbfaces:'int32', normalf:'float[:,:]', mesuref:'float[:]',
                         centerf:'float[:,:]', namef:'uint32[:]'):
     
-    norm   = np.zeros(3, dtype=np.float)
-    snorm  = np.zeros(3, dtype=np.float)
+    norm   = np.zeros(3, dtype=np.float64)
+    snorm  = np.zeros(3, dtype=np.float64)
     
     
     #Faces aux bords (1,2,3,4), Faces à l'interieur 0    A VOIR !!!!!
@@ -613,10 +625,10 @@ def variables_2d(centerc:'float[:,:]', cellid:'int32[:,:]', haloid:'int32[:,:]',
     
       nbnode = len(R_x)
         
-      I_xx = np.zeros(nbnode)
-      I_yy = np.zeros(nbnode)
-      I_xy = np.zeros(nbnode)
-      center = np.zeros(3)
+      I_xx = np.zeros(nbnode, dtype=np.float64)
+      I_yy = np.zeros(nbnode, dtype=np.float64)
+      I_xy = np.zeros(nbnode, dtype=np.float64)
+      center = np.zeros(3, dtype=np.float64)
    
       for i in range(nbnode):
         for j in range(cellid[i][-1]):

@@ -86,7 +86,7 @@ class AdvectionDiffusionSolver():
         self.comm = self.var.comm
         self.domain = self.var.domain
         self.dim = self.var.dim
-        self.precision = self.domain.precision
+        self.float_precision = self.domain.float_precision
         
         self.u   = vel[0]
         self.v   = vel[1]
@@ -112,9 +112,9 @@ class AdvectionDiffusionSolver():
         self.backend = self.domain.backend
         self.signature = self.domain.signature
         
-        self.var.__dict__["convective"] = zeros(self.domain.nbcells, dtype=self.precision)
-        self.var.__dict__["dissipative"] = zeros(self.domain.nbcells, dtype=self.precision)
-        self.var.__dict__["source"] = zeros(self.domain.nbcells, dtype=self.precision)
+        self.var.__dict__["convective"] = zeros(self.domain.nbcells, dtype=self.float_precision)
+        self.var.__dict__["dissipative"] = zeros(self.domain.nbcells, dtype=self.float_precision)
+        self.var.__dict__["source"] = zeros(self.domain.nbcells, dtype=self.float_precision)
         
         if self.dim == 2:
             self._explicitscheme_convective = explicitscheme_convective_2d

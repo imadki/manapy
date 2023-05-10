@@ -76,8 +76,10 @@ class Domain():
              'compile functions using types'),
             ('cache', 'bool', False, False,
              'save the compiled functions'),
-            ('precision', 'str', "double", None,
-             'precision of the float arrays')  
+            ('float_precision', 'str', "double", None,
+             'precision of the float arrays'),
+            ('int_precision', 'str', "signed", None,
+             'precision of the integer arrays')
     ]
 
     def __init__(self, dim=None, comm=None, conf=None, **kwargs):
@@ -91,7 +93,7 @@ class Domain():
             warnings.warn("You are running pure python functions", Warning)
         
         self.backend =  CPUBackend(multithread=get("multithreading"), backend=get("backend"), 
-                                   cache=get("cache"), precision=get("precision"))
+                                   cache=get("cache"), float_precision=get("float_precision"))
         
         self.forcedbackend = "python"
         if self.backend.backend != "python":
@@ -99,12 +101,12 @@ class Domain():
             
         self.signature = get('signature')
         
-        if get('precision') == "single":
-            self.precision = 'f4'
+        if get('float_precision') == "single":
+            self.float_precision = 'f4'
             self.vtkprecision = "Float32"
             self.mpi_precision = MPI.FLOAT
         else :
-            self.precision = 'f8'
+            self.float_precision = 'f8'
             self.vtkprecision = "Float64"
             self.mpi_precision = MPI.DOUBLE_PRECISION
         
@@ -186,7 +188,7 @@ class Domain():
         self._cells._loctoglob, \
         self._nodes._loctoglob, \
         self._halos._neigh, \
-        self._nodes._nparts = read_mesh_file(self._size, self._rank, self._mesh_dir, self.precision)
+        self._nodes._nparts = read_mesh_file(self._size, self._rank, self._mesh_dir, self.float_precision)
             
         self._nbcells = len(self._cells._nodeid)
         self._nbnodes = len(self._nodes._vertex)
@@ -198,12 +200,12 @@ class Domain():
         """
         if self._dim == 2:
             self._bounds  = np.array([[min(self._nodes.vertex[:,0]), max(self._nodes.vertex[:,0])], 
-                              [min(self._nodes.vertex[:,1]), max(self._nodes.vertex[:,1])]], dtype=self.precision)
+                              [min(self._nodes.vertex[:,1]), max(self._nodes.vertex[:,1])]], dtype=self.float_precision)
             
         if self._dim == 3:
             self._bounds  = np.array([[min(self._nodes.vertex[:,0]), max(self._nodes.vertex[:,0])], 
                               [min(self._nodes.vertex[:,1]), max(self._nodes.vertex[:,1])],
-                              [min(self._nodes.vertex[:,2]), max(self._nodes.vertex[:,2])]], dtype=self.precision)
+                              [min(self._nodes.vertex[:,2]), max(self._nodes.vertex[:,2])]], dtype=self.float_precision)
         
     def _compute_cells_info(self):
         """
@@ -211,8 +213,8 @@ class Domain():
         """
         #Create center and volume for each cell
         
-        self._cells._center= np.zeros((self._nbcells, 3), dtype=self.precision)
-        self._cells._volume = np.zeros(self._nbcells, dtype=self.precision)
+        self._cells._center= np.zeros((self._nbcells, 3), dtype=self.float_precision)
+        self._cells._volume = np.zeros(self._nbcells, dtype=self.float_precision)
         if self._dim == 2:
             self.backend.compile(Compute_2dcentervolumeOfCell, signature=self.signature)(self._cells._nodeid, self._nodes._vertex, \
                                 self._nbcells, self._cells._center, self._cells._volume)
@@ -331,9 +333,9 @@ class Domain():
         #####################################################
         #create info of faces
         self._faces._name   = np.zeros(self._nbfaces, dtype=np.uint32)
-        self._faces._normal = np.zeros((self._nbfaces, 3), dtype=self.precision)
-        self._faces._mesure = np.zeros(self._nbfaces, dtype=self.precision)
-        self._faces._center = np.zeros((self._nbfaces, 3), dtype=self.precision)
+        self._faces._normal = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
+        self._faces._mesure = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self._faces._center = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
 
         
         if self._dim == 2:
@@ -347,7 +349,7 @@ class Domain():
         ############################################################################
         
         #Create outgoing normal vectors
-        self._cells._nf = np.zeros((self._nbcells, self._maxcellfid , 3), dtype=self.precision)
+        self._cells._nf = np.zeros((self._nbcells, self._maxcellfid , 3), dtype=self.float_precision)
         if self._dim == 2:
             self.backend.compile(create_NormalFacesOfCell, signature=self.signature)(self._cells._center, self._faces._center, self._cells._faceid, \
                                 self._faces._normal, self._nbcells, self._cells._nf, self._maxcellfid)
@@ -364,14 +366,14 @@ class Domain():
         if self._dim == 2:
             self._nodes._halonid, self._faces._halofid, \
             self._nodes._name, self._faces._name, \
-            self._faces._oldname = self.backend.compile(create_2d_halo_structure, signature=self.signature)(self._halos._halosext, \
+            self._faces._oldname = self.backend.compile(create_2d_halo_structure, signature=self.signature, forcedbackend=self.forcedbackend)(self._halos._halosext, \
                                                        self._faces._nodeid, self._faces._cellid, self._faces._name, \
                                                        self._nodes._name, self._nodes._loctoglob, self._size, self._nbcells, self._nbfaces, \
                                                        self._nbnodes)
         if self._dim == 3:
             self._nodes._halonid, self._faces._halofid, \
             self._nodes._name, self._faces._name, \
-            self._faces._oldname = self.backend.compile(create_3d_halo_structure, signature=self.signature)(self._halos._halosext, \
+            self._faces._oldname = self.backend.compile(create_3d_halo_structure, signature=self.signature, forcedbackend=self.forcedbackend)(self._halos._halosext, \
                                                        self._faces._nodeid, self._faces._cellid, self._faces._name, \
                                                        self._nodes._name, self._nodes._loctoglob, self._size, self._nbcells, self._nbfaces, \
                                                        self._nbnodes)
@@ -452,7 +454,7 @@ class Domain():
                                                                                 self._faces._nodeid, self._boundaryfaces, self._faces._oldname, \
                                                                                 self._faces._center, self._faces._normal, self._nodes.vertex, \
                                                                                 self._nodes._halonid, self._nbcells, self._nbfaces, self._nbnodes, \
-                                                                                self._size, self._nodes._name, self.precision )
+                                                                                self._size, self._nodes._name, self.float_precision )
             
         elif self._dim == 3:
             self._cells._halonid, self._faces._ghostcenter, \
@@ -460,7 +462,7 @@ class Domain():
                                                                                 self._faces._nodeid, self._boundaryfaces, self._faces._oldname, \
                                                                                 self._faces._center, self._faces._normal, self._faces._mesure, 
                                                                                 self._nodes.vertex,  self._nodes._halonid, self._nbcells, self._nbfaces, \
-                                                                                self._nbnodes, self._size, self._nodes._name, self.precision )
+                                                                                self._nbnodes, self._size, self._nodes._name, self.float_precision )
             
     def _prepare_communication(self):
         #######################################################################################################
@@ -473,7 +475,7 @@ class Domain():
         self._nodes._periodicid  = np.zeros((self._nbnodes,2), dtype=np.int32)
         self._cells._periodicnid = np.zeros((self._nbcells,2), dtype=np.int32)
         self._cells._periodicfid = np.zeros(self._nbcells, dtype=np.int32)
-        self._cells._shift       = np.zeros((self._nbcells, 3), dtype=self.precision)
+        self._cells._shift       = np.zeros((self._nbcells, 3), dtype=self.float_precision)
         
         self._BCs = {"in":["neumann", 1], "out":["neumann", 2],  "upper":["neumann", 3], "bottom":["neumann", 4]}
    
@@ -512,12 +514,12 @@ class Domain():
         
         if self._dim == 2:
             self._halos._sizehaloghost = update_haloghost_info_2d(self._nodes, self._cells, self._halos, self.nbnodes, self.halonodes, \
-                                                                  self._halos._comm_ptr, self.precision, self.mpi_precision)
+                                                                  self._halos._comm_ptr, self.float_precision, self.mpi_precision)
             
             
         elif self._dim == 3:
             self._halos._sizehaloghost = update_haloghost_info_3d(self._nodes, self._cells, self._halos, self.nbnodes, self.halonodes, \
-                                                                  self._halos._comm_ptr, self.precision, self.mpi_precision)
+                                                                  self._halos._comm_ptr, self.float_precision, self.mpi_precision)
             
             
         
@@ -534,28 +536,27 @@ class Domain():
         
     def _compute_diamondCell_info(self):
         
-        self._nodes._R_x      = np.zeros(self._nbnodes, dtype=self.precision)
-        self._nodes._R_y      = np.zeros(self._nbnodes, dtype=self.precision)
-        self._nodes._R_z      = np.zeros(self._nbnodes, dtype=self.precision)
-        self._nodes._lambda_x = np.zeros(self._nbnodes, dtype=self.precision)
-        self._nodes._lambda_y = np.zeros(self._nbnodes, dtype=self.precision)
-        self._nodes._lambda_z = np.zeros(self._nbnodes, dtype=self.precision)
+        self._nodes._R_x      = np.zeros(self._nbnodes, dtype=self.float_precision)
+        self._nodes._R_y      = np.zeros(self._nbnodes, dtype=self.float_precision)
+        self._nodes._R_z      = np.zeros(self._nbnodes, dtype=self.float_precision)
+        self._nodes._lambda_x = np.zeros(self._nbnodes, dtype=self.float_precision)
+        self._nodes._lambda_y = np.zeros(self._nbnodes, dtype=self.float_precision)
+        self._nodes._lambda_z = np.zeros(self._nbnodes, dtype=self.float_precision)
         self._nodes._number   = np.zeros(self._nbnodes, dtype=np.uint32)
         
-        self._faces._airDiamond = np.zeros(self._nbfaces, dtype=self.precision)
-        self._faces._param1     = np.zeros(self._nbfaces, dtype=self.precision)
-        self._faces._param2     = np.zeros(self._nbfaces, dtype=self.precision)
-        self._faces._param3     = np.zeros(self._nbfaces, dtype=self.precision)
-        self._faces._param4     = np.zeros(self._nbfaces, dtype=self.precision)
+        self._faces._airDiamond = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self._faces._param1     = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self._faces._param2     = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self._faces._param3     = np.zeros(self._nbfaces, dtype=self.float_precision)
+        self._faces._param4     = np.zeros(self._nbfaces, dtype=self.float_precision)
 
         
-        self._faces._f_1  = np.zeros((self._nbfaces, self._dim), dtype=self.precision)
-        self._faces._f_2  = np.zeros((self._nbfaces, self._dim), dtype=self.precision)
-        self._faces._f_3  = np.zeros((self._nbfaces, self._dim), dtype=self.precision)
-        self._faces._f_4  = np.zeros((self._nbfaces, self._dim), dtype=self.precision)
+        self._faces._f_1  = np.zeros((self._nbfaces, self._dim), dtype=self.float_precision)
+        self._faces._f_2  = np.zeros((self._nbfaces, self._dim), dtype=self.float_precision)
+        self._faces._f_3  = np.zeros((self._nbfaces, self._dim), dtype=self.float_precision)
+        self._faces._f_4  = np.zeros((self._nbfaces, self._dim), dtype=self.float_precision)
             
         if self._dim == 2:        
-            
             self.backend.compile(variables_2d, signature=self.signature)(self._cells._center, self._nodes._cellid, self._nodes._halonid, \
                                 self._nodes._ghostid, self._nodes._haloghostid,\
                                 self._nodes._periodicid, self._nodes._vertex, self._faces._ghostcenter, self._cells._haloghostcenter, \
@@ -589,9 +590,9 @@ class Domain():
     def _compute_orthocenter(self):
         
         #distance orthocenter
-        self._faces._dist_ortho = np.zeros(self.nbfaces, dtype=self.precision)
+        self._faces._dist_ortho = np.zeros(self.nbfaces, dtype=self.float_precision)
         if self._dim == 2:
-            self.backend.compile(dist_ortho_function, signature=self.signature)(self._innerfaces, self._boundaryfaces, self._infaces, \
+            self.backend.compile(dist_ortho_function, signature=self.signature, forcedbackend=self.forcedbackend)(self._innerfaces, self._boundaryfaces, self._infaces, \
                                 self._faces._cellid, self._cells._center, 
                                 self._faces._dist_ortho, self._faces._center, self._faces._normal, self._faces.mesure)
             
@@ -614,14 +615,14 @@ class Domain():
         elements = self._typeOfCells#{"quad": self.cells._nodeid}
 
         points = self._nodes._vertex[:, :3]
-        points = np.array(points, dtype=self.precision)
+        points = np.array(points, dtype=self.float_precision)
                 
         data = {"w" : value}
         data = {"w": data}
         
         maxw = max(value)
         
-        integral_maxw = np.zeros(1, dtype=self.precision)
+        integral_maxw = np.zeros(1, dtype=self.float_precision)
     
         self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
       
@@ -675,7 +676,7 @@ class Domain():
         
         maxw = max(value)
         
-        integral_maxw = np.zeros(1, dtype=self.precision)
+        integral_maxw = np.zeros(1, dtype=self.float_precision)
     
         self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
       
@@ -732,7 +733,7 @@ class Domain():
         
         maxw = max(values[0])
         
-        integral_maxw = np.zeros(1, dtype=self.precision)
+        integral_maxw = np.zeros(1, dtype=self.float_precision)
     
         self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
       
@@ -794,7 +795,7 @@ class Domain():
             
         maxw = max(values[0])
         
-        integral_maxw = np.zeros(1, dtype=self.precision)
+        integral_maxw = np.zeros(1, dtype=self.float_precision)
     
         self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
       
