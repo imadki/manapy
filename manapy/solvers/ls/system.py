@@ -103,7 +103,7 @@ class LinearSolver():
         #Backend
         self.backend = self.domain.backend
         self.signature = self.domain.signature
-        self.precision = self.domain.precision
+        self.float_precision = self.domain.float_precision
         self.mpi_precision = self.domain.mpi_precision
         
         self.localsize  = self.domain.nbcells
@@ -111,14 +111,14 @@ class LinearSolver():
         self.domain.globalsize = self.globalsize
         
         
-        self.sendcounts1 = np.array(self.comm.gather(self.localsize, root=0), dtype=self.precision)
-        self.x1converted = np.zeros(self.globalsize, dtype=self.precision)
+        self.sendcounts1 = np.array(self.comm.gather(self.localsize, root=0), dtype=self.float_precision)
+        self.x1converted = np.zeros(self.globalsize, dtype=self.float_precision)
         
-        self.domain.Pbordnode = np.zeros(self.domain.nbnodes, dtype=self.precision)
-        self.domain.Pbordface = np.zeros(self.domain.nbfaces, dtype=self.precision)
+        self.domain.Pbordnode = np.zeros(self.domain.nbnodes, dtype=self.float_precision)
+        self.domain.Pbordface = np.zeros(self.domain.nbfaces, dtype=self.float_precision)
         
-        self.domain.Ibordnode = np.zeros(self.domain.nbnodes, dtype=self.precision)
-        self.domain.Ibordface = np.zeros(self.domain.nbfaces, dtype=self.precision)
+        self.domain.Ibordnode = np.zeros(self.domain.nbnodes, dtype=self.float_precision)
+        self.domain.Ibordface = np.zeros(self.domain.nbfaces, dtype=self.float_precision)
         
         matrixinnerfaces = np.concatenate([self.domain._innerfaces, self.domain._periodicinfaces, self.domain._periodicupperfaces])
         if self.dim == 3:
@@ -130,7 +130,7 @@ class LinearSolver():
             sizeM = 4*len(matrixinnerfaces)+len(self.var.dirichletfaces) + 2*len(self.domain.halofaces)
             self._row  = np.zeros(sizeM, dtype=np.int32)
             self._col  = np.zeros(sizeM, dtype=np.int32)
-            self._data = np.zeros(sizeM, dtype=self.precision)
+            self._data = np.zeros(sizeM, dtype=self.float_precision)
        
         elif scheme == "diamond":     
             if self.dim == 2:
@@ -154,7 +154,7 @@ class LinearSolver():
             
             self._row = np.zeros(self.dataSize, dtype=np.int32)
             self._col = np.zeros(self.dataSize, dtype=np.int32)
-            self._data = np.zeros(self.dataSize, dtype=self.precision)
+            self._data = np.zeros(self.dataSize, dtype=self.float_precision)
             
             self.convert_solution = self.backend.compile(convert_solution, signature=self.signature)
     
@@ -270,7 +270,7 @@ class MUMPSSolver(LinearSolver):
         self.var = var
         self._domain.solver = "mumps"
 
-        self.rhs0 = np.zeros(self.globalsize, dtype=self.precision)
+        self.rhs0 = np.zeros(self.globalsize, dtype=self.float_precision)
         
         if self._dim == 2:
             self._get_rhs_glob = get_rhs_glob_2d
@@ -308,7 +308,7 @@ class MUMPSSolver(LinearSolver):
         
         if self.comm.Get_rank() == 0:
             #Convert solution for scattering
-            self.convert_solution(self.sol.astype(self.precision), self.x1converted, self.domain.cells.tc, self.globalsize)
+            self.convert_solution(self.sol.astype(self.float_precision), self.x1converted, self.domain.cells.tc, self.globalsize)
         self.comm.Scatterv([self.x1converted, self.sendcounts1, self.mpi_precision], self.var.cell, root = 0)
         
     def presolve(self,reuse_mtx=False):
@@ -348,7 +348,7 @@ class MUMPSSolver(LinearSolver):
             if self.comm.Get_rank() == 0:
                 self.mumps_ls.set_rhs(self.sol)
             else :
-                self.sol = np.zeros(self.globalsize, dtype=self.precision)                                                                                                                                                    
+                self.sol = np.zeros(self.globalsize, dtype=self.float_precision)                                                                                                                                                    
     
     def clear(self):
         if self.mumps_ls is not None:
@@ -417,7 +417,7 @@ class PETScKrylovSolver(LinearSolver):
         self.var = var
         self._domain.solver = "petsc"
         
-        self.rhs0 = np.zeros(self.globalsize, dtype=self.precision)
+        self.rhs0 = np.zeros(self.globalsize, dtype=self.float_precision)
         
         if self._dim == 2:
             self._get_rhs_loc = get_rhs_loc_2d
@@ -450,7 +450,7 @@ class PETScKrylovSolver(LinearSolver):
         if self.conf.reordering and self.comm.Get_size() == 1:
             self.sol.array = self.sol.array[np.argsort(self.perm)]
         
-        self.comm.Gatherv(sendbuf=self.sol.array.astype(self.precision), recvbuf=(self.recvbuf, self.sendcounts2), root=0)
+        self.comm.Gatherv(sendbuf=self.sol.array.astype(self.float_precision), recvbuf=(self.recvbuf, self.sendcounts2), root=0)
         
         if self.comm.Get_rank() == 0:
             #Convert solution for scattering
@@ -546,7 +546,7 @@ class PETScKrylovSolver(LinearSolver):
             self.sendcounts2 = np.array(self.comm.gather(len(self.sol.array),  root=0))
             
             if self.comm.Get_rank() == 0:
-                self.recvbuf = np.empty(sum(self.sendcounts2), dtype=self.precision)
+                self.recvbuf = np.empty(sum(self.sendcounts2), dtype=self.float_precision)
             else:
                 self.recvbuf = None
             ###################################################################
@@ -647,7 +647,7 @@ class ScipySolver(LinearSolver):
         self.var = var
         self._domain.solver = "scipy"
 
-        self.rhs0 = np.zeros(self.globalsize, dtype=self.precision)
+        self.rhs0 = np.zeros(self.globalsize, dtype=self.float_precision)
         
         if self._dim == 2:
             self._get_rhs_glob = get_rhs_glob_2d

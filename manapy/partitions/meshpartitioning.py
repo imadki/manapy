@@ -64,8 +64,10 @@ class MeshPartition():
              'compile functions using types'),
             ('cache', 'bool', False, False,
              'save the compiled functions'),
-            ('precision', 'str', "double", None,
-             'precision of the float arrays')
+            ('float_precision', 'str', "double", None,
+             'precision of the float arrays'),
+            ('int_precision', 'str', "signed", None,
+             'precision of the integer arrays')
     ]
     
     name = 'gmsh'
@@ -83,10 +85,13 @@ class MeshPartition():
         
         self.backend = backend = CPUBackend(multithread=get("multithreading"), backend=get("backend"), cache=get("cache"))
         self.signature = get('signature')
-        if get('precision') == "single":
-            self.precision = 'f4'
+        
+        if get('float_precision') == "single":
+            self.float_precision = 'f4'
         else :
-            self.precision = 'f8'
+            self.float_precision = 'f8'
+            
+        print(self.float_precision )
         
         # Node numbers associated with each element face
         self._etypes = {2:['triangle','quad'], 3:['tetra', 'pyramid', 'hexahedron']}
@@ -155,7 +160,7 @@ class MeshPartition():
         self._nbnodes = len(self._mesh.points)
         
         #coordinates x, y of each node
-        self._vertices = np.zeros((self._nbnodes, 4), dtype=self.precision)
+        self._vertices = np.zeros((self._nbnodes, 4), dtype=self.float_precision)
         self._vertices[:,:3] = self._mesh.points
         self._vertices[:,3]  = define_ghost_node(self._mesh, self._periodic, self._nbnodes, self._dim)
 

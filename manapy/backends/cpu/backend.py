@@ -3,6 +3,7 @@ from manapy.backends.base import Backend
 from manapy.backends.cpu.loop import make_serial_loop1d, make_parallel_loop1d
 from manapy.backends.cpu.local import stack_empty_impl
 
+
 import pythran
 import inspect
 import hashlib
@@ -15,23 +16,22 @@ import numba as nb
 import numpy as np
 import os
 
-def get_arg_types(func, precision):
+def get_arg_types(func, float_precision):
     # Get the function's argument types
     arg_types = []
     arg_names = inspect.signature(func).parameters.keys()
     for arg_name in arg_names:
-#        print(arg_name)
         arg_type = inspect.signature(func).parameters[arg_name].annotation
-        arg_type = arg_type.replace("float", precision)
+        arg_type = arg_type.replace("float", float_precision)
         arg_types.append(arg_type)
     return tuple(arg_types)
 
 class Pythranjit(object):
 
-    def __init__(self, cache=False, precision=None, **flags):
+    def __init__(self, cache=False, float_precision=None, **flags):
         self.flags = flags
         self.cache = cache
-        self.precision = precision
+        self.float_precision = float_precision
         
     def __call__(self, fun):
         # FIXME: gather global dependencies using pythran.analysis.imported_ids
@@ -48,10 +48,9 @@ class Pythranjit(object):
         m = hashlib.md5()
         m.update(src.encode())  # Encode the string before hashing
         
-        header = "#pythran export {}({})\n".format(fname, ", ".join(get_arg_types(fun, self.precision)))
+        header = "#pythran export {}({})\n".format(fname, ", ".join(get_arg_types(fun, self.float_precision)))
         header += "import numpy as np \n"
         
-        print(header, src)
         output_dir = os.path.dirname(os.path.realpath(__file__))
         output_dir = os.path.join(module_dir , '.')
         
@@ -62,7 +61,6 @@ class Pythranjit(object):
         #FIXME: force output in tmp dir
         module_path = pythran.compile_pythrancode(module_name, header + src, **self.flags)
         output_path = os.path.join(output_dir, module_name + ".cpython-38-x86_64-linux-gnu.so")
-#        print(output_path)
         os.rename(module_path, output_path)
         module = imp.load_dynamic(module_name, output_path)
 
@@ -79,16 +77,16 @@ class CPUBackend(Backend):
     """
     name = 'cpu'
 
-    def __init__(self, multithread="single", backend=False, cache=False, precision=None):
+    def __init__(self, multithread="single", backend=False, cache=False, float_precision=None):
         # Get mutli-thread type
         
         self.backend     = backend
         self.multithread = multithread
         self.cache       = cache
-        if precision == "single":
-            self.precision   = "float32"
+        if float_precision == "single":
+            self.float_precision   = "float32"
         else:
-            self.precision   = "float64"
+            self.float_precision   = "float64"
         
         # Loop structure for multi-thread type
         if multithread == 'single':
@@ -110,7 +108,7 @@ class CPUBackend(Backend):
         
         if backend=="numba":
             if signature:
-                signature = get_arg_types(func, self.precision)
+                signature = get_arg_types(func, self.float_precision)
                 signature = '(' + ', '.join(signature) + ')'
                 signature = str(signature)
             else:
@@ -123,8 +121,7 @@ class CPUBackend(Backend):
                 return nb.jit(nopython=True, fastmath=True, parallel=True, signature_or_function=signature, cache=self.cache)(func)
         
         elif backend == "pythran":
-            print(func)
-            J = Pythranjit(cache=self.cache, precision=self.precision)
+            J = Pythranjit(cache=self.cache, float_precision=self.float_precision)
             return J(func)
         else:
             return func
