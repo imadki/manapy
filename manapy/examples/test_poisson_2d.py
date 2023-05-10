@@ -41,8 +41,6 @@ Pinit = 10.
 
 ts = MPI.Wtime()
 
-if RANK == 0: print("Start While loop ...")
-
 def test2d_1():
     
     filename = "carre_hybrid.msh"
