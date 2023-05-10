@@ -42,7 +42,7 @@ filename = "cube_bis.msh"
 #File name
 filename = os.path.join(MESH_DIR, filename)
 dim = 3
-running_conf = Struct(backend="numba", signature=True, cache=True, precision="single")
+running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="single")
 mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0,0,0])
 
 #Create the informations about cells, faces and nodes

@@ -53,7 +53,7 @@ def test2d_1():
     #backend numba or python
     #signature: add types to functions (make them faster) but compilation take time
     #cache: avoid recompilation in the next run
-    running_conf = Struct(backend="numba", signature=True, cache=True, precision="single")
+    running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="single")
     mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0,0,0])
     
     #Create the informations about cells, faces and nodes
