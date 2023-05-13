@@ -91,8 +91,6 @@ class MeshPartition():
         else :
             self.float_precision = 'f8'
             
-        print(self.float_precision )
-        
         # Node numbers associated with each element face
         self._etypes = {2:['triangle','quad'], 3:['tetra', 'pyramid', 'hexahedron']}
         
@@ -223,7 +221,7 @@ class MeshPartition():
         self._halointloc, \
         self._halointlen = compute_halocell(self._halo_cellid, self._cpart, self._cell_nodeid, 
                                             self._vertices, self._neighsub, self._size, self._dim, 
-                                            self.precision)
+                                            self.float_precision)
         
     def _savemesh(self):
         
