@@ -343,8 +343,10 @@ class Domain():
                                 self._nodes._vertex, self._cells._center, self._nbfaces, self._faces._normal, self._faces._mesure, \
                                 self._faces._center, self._faces._name)
         elif self._dim == 3:
+            self._faces._tangent = zeros((self._nbfaces, 3), dtype=float64)
+            self._faces._binormal = zeros((self._nbfaces, 3), dtype=float64)        
             self.backend.compile(create_info_3dfaces, signature=self.signature)(self._faces._cellid, self._faces._nodeid, self._nodes._name, \
-                                self._nodes._vertex, self._cells._center, self._nbfaces, self._faces._normal, self._faces._mesure, \
+                                self._nodes._vertex, self._cells._center, self._nbfaces, self._faces._normal, self._faces._tangent, self._faces._binormal, self._faces._mesure, \
                                 self._faces._center, self._faces._name)
         ############################################################################
         

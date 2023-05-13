@@ -352,7 +352,7 @@ def explicitscheme_convective_SW(rez_h:'float[:]', rez_hu:'float[:]', rez_hv:'fl
                                  psi:'float[:]', psi_halo:'float[:]', 
                                  centerc:'float[:,:]', centerf:'float[:,:]', centerh:'float[:,:]', centerg:'float[:,:]',
                                  cellidf:'int32[:,:]', mesuref:'float[:]', normalf:'float[:,:]', halofid:'int32[:]',
-                                 innerfaces:'int32[:]', halofaces:'int32[:]', boundaryfaces:'int32[:]', grav:'float', order:'int'):
+                                 innerfaces:'int32[:]', halofaces:'int32[:]', boundaryfaces:'int32[:]', grav:'float', order:'int32'):
     
     rez_h[:] = 0.; rez_hu[:] = 0.; rez_hv[:] = 0.; rez_hc[:] = 0.; rez_Z[:] = 0.
     

@@ -528,13 +528,15 @@ def face_gradient_info_3d(cellidf:'int32[:,:]', nodeidf:'int32[:,:]', centergf:'
      
 
 def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[:]', vertex:'float[:,:]', 
-                        centerc:'float[:,:]', nbfaces:'int32', normalf:'float[:,:]', mesuref:'float[:]',
+                        centerc:'float[:,:]', nbfaces:'int32', normalf:'float[:,:]', tangentf:'float64[:,:]', binormalf:'float64[:,:]', mesuref:'float[:]',
                         centerf:'float[:,:]', namef:'uint32[:]'):
     
     norm   = np.zeros(3)
     snorm  = np.zeros(3)
     u      = np.zeros(3)
     v      = np.zeros(3)
+    tangent      = np.zeros(3)
+    binormal      = np.zeros(3)    
     
     for i in range(nbfaces):
              
@@ -652,7 +654,12 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
         norm[1] = 0.5*(u[2]*v[0] - u[0]*v[2])
         norm[2] = 0.5*(u[0]*v[1] - u[1]*v[0])
     
+        tangent[:]=u[:]
         
+        binormal[0] = 0.5*(u[1]*norm[2] - u[2]*norm[1])
+        binormal[1] = 0.5*(u[2]*norm[0] - u[0]*norm[2])
+        binormal[2] = 0.5*(u[0]*norm[1] - u[1]*norm[0])
+                
         snorm[:] = centerc[cellid[i][0]][:] - centerf[i][:]
     
         if (snorm[0] * norm[0] + snorm[1] * norm[1] + snorm[2] * norm[2]) > 0:
@@ -661,7 +668,10 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
             normalf[i][:] = norm[:]
     
         mesuref[i] = np.sqrt(normalf[i][0]**2 + normalf[i][1]**2 + normalf[i][2]**2)
-
+        binormalf[i][:] = binormal[:]
+        tangentf[i][:] = tangent[:]
+        
+        
 @njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
 def split_to_tetra(vertices, tetrahedra):
     center = np.zeros(3)

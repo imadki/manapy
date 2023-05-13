@@ -13,7 +13,7 @@ from manapy.solvers.shallowater import (update_SW, time_step_SW, explicitscheme_
 
 from manapy.solvers.advecdiff import (explicitscheme_dissipative)
 from manapy.comms import Iall_to_all
-from manapy.comms.comm import define_halosend
+from manapy.comms import define_halosend
 
 from manapy.ast import Variable
 from manapy.base.base import Struct
@@ -93,7 +93,7 @@ class ShallowWaterSolver():
         self.comm = self.h.comm
         self.domain = self.h.domain
         self.dim = self.h.dim
-        self.precision = self.domain.precision
+        self.float_precision = self.domain.float_precision
         
         self.hu   = hvel[0]
         self.hv   = hvel[1]
@@ -125,7 +125,7 @@ class ShallowWaterSolver():
         terms = ['source', 'dissipation', 'coriolis', 'friction', "convective"]
         for var in self.varbs.values():
             for term in terms:
-                var.__dict__[term] = zeros(self.domain.nbcells, dtype=self.precision)
+                var.__dict__[term] = zeros(self.domain.nbcells, dtype=self.float_precision)
         
         
         # Constants
