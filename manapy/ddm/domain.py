@@ -26,7 +26,7 @@ from manapy.ddm.ddm_utils3d   import (Compute_3dcentervolumeOfCell, create_3dfac
 from manapy.ddm.pure_ddm   import read_mesh_file
 
 from manapy.backends       import CPUBackend
-from manapy.base.base import get_default, make_get_conf
+from manapy.base.base import make_get_conf
 from manapy.base.base import Struct
 import warnings
 
@@ -92,8 +92,8 @@ class Domain():
         if get("python"):
             warnings.warn("You are running pure python functions", Warning)
         
-        self.backend =  CPUBackend(multithread=get("multithreading"), backend=get("backend"), 
-                                   cache=get("cache"), float_precision=get("float_precision"))
+        self.backend = CPUBackend(multithread=get("multithreading"), backend=get("backend"), 
+                                  cache=get("cache"), float_precision=get("float_precision"))
         
         self.forcedbackend = "python"
         if self.backend.backend != "python":
@@ -213,7 +213,7 @@ class Domain():
         """
         #Create center and volume for each cell
         
-        self._cells._center= np.zeros((self._nbcells, 3), dtype=self.float_precision)
+        self._cells._center = np.zeros((self._nbcells, 3), dtype=self.float_precision)
         self._cells._volume = np.zeros(self._nbcells, dtype=self.float_precision)
         if self._dim == 2:
             self.backend.compile(Compute_2dcentervolumeOfCell, signature=self.signature)(self._cells._nodeid, self._nodes._vertex, \
@@ -343,8 +343,8 @@ class Domain():
                                 self._nodes._vertex, self._cells._center, self._nbfaces, self._faces._normal, self._faces._mesure, \
                                 self._faces._center, self._faces._name)
         elif self._dim == 3:
-            self._faces._tangent = zeros((self._nbfaces, 3), dtype=float64)
-            self._faces._binormal = zeros((self._nbfaces, 3), dtype=float64)        
+            self._faces._tangent = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
+            self._faces._binormal = np.zeros((self._nbfaces, 3), dtype=self.float_precision)        
             self.backend.compile(create_info_3dfaces, signature=self.signature)(self._faces._cellid, self._faces._nodeid, self._nodes._name, \
                                 self._nodes._vertex, self._cells._center, self._nbfaces, self._faces._normal, self._faces._tangent, self._faces._binormal, self._faces._mesure, \
                                 self._faces._center, self._faces._name)
