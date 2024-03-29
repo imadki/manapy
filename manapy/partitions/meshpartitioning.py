@@ -83,13 +83,19 @@ class MeshPartition():
         if get("python"):
             warnings.warn("You are running pure python functions", Warning)
         
-        self.backend = backend = CPUBackend(multithread=get("multithreading"), backend=get("backend"), cache=get("cache"))
+        self.backend = backend = CPUBackend(multithread=get("multithreading"), backend=get("backend"), 
+                                            cache=get("cache"), int_precision=get("int_precision"))
         self.signature = get('signature')
         
         if get('float_precision') == "single":
             self.float_precision = 'f4'
         else :
             self.float_precision = 'f8'
+            
+        if get('int_precision') == "signed":
+            self.int_precision = 'i4'
+        else :
+            self.int_precision = 'u4'
             
         # Node numbers associated with each element face
         self._etypes = {2:['triangle','quad'], 3:['tetra', 'pyramid', 'hexahedron']}
@@ -169,11 +175,11 @@ class MeshPartition():
         cmpt = 0
         for i in self._etypes[self._dim]:
             if i in self._mesh.cells.keys():
-                self._elements["ele"+str(cmpt)] = self._mesh.cells[i].astype(np.uint32)
-                self._elemetis["ele"+str(cmpt)] = self._mesh.cells[i].astype(np.uint32)
+                self._elements["ele"+str(cmpt)] = self._mesh.cells[i].astype(self.int_precision)
+                self._elemetis["ele"+str(cmpt)] = self._mesh.cells[i].astype(self.int_precision)
                 cmpt += 1
             else:
-                self._elements["ele"+str(cmpt)] = np.zeros((1,1), dtype=np.uint32)
+                self._elements["ele"+str(cmpt)] = np.zeros((1,1), dtype=self.int_precision)
                 cmpt += 1
                 
         if self._dim == 2:   self._convert_args = [self._elements["ele0"], self._elements["ele1"]]
@@ -198,7 +204,7 @@ class MeshPartition():
         
         
         
-        self._cell_nodeid = self._convert_cons_to_array(*self._convert_args)
+        self._cell_nodeid = self._convert_cons_to_array(*self._convert_args).astype(self.int_precision)
         
         self._nbcells = len(self._cell_nodeid)
 
@@ -231,7 +237,7 @@ class MeshPartition():
             os.mkdir(self._mesh_dir)
         
         if self._size == 1:
-            self._cell_nodeid = self._convert_cons_to_array(*self._convert_args)
+            self._cell_nodeid = self._convert_cons_to_array(*self._convert_args).astype(self.int_precision)
             self._nbcells = len(self._cell_nodeid)
             
             filename = os.path.join(self._mesh_dir, "mesh0.hdf5")

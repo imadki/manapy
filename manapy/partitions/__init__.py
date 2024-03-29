@@ -1,3 +1,3 @@
 # -*- coding: UTF-8 -*-
 
-from .meshpartitioning import MeshPartition
+from .meshpartitioning  import MeshPartition
