@@ -434,17 +434,17 @@ def Compute_2dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbce
                                  center:'float[:,:]', volume:'float[:]'):
     
     
-    def split_to_triangle(vertices, triangles):
-        center = np.zeros(2)
+    def split_to_triangle(vertices:'float64[:,:]', triangles:'float64[:,:,:]'):
+        ctr = np.zeros(2)
         lv = vertices.shape[0]
         
-        center[0] = sum(vertices[:,0])/lv
-        center[1] = sum(vertices[:,1])/lv
+        ctr[0] = sum(vertices[:,0])/lv
+        ctr[1] = sum(vertices[:,1])/lv
         
         for i in range(lv):
             triangles[i][0] = vertices[i]
             triangles[i][1] = vertices[(i + 1) % lv]
-            triangles[i][2] = center
+            triangles[i][2] = ctr
     
     vertices = np.zeros((4,2))
     triangles = np.zeros((4, 3,2))
@@ -623,14 +623,14 @@ def variables_2d(centerc:'float[:,:]', cellid:'int32[:,:]', haloid:'int32[:,:]',
                  R_x:'float[:]', R_y:'float[:]', lambda_x:'float[:]', 
                  lambda_y:'float[:]', number:'uint32[:]', shift:'float[:,:]'):
     
-      nbnode = len(R_x)
+    nbnode = len(R_x)
         
-      I_xx = np.zeros(nbnode, dtype=np.float64)
-      I_yy = np.zeros(nbnode, dtype=np.float64)
-      I_xy = np.zeros(nbnode, dtype=np.float64)
-      center = np.zeros(3, dtype=np.float64)
+    I_xx = np.zeros(nbnode, dtype=np.float64)
+    I_yy = np.zeros(nbnode, dtype=np.float64)
+    I_xy = np.zeros(nbnode, dtype=np.float64)
+    center = np.zeros(3, dtype=np.float64)
    
-      for i in range(nbnode):
+    for i in range(nbnode):
         for j in range(cellid[i][-1]):
             center[:] = centerc[cellid[i][j]][0:3]
             Rx = center[0] - vertexn[i][0]

@@ -36,6 +36,7 @@ class Variable():
         self.backend = self._domain.backend
         self.signature = self._domain.signature
         self.float_precision  = self._domain.float_precision
+        self.int_precision    = self._domain.int_precision
         self.mpi_precision = self._domain.mpi_precision
         self.forcedbackend = self._domain.forcedbackend
         
@@ -326,12 +327,12 @@ class Variable():
         self.dirichletfaces.sort()
         self.neumannfaces.sort()
         
-        self.dirichletfaces = np.asarray(self.dirichletfaces, dtype=np.uint32)
-        self.neumannfaces = np.asarray(self.neumannfaces, dtype=np.uint32)
-        self.neumannNHfaces = np.asarray(self.neumannNHfaces, dtype=np.uint32)
-        self.BCdirichlet = np.asarray(self.BCdirichlet, dtype=np.uint32)
-        self.BCneumannNH = np.asarray(self.BCdirichlet, dtype=np.uint32)
-        self.BCneumann = np.asarray(self.BCneumann, dtype=np.uint32)
+        self.dirichletfaces = np.asarray(self.dirichletfaces, dtype=self.int_precision)
+        self.neumannfaces = np.asarray(self.neumannfaces, dtype=self.int_precision)
+        self.neumannNHfaces = np.asarray(self.neumannNHfaces, dtype=self.int_precision)
+        self.BCdirichlet = np.asarray(self.BCdirichlet, dtype=self.int_precision)
+        self.BCneumannNH = np.asarray(self.BCdirichlet, dtype=self.int_precision)
+        self.BCneumann = np.asarray(self.BCneumann, dtype=self.int_precision)
         
     
     def __str__(self):
@@ -490,7 +491,7 @@ class Variable():
         
     def update_ghost_value(self):
         for BC in self._BCs.values():
-            BC._func_ghost(BC.BCvalueface, self.ghost, self.domain.faces.cellid, np.asarray(BC.BCfaces, dtype=np.uint32),
+            BC._func_ghost(BC.BCvalueface, self.ghost, self.domain.faces.cellid, np.asarray(BC.BCfaces, dtype=self.int_precision),
                            BC.constNH, self.domain.faces.dist_ortho)
             BC._func_haloghost(BC.BCvaluehalo, self.haloghost, self.domain.nodes.haloghostcenter, 
                                BC.BCtypeindex,  self.domain.halonodes, BC.constNHNode) 

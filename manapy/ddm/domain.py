@@ -93,7 +93,8 @@ class Domain():
             warnings.warn("You are running pure python functions", Warning)
         
         self.backend = CPUBackend(multithread=get("multithreading"), backend=get("backend"), 
-                                  cache=get("cache"), float_precision=get("float_precision"))
+                                  cache=get("cache"), float_precision=get("float_precision"),
+                                  int_precision=get("int_precision"))
         
         self.forcedbackend = "python"
         if self.backend.backend != "python":
@@ -110,6 +111,11 @@ class Domain():
             self.vtkprecision = "Float64"
             self.mpi_precision = MPI.DOUBLE_PRECISION
         
+        if get('int_precision') == "signed":
+            self.int_precision = 'i4'
+        else :
+            self.int_precision = 'u4'
+        
         if comm is None:
             comm = MPI.COMM_WORLD
             
@@ -117,7 +123,7 @@ class Domain():
             raise ValueError("dim must be given")
         
         self._comm = comm
-        self._dim  = dim
+        self._dim  = np.int32(dim)
         
         self._size = self._comm.Get_size()
         self._rank = self._comm.Get_rank()
@@ -190,8 +196,8 @@ class Domain():
         self._halos._neigh, \
         self._nodes._nparts = read_mesh_file(self._size, self._rank, self._mesh_dir, self.float_precision)
             
-        self._nbcells = len(self._cells._nodeid)
-        self._nbnodes = len(self._nodes._vertex)
+        self._nbcells = np.int32(len(self._cells._nodeid))
+        self._nbnodes = np.int32(len(self._nodes._vertex))
         
         
     def _define_bounds(self):
@@ -277,7 +283,9 @@ class Domain():
             elif self._maxcellnodeid == 8:
                 self._maxcellfid = 6
                 self._maxfacenid = 4
-
+            
+        self._maxcellfid = np.int32(self._maxcellfid)
+        self._maxfacenid = np.int32(self._maxfacenid)
                 
     def _create_faces_cons(self):
         """
@@ -303,7 +311,7 @@ class Domain():
         self._faces._nodeid, oldTonewIndex = np.unique(p_faces, axis=0, return_inverse=True)
         
         # set the numer of faces
-        self._nbfaces = len(self._faces._nodeid)
+        self._nbfaces = np.int32(len(self._faces._nodeid))
     
         # create the faces of each cell
         self._cells._faceid = -1*np.ones((self._nbcells, self._maxcellfid+1), dtype=np.int32)
@@ -318,7 +326,7 @@ class Domain():
         self.backend.compile(create_cellsOfFace, signature=self.signature)(self._cells._faceid, self._nbcells, self._nbfaces, self._faces._cellid, \
                             self._maxcellfid)
         ############################################################################
-        self._cells._cellfid = self.backend.compile(create_NeighborCellByFace, signature=self.signature)(self._cells._faceid, self._faces._cellid, \
+        self._cells._cellfid = self.backend.compile(create_NeighborCellByFace, signature=self.signature, forcedbackend=self.forcedbackend)(self._cells._faceid, self._faces._cellid, \
                                                    self._nbcells, self._maxcellfid)
         
             
@@ -326,13 +334,13 @@ class Domain():
         """
         define the bc/normal/area of each face
         """
-        self._nodes._name = np.zeros(self._nbnodes, dtype=np.uint32)
+        self._nodes._name = np.zeros(self._nbnodes, dtype=self.int_precision)
         for i in range(self._nbnodes):
             self._nodes._name[i] = int(self._nodes._vertex[i][3])
         
         #####################################################
         #create info of faces
-        self._faces._name   = np.zeros(self._nbfaces, dtype=np.uint32)
+        self._faces._name   = np.zeros(self._nbfaces, dtype=self.int_precision)
         self._faces._normal = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
         self._faces._mesure = np.zeros(self._nbfaces, dtype=self.float_precision)
         self._faces._center = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
@@ -383,41 +391,41 @@ class Domain():
     def _update_boundaries(self):
         
         ##################################Update faces and names type##########################################
-        self._nodes._oldname = np.zeros(self._nbnodes, dtype=np.uint32)
+        self._nodes._oldname = np.zeros(self._nbnodes, dtype=self.int_precision)
         self._nodes._oldname[:] = self._nodes._vertex[:,3]
         
-        self._innerfaces  = np.where(self._faces._name==0)[0].astype(np.uint32)
-        self._infaces     = np.where(self._faces._name==1)[0].astype(np.uint32)
-        self._outfaces    = np.where(self._faces._name==2)[0].astype(np.uint32)
-        self._upperfaces  = np.where(self._faces._name==3)[0].astype(np.uint32)
-        self._bottomfaces = np.where(self._faces._name==4)[0].astype(np.uint32)
-        self._halofaces   = np.where(self._faces._name==10)[0].astype(np.uint32)
+        self._innerfaces  = np.where(self._faces._name==0)[0].astype(self.int_precision)
+        self._infaces     = np.where(self._faces._name==1)[0].astype(self.int_precision)
+        self._outfaces    = np.where(self._faces._name==2)[0].astype(self.int_precision)
+        self._upperfaces  = np.where(self._faces._name==3)[0].astype(self.int_precision)
+        self._bottomfaces = np.where(self._faces._name==4)[0].astype(self.int_precision)
+        self._halofaces   = np.where(self._faces._name==10)[0].astype(self.int_precision)
         if self._size == 1:
-            self._halofaces   = np.asarray([], dtype=np.uint32)
+            self._halofaces   = np.asarray([], dtype=self.int_precision)
         
-        self._periodicinfaces     = np.where(self._faces._name==11)[0].astype(np.uint32)
-        self._periodicoutfaces    = np.where(self._faces._name==22)[0].astype(np.uint32)
-        self._periodicupperfaces  = np.where(self._faces._name==33)[0].astype(np.uint32)
-        self._periodicbottomfaces = np.where(self._faces._name==44)[0].astype(np.uint32)
+        self._periodicinfaces     = np.where(self._faces._name==11)[0].astype(self.int_precision)
+        self._periodicoutfaces    = np.where(self._faces._name==22)[0].astype(self.int_precision)
+        self._periodicupperfaces  = np.where(self._faces._name==33)[0].astype(self.int_precision)
+        self._periodicbottomfaces = np.where(self._faces._name==44)[0].astype(self.int_precision)
             
       
         self._boundaryfaces = np.concatenate([self._infaces, self._outfaces, self._bottomfaces, self._upperfaces] )
         self._periodicboundaryfaces = np.concatenate([self._periodicinfaces, self._periodicoutfaces, self._periodicbottomfaces, 
                                                       self._periodicupperfaces] )
         
-        self._innernodes  = np.where(self._nodes._name==0)[0].astype(np.uint32)
-        self._innodes     = np.where(self._nodes._name==1)[0].astype(np.uint32)
-        self._outnodes    = np.where(self._nodes._name==2)[0].astype(np.uint32)
-        self._uppernodes  = np.where(self._nodes._name==3)[0].astype(np.uint32)
-        self._bottomnodes = np.where(self._nodes._name==4)[0].astype(np.uint32)
-        self._halonodes   = np.where(self._nodes._name==10)[0].astype(np.uint32)
+        self._innernodes  = np.where(self._nodes._name==0)[0].astype(self.int_precision)
+        self._innodes     = np.where(self._nodes._name==1)[0].astype(self.int_precision)
+        self._outnodes    = np.where(self._nodes._name==2)[0].astype(self.int_precision)
+        self._uppernodes  = np.where(self._nodes._name==3)[0].astype(self.int_precision)
+        self._bottomnodes = np.where(self._nodes._name==4)[0].astype(self.int_precision)
+        self._halonodes   = np.where(self._nodes._name==10)[0].astype(self.int_precision)
         if self._size == 1:
-            self._halonodes   = np.asarray([], dtype=np.uint32)
+            self._halonodes   = np.asarray([], dtype=self.int_precision)
         
-        self._periodicinnodes     = np.where(self._nodes._name==11)[0].astype(np.uint32)
-        self._periodicoutnodes    = np.where(self._nodes._name==22)[0].astype(np.uint32)
-        self._periodicuppernodes  = np.where(self._nodes._name==33)[0].astype(np.uint32)
-        self._periodicbottomnodes = np.where(self._nodes._name==44)[0].astype(np.uint32)
+        self._periodicinnodes     = np.where(self._nodes._name==11)[0].astype(self.int_precision)
+        self._periodicoutnodes    = np.where(self._nodes._name==22)[0].astype(self.int_precision)
+        self._periodicuppernodes  = np.where(self._nodes._name==33)[0].astype(self.int_precision)
+        self._periodicbottomnodes = np.where(self._nodes._name==44)[0].astype(self.int_precision)
         
         
         self._boundarynodes = np.concatenate([self._innodes, self._outnodes, self._bottomnodes, self._uppernodes] )
@@ -426,15 +434,15 @@ class Domain():
         
         if self._dim == 3:
             
-            self._frontfaces         = np.where(self._faces._name==5)[0].astype(np.uint32)
-            self._backfaces          = np.where(self._faces._name==6)[0].astype(np.uint32)
-            self._periodicfrontfaces = np.where(self._faces._name==55)[0].astype(np.uint32)
-            self._periodicbackfaces  = np.where(self._faces._name==66)[0].astype(np.uint32)
+            self._frontfaces         = np.where(self._faces._name==5)[0].astype(self.int_precision)
+            self._backfaces          = np.where(self._faces._name==6)[0].astype(self.int_precision)
+            self._periodicfrontfaces = np.where(self._faces._name==55)[0].astype(self.int_precision)
+            self._periodicbackfaces  = np.where(self._faces._name==66)[0].astype(self.int_precision)
 
-            self._frontnodes         = np.where(self._nodes._name==5)[0].astype(np.uint32)
-            self._backnodes          = np.where(self._nodes._name==6)[0].astype(np.uint32)
-            self._periodicfrontnodes = np.where(self._nodes._name==55)[0].astype(np.uint32)
-            self._periodicbacknodes  = np.where(self._nodes._name==66)[0].astype(np.uint32)
+            self._frontnodes         = np.where(self._nodes._name==5)[0].astype(self.int_precision)
+            self._backnodes          = np.where(self._nodes._name==6)[0].astype(self.int_precision)
+            self._periodicfrontnodes = np.where(self._nodes._name==55)[0].astype(self.int_precision)
+            self._periodicbacknodes  = np.where(self._nodes._name==66)[0].astype(self.int_precision)
 
             self._boundaryfaces = np.concatenate([self._boundaryfaces, self._backfaces, self._frontfaces] )
             self._periodicboundaryfaces = np.concatenate([self._periodicboundaryfaces, self._periodicbackfaces, self._periodicfrontfaces] )
@@ -526,7 +534,8 @@ class Domain():
             
         
         #TODO add ghostid and ghostnid
-        self._nodes._ghostid, self._cells._ghostnid = self.backend.compile(create_node_ghostid, signature=self.signature)(self._nodes.ghostcenter, \
+        self._nodes._ghostid, self._cells._ghostnid = self.backend.compile(create_node_ghostid, signature=self.signature, \
+                                                                           forcedbackend=self.forcedbackend)(self._nodes.ghostcenter, \
                                                                           self._cells._nodeid)
         self._nodes._haloghostid = np.zeros((self._nbnodes, 2), dtype=np.int32)
         self._cells._haloghostnid = np.zeros((self._nbcells, 2), dtype=np.int32)
@@ -544,7 +553,7 @@ class Domain():
         self._nodes._lambda_x = np.zeros(self._nbnodes, dtype=self.float_precision)
         self._nodes._lambda_y = np.zeros(self._nbnodes, dtype=self.float_precision)
         self._nodes._lambda_z = np.zeros(self._nbnodes, dtype=self.float_precision)
-        self._nodes._number   = np.zeros(self._nbnodes, dtype=np.uint32)
+        self._nodes._number   = np.zeros(self._nbnodes, dtype=self.int_precision)
         
         self._faces._airDiamond = np.zeros(self._nbfaces, dtype=self.float_precision)
         self._faces._param1     = np.zeros(self._nbfaces, dtype=self.float_precision)
@@ -719,7 +728,7 @@ class Domain():
                 text_file.write("</PUnstructuredGrid>\n")
                 text_file.write("</VTKFile>")
                 
-    def save_on_node_multi(self, dt=0, time=0, niter=0, miter=0, variables=None, values=None):
+    def save_on_node_multi(self, dt=0, time=0, niter=0, miter=0, variables=None, values=None, file_format="vtu"):
         
         if values is None:
             raise ValueError("value must be given")
@@ -745,8 +754,8 @@ class Domain():
             print("Iteration = ", niter, "time = ", time, "time step = ", dt)
             print("max"+variables[0]+" =", integral_maxw[0])
                                   
-        meshio.write_points_cells("results/visu"+str(self.comm.rank)+"-"+str(miter)+".vtu",
-                                  points, elements, point_data=data, file_format="vtu")
+        meshio.write_points_cells("results/visu"+str(self.comm.rank)+"-"+str(miter)+"."+file_format,
+                                  points, elements, point_data=data, file_format=file_format)
     
         if(self.comm.rank == 0):
             with open(self._vtkpath+"/visu"+str(miter)+".pvtu", "w") as text_file:
@@ -777,7 +786,7 @@ class Domain():
                 text_file.write("</PUnstructuredGrid>\n")
                 text_file.write("</VTKFile>")
                 
-    def save_on_cell_multi(self, dt=0, time=0, niter=0, miter=0, variables=None, values=None):
+    def save_on_cell_multi(self, dt=0, time=0, niter=0, miter=0, variables=None, values=None, file_format="vtu"):
         
         if values is None:
             raise ValueError("value must be given")
@@ -807,8 +816,8 @@ class Domain():
             print("Iteration = ", niter, "time = ", time, "time step = ", dt)
             print("max"+variables[0]+" =", integral_maxw[0])
     
-        meshio.write_points_cells("results/visu"+str(self.comm.rank)+"-"+str(miter)+".vtu",
-                                  points, elements, cell_data=data, file_format="vtu")
+        meshio.write_points_cells("results/visu"+str(self.comm.rank)+"-"+str(miter)+"."+file_format,
+                                  points, elements, cell_data=data, file_format=file_format)
         
         if(self.comm.rank == 0):
             with open(self._vtkpath+"/visu"+str(miter)+".pvtu", "w") as text_file:
