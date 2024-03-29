@@ -179,7 +179,7 @@ class Face():
     """ """
     __slots__= ['_nbfaces', '_nodeid', '_cellid', '_name', '_oldname', '_normal', '_mesure', '_center', '_ghostcenter', '_oppnodeid', '_halofid',
                 '_halofid', '_param1', '_param2', '_param3', '_param4', '_f_1', '_f_2', '_f_3', '_f_4', '_airDiamond', 
-                '_dist_ortho']
+                '_dist_ortho', '_tangent', '_binormal']
                 
     def __init__(self):
         pass
@@ -269,6 +269,13 @@ class Face():
     @property
     def airDiamond(self):
         return self._airDiamond
+    @property
+    def tangent(self):
+        return self._tangent
+    @property
+    def binormal(self):
+        return self._binormal
+    
     
     # @property
     # def K(self):

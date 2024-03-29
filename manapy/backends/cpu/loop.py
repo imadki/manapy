@@ -21,7 +21,7 @@ def make_parallel_loop1d(ne, func, n0=0):
             
             # Run inner function
             _func(i_begin, i_end, *args)               
-                
+      
     return loop
             
             

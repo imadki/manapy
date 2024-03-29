@@ -9,24 +9,17 @@ from numpy import zeros
 from mpi4py import MPI
 import numpy as np
 
-from manapy.solvers.advecdiff import (explicitscheme_convective_2d, 
-                                      explicitscheme_convective_3d,
-                                      explicitscheme_dissipative,
-                                      time_step, update_new_value)
+from manapy.solvers.advec import (explicitscheme_convective_2d, 
+                         	   explicitscheme_convective_3d,
+                                  time_step, update_new_value)
 from manapy.ast import Variable
 from manapy.base.base import Struct
 from manapy.base.base import make_get_conf
 
 
-class AdvectionDiffusionSolver():
+class AdvectionSolver():
     
-    _parameters = [('Dxx', float, 0., 0.,
-                    'Diffusion in x direction'),
-                    ('Dyy', float, 0., 0.,
-                    'Diffusion in y direction'),
-                    ('Dzz', float, 0., 0.,
-                    'Diffusion in z direction'),
-                    ('dt', float, 0., 0.,
+    _parameters = [('dt', float, 0., 0.,
                     'time step'),
                     ('order', int, 1, 1,
                      'order of the convective scheme'),
@@ -42,10 +35,10 @@ class AdvectionDiffusionSolver():
         get = make_get_conf(conf, kwargs)
         
         if len(cls._parameters) and cls._parameters[0][0] != 'name':
-            options = AdvectionDiffusionSolver._parameters + cls._parameters
+            options = AdvectionSolver._parameters + cls._parameters
 
         else:
-            options = AdvectionDiffusionSolver._parameters
+            options = AdvectionSolver._parameters
             
         opts = Struct()
         allow_extra = False
@@ -99,16 +92,9 @@ class AdvectionDiffusionSolver():
         else:
             self.w = Variable(domain=self.domain)
         
-        self.Dxx   = np.float64(get("Dxx"))
-        self.Dyy   = np.float64(get("Dyy"))
-        self.Dzz   = np.float64(get("Dzz"))
         self.dt    = np.float64(get("dt"))
         self.order = np.int32(get("order"))
         self.cfl   = np.float64(get("cfl"))
-        self.diffusion = True
-        
-        if self.Dxx == self.Dyy == self.Dzz == 0:
-            self.diffusion = False
         
         self.backend = self.domain.backend
         self.signature = self.domain.signature
@@ -123,7 +109,6 @@ class AdvectionDiffusionSolver():
             self._explicitscheme_convective = explicitscheme_convective_3d
         
         self._explicitscheme_convective  = self.backend.compile(self._explicitscheme_convective, signature=self.signature)
-        self._explicitscheme_dissipative  = self.backend.compile(explicitscheme_dissipative, signature=self.signature)
         self._time_step  = self.backend.compile(time_step, signature=self.signature)
         self._update_new_value = self.backend.compile(update_new_value, signature=self.signature)
             
@@ -140,15 +125,10 @@ class AdvectionDiffusionSolver():
                                         self.domain.innerfaces, self.domain.halofaces, self.domain.boundaryfaces, 
                                         self.domain.periodicboundaryfaces, self.domain.cells.shift, order=self.order)
     
-    def explicit_dissipative(self):
-        self.var.compute_face_gradient()
-        self._explicitscheme_dissipative(self.var.gradfacex, self.var.gradfacey, self.var.gradfacez, self.domain.faces.cellid, 
-                                         self.domain.faces.normal, self.domain.faces.name, self.var.dissipative, self.Dxx, self.Dyy, self.Dzz)
-        
     
     def stepper(self):
         d_t = self._time_step(self.u.cell, self.v.cell, self.w.cell, self.cfl, self.domain.faces.normal, self.domain.faces.mesure, 
-                             self.domain.cells.volume, self.domain.cells.faceid,  self.dim, self.Dxx, self.Dyy, self.Dzz)
+                             self.domain.cells.volume, self.domain.cells.faceid,  self.dim)
         self.dt = self.comm.allreduce(d_t, op=MPI.MIN)
         return  self.dt
     
@@ -161,11 +141,6 @@ class AdvectionDiffusionSolver():
         
         #convective flux
         self.explicit_convective()
-        
-        #dissipative flux
-        if self.diffusion: 
-            self.var.interpolate_celltonode()
-            self.explicit_dissipative()
         
         
     def compute_new_val(self):

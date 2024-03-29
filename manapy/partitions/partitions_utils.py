@@ -73,7 +73,7 @@ def convert_2d_cons_to_array(ele1:'uint32[:,:]', ele2:'uint32[:,:]'):
         nbelements += len(ele2)
         l = 4
     
-    padded_l = np.zeros((nbelements, l+1), dtype=np.uint32)
+    padded_l = np.zeros((nbelements, l+1), dtype=np.int32)
     
     if len(ele1) > 1:
         for i in range(len(ele1)):
@@ -110,7 +110,7 @@ def convert_3d_cons_to_array(ele1:'uint32[:,:]', ele2:'uint32[:,:]', ele3:'uint3
         nbelements += len(ele3)
         l = 8
     
-    padded_l = np.zeros((nbelements, l+1), dtype=np.uint32)
+    padded_l = np.zeros((nbelements, l+1), dtype=np.int32)
     
     if len(ele1) > 1:
         for i in range(len(ele1)):

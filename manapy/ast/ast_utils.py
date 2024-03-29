@@ -35,7 +35,7 @@ def celltoface(u_cell:'float[:]', u_face:'float[:]', u_ghost:'float[:]', u_halo:
         u_face[i] = .5*(u_cell[c1] + u_ghost[i])
         
         
-@njit('uint32(uint32[:], uint32)')
+@njit#('int32(int32[:], int32)')
 def search_element(a, target_value):
     find = 0
     for val in a:

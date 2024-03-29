@@ -2,30 +2,6 @@ from numpy import int32, float, uint32
 from numba import njit, prange
 import numpy as np
 
-def explicitscheme_dissipative(wx_face:'float[:]',  wy_face:'float[:]', wz_face:'float[:]', 
-                               cellidf:'int32[:,:]', normalf:'float[:,:]', namef:'uint32[:]', 
-                               dissip_w:'float[:]', Dxx:'float', Dyy:'float', Dzz:'float'):
-     
-    nbface = len(cellidf)
-    norm = np.zeros(3)
-    dissip_w[:] = 0.
-
-    for i in range(nbface):
-        
-        norm[:] = normalf[i][:]
-        q = Dxx * wx_face[i] * norm[0] + Dyy * wy_face[i] * norm[1] + Dzz * wz_face[i] * norm[2]
-
-        flux_w = q
-
-        if namef[i] == 0:
-
-            dissip_w[cellidf[i][0]] += flux_w
-            dissip_w[cellidf[i][1]] -= flux_w
-
-        else:
-            dissip_w[cellidf[i][0]] += flux_w
-
-
 @njit('void(float64, float64, float64, float64, float64, float64[:], float64[:])')
 def compute_upwind_flux(w_l:'float', w_r:'float', u_face:'float', v_face:'float', w_face:'float', 
                         normal:'float[:]', flux_w:'float[:]'):
@@ -315,9 +291,8 @@ def explicitscheme_convective_3d(rez_w:'float[:]', w_c:'float[:]', w_ghost:'floa
         
   
 def time_step(u:'float[:]', v:'float[:]', w:'float[:]',  cfl:'float', normal:'float[:,:]', 
-              mesure:'float[:]', volume:'float[:]', faceid:'int32[:,:]', dim:'int32',
-              Dxx:'float', Dyy:'float', Dzz:'float'):
-
+              mesure:'float[:]', volume:'float[:]', faceid:'int32[:,:]', dim:'int32'):
+   
     nbelement =  len(faceid)
     norm = np.zeros(3)
     dt = 1e6
@@ -326,16 +301,10 @@ def time_step(u:'float[:]', v:'float[:]', w:'float[:]',  cfl:'float', normal:'fl
        
         for j in range(faceid[i][-1]):
             norm[:] = normal[faceid[i][j]][:]
-            
             lam_convect = np.fabs(u[i]*norm[0] + v[i]*norm[1] + w[i]*norm[2])
             lam += lam_convect
         
-            mes = np.sqrt(norm[0]*norm[0] + norm[1]*norm[1] + norm[2]*norm[2])
-            lam_diff = Dxx * mes**2 + Dyy * mes**2 + Dzz * mes**2
-            lam += lam_diff/volume[i]
-        
-        if lam != 0:
-            dt  = min(dt, cfl * volume[i]/lam)
+        dt  = min(dt, cfl * volume[i]/lam)
      
     return dt
 

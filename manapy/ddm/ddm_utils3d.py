@@ -351,7 +351,7 @@ def CrossProductZ(a:'float64[:]', b:'float64[:]'):
     return a[0] * b[1] - a[1] * b[0]
 
 @njit("float64(intc, intc, intc, float64[:,:])", nogil=True)
-def Orientation(s_1:'int32', s_2:'int32', s_3:'int32', vertex:'float64[:,:]'):
+def Orientation(s_1:'int32', s_2:'int32', s_3:'int32', vertex:'float[:,:]'):
     a = vertex[s_1][0:2]
     b = vertex[s_2][0:2]
     c = vertex[s_3][0:2]
@@ -528,7 +528,7 @@ def face_gradient_info_3d(cellidf:'int32[:,:]', nodeidf:'int32[:,:]', centergf:'
      
 
 def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[:]', vertex:'float[:,:]', 
-                        centerc:'float[:,:]', nbfaces:'int32', normalf:'float[:,:]', tangentf:'float64[:,:]', binormalf:'float64[:,:]', mesuref:'float[:]',
+                        centerc:'float[:,:]', nbfaces:'int32', normalf:'float[:,:]', tangentf:'float[:,:]', binormalf:'float[:,:]', mesuref:'float[:]',
                         centerf:'float[:,:]', namef:'uint32[:]'):
     
     norm   = np.zeros(3)
