@@ -69,6 +69,7 @@ install_requires = [
     'textX',
     'mgmetis',
     'meshio<4',
+    'pyccel',
     ]
 
 def setup_package():
