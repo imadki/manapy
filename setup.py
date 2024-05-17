@@ -14,7 +14,7 @@ NAME    = 'manapy'
 VERSION = __version__
 AUTHOR  = 'Imad Kissami'
 EMAIL   = 'imad.kissami@gmail.ma'
-URL     = 'https://github.com/pyccel/manapy'
+URL     = 'https://github.com/imadki/manapy'
 DESCR   = 'TODO.'
 KEYWORDS = ['math']
 LICENSE = "LICENSE"
@@ -57,7 +57,7 @@ install_requires = [
     'llvmlite',
     'lxml',
     'mpmath',
-    'numba==0.56.4',
+    'numba==0.58.1',
     'numpy',
     'Pillow',
     'pyparsing',
