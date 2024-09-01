@@ -237,6 +237,8 @@ class MUMPSSolver(LinearSolver):
     _parameters = [
         ('reuse_mtx', 'bool', True, False,
          'If True, pre-factorize the matrix.'),
+        ('with_mtx', 'bool', False, True,
+         'If True, the matrix should be given.'),
         ('memory_relaxation', 'int', 20, False,
          'The percentage increase in the estimated working space.'),
          ('verbose', 'bool', False, False,
@@ -288,7 +290,10 @@ class MUMPSSolver(LinearSolver):
         if not conf.reuse_mtx:
             self.clear()
             
-        self.presolve(reuse_mtx=self.conf.reuse_mtx)
+        import timeit
+        ts = timeit.default_timer()
+            
+        self.presolve(reuse_mtx=self.conf.reuse_mtx, with_mtx=self.conf.with_mtx)
         
         if rhs is not None:
             rhs += self.rhs00
@@ -300,8 +305,12 @@ class MUMPSSolver(LinearSolver):
             self.sol = rhs.copy().astype(np.double)
             self.mumps_ls.set_rhs(self.sol)
         
+        
+
         #Solution Phase
         self.mumps_ls._mumps_call(job=3)
+        
+        print("solving time", timeit.default_timer() - ts)
         
         if self.conf.reordering and self.comm.Get_size() == 1:
             self.sol = self.sol[np.argsort(self.perm)]
@@ -311,25 +320,27 @@ class MUMPSSolver(LinearSolver):
             self.convert_solution(self.sol.astype(self.float_precision), self.x1converted, self.domain.cells.tc, self.globalsize)
         self.comm.Scatterv([self.x1converted, self.sendcounts1, self.mpi_precision], self.var.cell, root = 0)
         
-    def presolve(self,reuse_mtx=False):
+    def presolve(self,reuse_mtx=False, with_mtx=False):
         if not reuse_mtx or (self.mumps_ls is None):
             self.update_ghost_values()
             #assembly row, col , data, rhs(bc)
-            self.assembly()
+            if not with_mtx:
+                self.assembly()
             if self.conf.reordering  and self.comm.Get_size() == 1:
                 self.reordering_matrix()
             
+#            print( self._data.shape[0], self._row.shape[0], self._col.shape[0], with_mtx)
             self.rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
 
             if self.mumps_ls is None:
                 system = 'real'
                 mem_relax = self.conf.memory_relaxation
-                
-                self.mumps_ls = self.mumps.MumpsSolver(system=system,
-                                                       mem_relax=mem_relax)
+                self.mumps_ls = self.mumps.MumpsSolver(system=system, #is_sym=1,
+                                                       mem_relax=mem_relax,)
             if self.conf.verbose:
                 self.mumps_ls.set_verbose()
-
+            
+#            print(self._row.shape[0], self._col.shape[0], self._data.shape[0] )
             self.mumps_ls.set_rcd_distributed(self._row+1, self._col+1, self._data.astype(np.float64))
             self.mumps_ls.set_icntl(18,3)
             #self.ctx.set_icntl(28,2)
@@ -364,7 +375,8 @@ class PETScKrylovSolver(LinearSolver):
     _parameters = [
         ('reuse_mtx', 'bool', True, False,
          'If True, pre-factorize the matrix.'),
-        
+        ('with_mtx', 'bool', False, True,
+         'If True, the matrix should be given.'),
         ('method', 'str', 'fgmres', False,
          'The actual ksp solver to use.'),
         ('precond', 'str', 'gamg', False,
@@ -373,11 +385,11 @@ class PETScKrylovSolver(LinearSolver):
          'The preconditioner for matrix blocks (in parallel runs).'),
         ('factor_solver', 'str', 'none', False,
          'Use Factor solver type such as mumps, superlu_dist'),
-        ('i_max', 'int', 100, False,
+        ('i_max', 'int', 1000, False,
          'The maximum number of iterations.'),
-        ('eps_a', 'float', 1e-8, False,
+        ('eps_a', 'float', 1e-6, False,
          'The absolute tolerance for the residual.'),
-        ('eps_r', 'float', 1e-8, False,
+        ('eps_r', 'float', 1e-12, False,
          'The relative tolerance for the residual.'),
         ('eps_d', 'float', 1e5, False,
          'The divergence tolerance for the residual.'),
@@ -393,6 +405,9 @@ class PETScKrylovSolver(LinearSolver):
                     'cannot import petsc4py solver!')
         
         from petsc4py import PETSc as petsc
+#        import petsc4py
+#        import sys
+#        petsc4py.init(sys.argv)
         
         self.petsc = petsc
         self.ksp   = None
@@ -432,10 +447,13 @@ class PETScKrylovSolver(LinearSolver):
     @standard_call
     def __call__(self, rhs=None, conf=None, **kwargs):
         
+        def custom_monitor(ksp, its, r_norm):
+            print(f"Iteration {its}: Residual Norm = {r_norm}")
+        
         if not conf.reuse_mtx:
             self.clear()
         
-        self.create_petsc_matrix(reuse_mtx=self.conf.reuse_mtx)
+        self.create_petsc_matrix(reuse_mtx=self.conf.reuse_mtx, with_mtx=self.conf.with_mtx)
         
         if rhs is not None:
             self.update_rhs(rhs=rhs)
@@ -443,9 +461,13 @@ class PETScKrylovSolver(LinearSolver):
         self.ksp.solve(self.rhs, self.sol)
         
         if self.conf.verbose:
-             print(self.ksp.getType(), self.ksp.getPC().getType(), self.conf.sub_precond,
+            print(self.ksp.getType(), self.ksp.getPC().getType(), self.conf.sub_precond,
                   self.ksp.reason, self.converged_reasons[self.ksp.reason],
                   self.ksp.getIterationNumber())
+        
+            for i in range(self.ksp.getIterationNumber()):
+                r_norm = self.ksp.getResidualNorm()
+                custom_monitor(self.ksp, i+1, r_norm)
         
         if self.conf.reordering and self.comm.Get_size() == 1:
             self.sol.array = self.sol.array[np.argsort(self.perm)]
@@ -502,12 +524,13 @@ class PETScKrylovSolver(LinearSolver):
     def Initiate_sol(self):
         self.ksp.setInitialGuessNonzero(True)
     
-    def create_petsc_matrix(self, reuse_mtx=False):
+    def create_petsc_matrix(self, reuse_mtx=False, with_mtx=False):
         if not reuse_mtx or (self.ksp is None):
             ###################################################################
             self.update_ghost_values()
             #assembly row, col , data, rhs(bc)
-            self.assembly()
+            if not with_mtx:
+                self.assembly()
            
             ###################################################################
             #reordering matrix 
@@ -562,8 +585,8 @@ class PETScKrylovSolver(LinearSolver):
             self.ksp.setFromOptions()
             ###################################################################
             
-            #Create the solution
-            self.Initiate_sol()
+#            #Create the solution
+#            self.Initiate_sol()
            
             #Create the Rhs
             self.create_rhs()
@@ -697,7 +720,8 @@ class ScipySolver(LinearSolver):
             
     def clear(self):                                                                                                                                                                                       
         if self.solve is not None:                                                                                                                                                                         
-            del self.solve                                                                                                                                                                                 
+            del self.solve    
+            self.destroy()                                                                                                                                                                             
                                                                                                                                                                                                            
         self.solve = None  
         
