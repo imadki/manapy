@@ -85,7 +85,7 @@ conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False,
               precond='gamg', sub_precond="amg",# with_mtx=False,
               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
-L = PETScKrylovSolver(domain=domain, var=P, conf=conf)
+L = MUMPSSolver(domain=domain, var=P, conf=conf)
 
        
 ts = MPI.Wtime()
