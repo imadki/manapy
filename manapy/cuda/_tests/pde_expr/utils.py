@@ -1,0 +1,25 @@
+def get_math_symbol(symbol_name):
+  math_symbols = {
+  "alpha": "α",
+  "beta": "β",
+  "gamma": "γ",
+  "delta": "δ",
+  "epsilon": "ε",
+  "zeta": "ζ",
+  "eta": "η",
+  "theta": "θ",
+  "iota": "ι",
+  "kappa": "κ",
+  "lambda": "λ",
+  "mu": "μ",
+  "nu": "ν",
+  "xi": "ξ",
+  "omicron": "ο",
+  "pi": "π",
+  "rho": "ρ",
+  "sigma": "σ",
+  "tau": "τ",
+  "upsilon": "υ",
+  "phi": "φ",
+  }
+  return math_symbols.get(symbol_name.lower(), symbol_name)
