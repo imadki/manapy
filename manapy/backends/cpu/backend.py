@@ -12,7 +12,7 @@ import importlib
 import pythran
 import inspect
 import hashlib
-import imp
+import importlib
 import re
 
 from numba.extending import register_jitable

@@ -1,5 +1,7 @@
 *.vtu
 *.pvtu
+.env
+build
 __pycache__
 meshes1PROC
 *.out
