@@ -1,6 +1,10 @@
 #!/bin/bash
 
-pushd manapy/tests
+#tail -f
+
+python3 -m pytest
+
+pushd tests
 mpirun --allow-run-as-root --use-hwthread-cpus -n 2 python3 mpi_test.py
 mpirun --allow-run-as-root --use-hwthread-cpus -n 4 --oversubscribe python3 mpi_test.py
 

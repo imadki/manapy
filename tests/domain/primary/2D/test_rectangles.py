@@ -72,7 +72,7 @@ def main_test(domain, decimal_precision):
 
       cmp += 1
 
-if __name__ == '__main__':
+def test_main():
   PATH = os.path.dirname(os.path.realpath(__file__))
   PATH = os.path.join(PATH, 'mesh', 'rectangles.msh')
   domain = load(PATH, dim=2, float_precision='float32')

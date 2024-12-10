@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - main
+      - tests
+      - feature-*
   pull_request:
+    branches:
+      - main
 
 jobs:
   test-manapy:

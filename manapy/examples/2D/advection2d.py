@@ -34,7 +34,7 @@ except:
     BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
  
-filename = "rectangle_1K.msh"
+filename = "rectangle.msh"
 
 #File name
 filename = os.path.join(MESH_DIR, filename)

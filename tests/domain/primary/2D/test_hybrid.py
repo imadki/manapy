@@ -93,7 +93,7 @@ def main_test(domain, meshio_mesh, decimal_precision):
       c_area = d_area[i]
       check(points, c_points, c_cx, c_cy, c_area, decimal_precision=decimal_precision)
 
-if __name__ == '__main__':
+def test_main():
   PATH = os.path.dirname(os.path.realpath(__file__))
   PATH = os.path.join(PATH, 'mesh', 'carre_hybrid.msh')
   meshio_mesh, domain = load(PATH, dim=2, float_precision='float32')
