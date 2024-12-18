@@ -7,7 +7,7 @@ meshes1PROC
 *.out
 manapy.egg-info
 __epyccel__
-
+.idea
 meshes*PROC
 test
 
