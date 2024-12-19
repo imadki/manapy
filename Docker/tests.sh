@@ -1,6 +1,7 @@
 #!/bin/bash
 
 #tail -f
+set -e
 
 python3 -m pytest
 
