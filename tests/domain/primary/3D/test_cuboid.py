@@ -6,7 +6,7 @@ from manapy.partitions import MeshPartition
 from manapy.base.base import Struct
 
 ##############################
-# Rectangle mesh
+# Cuboid mesh
 # ############################
 
 """
@@ -52,8 +52,6 @@ def main_test(domain, decimal_precision):
           [x, y - StepY, z - StepZ],
         ], dtype=d_points.dtype)
         c_points = d_points[d_cells[cmp][:-1]]
-        print(c_points)
-        print(points)
 
         #Center
         center = np.array([
