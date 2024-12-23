@@ -88,9 +88,9 @@ def main_test(domain, decimal_precision):
           c_volume = d_volume[cmp]
 
           #Testing
-          np.testing.assert_almost_equal(points, c_points, decimal=decimal_precision)
-          np.testing.assert_almost_equal(center, c_center, decimal=decimal_precision)
-          np.testing.assert_almost_equal(volume, c_volume, decimal=decimal_precision)
+          np.testing.assert_almost_equal(c_points, points, decimal=decimal_precision)
+          np.testing.assert_almost_equal(c_center, center, decimal=decimal_precision)
+          np.testing.assert_almost_equal(c_volume, volume, decimal=decimal_precision)
 
           #Next cell
           cmp += 1
