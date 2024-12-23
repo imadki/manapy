@@ -62,13 +62,13 @@ def main_test(domain, decimal_precision):
       c_cy = d_center[cmp][1]
       c_area = d_area[cmp]
 
-      np.testing.assert_almost_equal(p1, c_p1, decimal=decimal_precision)
-      np.testing.assert_almost_equal(p2, c_p2, decimal=decimal_precision)
-      np.testing.assert_almost_equal(p3, c_p3, decimal=decimal_precision)
-      np.testing.assert_almost_equal(p4, c_p4, decimal=decimal_precision)
-      np.testing.assert_almost_equal(cx, c_cx, decimal=decimal_precision)
-      np.testing.assert_almost_equal(cy, c_cy, decimal=decimal_precision)
-      np.testing.assert_almost_equal(area, c_area, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_p1, p1, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_p2, p2, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_p3, p3, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_p4, p4, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_cx, cx, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_cy, cy, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c_area, area, decimal=decimal_precision)
 
       cmp += 1
 
