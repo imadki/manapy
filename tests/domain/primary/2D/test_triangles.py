@@ -79,13 +79,12 @@ def main_test(domain, decimal_precision):
       c2_cy = d_center[cmp + 1][1]
       c2_area = d_area[cmp + 1]
 
-      np.testing.assert_almost_equal(t1_p1, c1_p1, decimal=decimal_precision)
-      np.testing.assert_almost_equal(t1_p2, c1_p2, decimal=decimal_precision)
-      np.testing.assert_almost_equal(t1_p3, c1_p3, decimal=decimal_precision)
-      np.testing.assert_almost_equal(t2_p1, c2_p1, decimal=decimal_precision)
-      np.testing.assert_almost_equal(t2_p2, c2_p2, decimal=decimal_precision)
-      np.testing.assert_almost_equal(t2_p3, c2_p3, decimal=decimal_precision)
-
+      np.testing.assert_almost_equal(c1_p1, t1_p1, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c1_p2, t1_p2, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c1_p3, t1_p3, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c2_p1, t2_p1, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c2_p2, t2_p2, decimal=decimal_precision)
+      np.testing.assert_almost_equal(c2_p3, t2_p3, decimal=decimal_precision)
       np.testing.assert_almost_equal(c1_cx, t1_cx, decimal=decimal_precision)
       np.testing.assert_almost_equal(c1_cy, t1_cy, decimal=decimal_precision)
       np.testing.assert_almost_equal(c2_cx, t2_cx, decimal=decimal_precision)

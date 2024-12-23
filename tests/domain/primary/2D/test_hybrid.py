@@ -51,9 +51,9 @@ def check(points, c_points, c_cx, c_cy, c_area, decimal_precision):
     area += x_i * y_j - x_j * y_i
   area = abs(area) / 2.0
 
-  np.testing.assert_almost_equal(cx, c_cx, decimal=decimal_precision)
-  np.testing.assert_almost_equal(cy, c_cy, decimal=decimal_precision)
-  np.testing.assert_almost_equal(area, c_area, decimal=decimal_precision)
+  np.testing.assert_almost_equal(c_cx, cx, decimal=decimal_precision)
+  np.testing.assert_almost_equal(c_cy, cy, decimal=decimal_precision)
+  np.testing.assert_almost_equal(c_area, area, decimal=decimal_precision)
 
   for i in range(points.shape[0]):
     np.testing.assert_almost_equal(points[i], c_points[i], decimal=decimal_precision)
