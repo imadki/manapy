@@ -124,21 +124,27 @@ class Domain():
         
         self._comm = comm
         self._dim  = np.int32(dim)
+
+
+        self.create_domain(self._comm.Get_size(), self._comm.Get_rank())
         
-        self._size = self._comm.Get_size()
-        self._rank = self._comm.Get_rank()
-        
+
+
+    def create_domain(self, size, rank):
+        self._size = size
+        self._rank = rank
+
         if self._rank == 0:
-             print("Local domain contruction ...")
-        
+            print("Local domain contruction ...")
+
         self._nodes = Node()
         self._cells = Cell()
         self._faces = Face()
         self._halos = Halo()
-        
+
         self._setup_vtkpath()
         self._remove_existing_vtk_files()
-        
+
         self._read_partition()
         self._define_bounds()
         self._compute_cells_info()
@@ -153,7 +159,7 @@ class Domain():
         self._update_periodic_boudaries()
         self._update_haloghost()
         self._compute_diamondCell_info()
-        self._compute_orthocenter() #Only in 2D
+        self._compute_orthocenter()  # Only in 2D
         
     def _setup_vtkpath(self):
         """
@@ -183,6 +189,7 @@ class Domain():
         """
         read the hdf5 partition file
         """
+
         #read nodes.vertex, cells.tc, cells.nodeid
         self._cells._tc, \
         self._cells._nodeid, \

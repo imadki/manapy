@@ -10,7 +10,7 @@ __epyccel__
 .idea
 meshes*PROC
 test
-
+Notes
 
 manapy/gpu_fun/_tests/create_system/out
 gpu_accelerator/functions/results
