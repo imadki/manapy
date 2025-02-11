@@ -5,6 +5,81 @@ COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
 RANK = COMM.Get_rank()
 
+
+class Domain:
+    def __init__(self, halos, comm):
+        self.halos = halos
+        self.comm = comm
+
+
+#class HaloManager:
+#    def __init__(self, indsend, scount, rcount):
+#        self.indsend = indsend  # Indices des cellules à envoyer
+#        self.scount = scount    # Nombre d'éléments à envoyer par processus
+#        self.rcount = rcount    # Nombre d'éléments à recevoir par processus
+#
+
+#class Variable:
+#    def __init__(self, name, cell, halo, has_changed=True):
+#        self.name = name
+#        self.cell = cell            # Données locales
+#        self.halo = halo            # Données de halo
+##        self.has_changed = has_changed  # Indicateur si les données ont changé
+#        self.halotosend = None      # Buffer pour les données à envoyer
+#        self.nbhalos = len(halo)    # Nombre total de cellules de halo
+
+
+class HaloUpdater:
+    def __init__(self, domain, varbs, comm):
+        self.domain = domain
+        self.varbs  = varbs  # Dictionnaire des variables (nom -> Variable)
+        self.comm   = comm 
+        
+    def define_halosend(self, w_c:'float[:]', w_halosend:'float[:]', indsend:'int32[:]'):
+        w_halosend[:] = w_c[indsend[:]]
+
+#    def define_halosend(self, cell_data, halotosend, indsend):
+#        """Prépare les données à envoyer dans les halos."""
+#        halotosend[:] = cell_data[indsend]
+
+    def pack_variables(self):
+        """Combine plusieurs variables à envoyer dans un seul buffer."""
+        packed_send = []
+        packed_recv = []
+        for var in self.varbs.values():
+            #if var.has_changed:  # Inclure uniquement les variables modifiées
+            self.define_halosend(var.cell, var.halotosend, self.domain.halos.indsend)
+            packed_send.append(var.halotosend)
+            packed_recv.append(var.halo)
+#            print(packed_send)
+        return np.hstack(packed_send), np.hstack(packed_recv)
+
+    def unpack_variables(self, received_data):
+        """Redistribue les données reçues dans les variables."""
+        offset = 0
+        for var in self.varbs.values():
+#            if var.has_changed:
+            size = len(var.halo)
+            var.halo[:] = received_data[offset:offset + size]
+            offset += size
+
+    def update_halo_values(self):
+        """Met à jour les valeurs des halos avec communication asynchrone."""
+        # Regroupement des données des variables
+        send_buffer, recv_buffer = self.pack_variables()
+
+#        print(send_buffer, self.domain.halos.scount)
+        # Initialisation de la communication non bloquante
+#        req = self.domain.comm.Ialltoallv
+        req = self.comm.Ineighbor_alltoallv([send_buffer, (len(self.varbs)*self.domain.halos.scount), MPI.DOUBLE_PRECISION],
+                                                     [recv_buffer, (len(self.varbs)*self.domain.halos.rcount), MPI.DOUBLE_PRECISION])
+
+        # Attendre la fin des communications
+        req.Wait()
+
+        # Décompresser les données reçues dans les halos des variables
+        self.unpack_variables(recv_buffer)
+
 def define_halosend(w_c:'float[:]', w_halosend:'float[:]', indsend:'int32[:]'):
     w_halosend[:] = w_c[indsend[:]]
 

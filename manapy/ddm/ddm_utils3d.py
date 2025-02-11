@@ -672,21 +672,20 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
         tangentf[i][:] = tangent[:]
         
         
-@njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
-def split_to_tetra(vertices, tetrahedra):
-    center = np.zeros(3)
-    lv = vertices.shape[0]
+# @njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
+# def split_to_tetra(vertices, tetrahedra):
+#     center = np.zeros(3)
+#     lv = vertices.shape[0]
     
-    center[0] = sum(vertices[:,0])/lv
-    center[1] = sum(vertices[:,1])/lv
-    center[2] = sum(vertices[:,2])/lv
+#     center[0] = sum(vertices[:,0])/lv
+#     center[1] = sum(vertices[:,1])/lv
+#     center[2] = sum(vertices[:,2])/lv
     
-    for i in range(lv):
-        tetrahedra[i][0] = vertices[i]
-        tetrahedra[i][1] = vertices[(i + 1) % lv]
-        tetrahedra[i][2] = vertices[(i + 2) % lv]
-        tetrahedra[i][3] = center
-    
+#     for i in range(lv):
+#         tetrahedra[i][0] = vertices[i]
+#         tetrahedra[i][1] = vertices[(i + 1) % lv]
+#         tetrahedra[i][2] = vertices[(i + 2) % lv]
+#         tetrahedra[i][3] = center
 
 def Compute_3dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbcells:'int32',
                                  center:'float[:,:]', volume:'float[:]'):
@@ -695,119 +694,79 @@ def Compute_3dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbce
     u = np.zeros(3)
     v = np.zeros(3)
     w = np.zeros(3)
-    vertices1 = np.zeros((8,3))
-    vertices2 = np.zeros((5,3))
-    
-    tetrahedra1 = np.zeros((8, 4, 3))
-    tetrahedra2 = np.zeros((5, 4, 3))
-    
-    
-    #calcul du barycentre et volume
-    for i in range(nbcells):
-        if nodeid[i][-1] == 4:
-            s_1 = nodeid[i][0]
-            s_2 = nodeid[i][1]
-            s_3 = nodeid[i][2]
-            s_4 = nodeid[i][3]
-            
-            x_1 = vertex[s_1][0]; y_1 = vertex[s_1][1]; z_1 = vertex[s_1][2]
-            x_2 = vertex[s_2][0]; y_2 = vertex[s_2][1]; z_2 = vertex[s_2][2]
-            x_3 = vertex[s_3][0]; y_3 = vertex[s_3][1]; z_3 = vertex[s_3][2]
-            x_4 = vertex[s_4][0]; y_4 = vertex[s_4][1]; z_4 = vertex[s_4][2]
-            
-            center[i][0] = 1./4*(x_1 + x_2 + x_3 + x_4) 
-            center[i][1] = 1./4*(y_1 + y_2 + y_3 + y_4)
-            center[i][2] = 1./4*(z_1 + z_2 + z_3 + z_4)
-            
-            u[:] = vertex[s_2][0:3]-vertex[s_1][0:3]
-            v[:] = vertex[s_3][0:3]-vertex[s_1][0:3]
-            w[:] = vertex[s_4][0:3]-vertex[s_1][0:3]
-            
-            wedge[0] = v[1]*w[2] - v[2]*w[1]
-            wedge[1] = v[2]*w[0] - v[0]*w[2]
-            wedge[2] = v[0]*w[1] - v[1]*w[0]
-            
-            volume[i] = 1./6*np.fabs(u[0]*wedge[0] + u[1]*wedge[1] + u[2]*wedge[2]) 
-            
-        elif nodeid[i][-1] == 8:
-            
-            s_1 = nodeid[i][0]
-            s_2 = nodeid[i][1]
-            s_3 = nodeid[i][2]
-            s_4 = nodeid[i][3]
-            s_5 = nodeid[i][4]
-            s_6 = nodeid[i][5]
-            s_7 = nodeid[i][6]
-            s_8 = nodeid[i][7]
-            
-            x_1 = vertex[s_1][0]; y_1 = vertex[s_1][1]; z_1 = vertex[s_1][2]
-            x_2 = vertex[s_2][0]; y_2 = vertex[s_2][1]; z_2 = vertex[s_2][2] 
-            x_3 = vertex[s_3][0]; y_3 = vertex[s_3][1]; z_3 = vertex[s_3][2] 
-            x_4 = vertex[s_4][0]; y_4 = vertex[s_4][1]; z_4 = vertex[s_4][2]
-            x_5 = vertex[s_5][0]; y_5 = vertex[s_5][1]; z_5 = vertex[s_5][2]
-            x_6 = vertex[s_6][0]; y_6 = vertex[s_6][1]; z_6 = vertex[s_6][2] 
-            x_7 = vertex[s_7][0]; y_7 = vertex[s_7][1]; z_7 = vertex[s_7][2] 
-            x_8 = vertex[s_8][0]; y_8 = vertex[s_8][1]; z_8 = vertex[s_8][2]
-            
-            vertices1[:,:] = np.array([
-                                [x_1, y_1, z_1],
-                                [x_2, y_2, z_2],
-                                [x_3, y_3, z_3],
-                                [x_4, y_4, z_4],
-                                [x_5, y_5, z_5],
-                                [x_6, y_6, z_6],
-                                [x_7, y_7, z_7],
-                                [x_8, y_8, z_8]])
-    
-            split_to_tetra(vertices1, tetrahedra1)
-            
-            for tetrahedron in tetrahedra1:
-                u[:] = tetrahedron[1]-tetrahedron[0]
-                v[:] = tetrahedron[2]-tetrahedron[0]
-                w[:] = tetrahedron[3]-tetrahedron[0]
-                
-                wedge[0] = v[1]*w[2] - v[2]*w[1]
-                wedge[1] = v[2]*w[0] - v[0]*w[2]
-                wedge[2] = v[0]*w[1] - v[1]*w[0]
-                
-                center[i] = tetrahedron[-1]
-                volume[i] += 1./6*np.fabs(u[0]*wedge[0] + u[1]*wedge[1] + u[2]*wedge[2]) 
-                
-        elif nodeid[i][-1] == 5:
-            
-            s_1 = nodeid[i][0]
-            s_2 = nodeid[i][1]
-            s_3 = nodeid[i][2]
-            s_4 = nodeid[i][3]
-            s_5 = nodeid[i][4]
-            
-            x_1 = vertex[s_1][0]; y_1 = vertex[s_1][1]; z_1 = vertex[s_1][2]
-            x_2 = vertex[s_2][0]; y_2 = vertex[s_2][1]; z_2 = vertex[s_2][2] 
-            x_3 = vertex[s_3][0]; y_3 = vertex[s_3][1]; z_3 = vertex[s_3][2] 
-            x_4 = vertex[s_4][0]; y_4 = vertex[s_4][1]; z_4 = vertex[s_4][2]
-            x_5 = vertex[s_5][0]; y_5 = vertex[s_5][1]; z_5 = vertex[s_5][2]
-            
-            vertices2[:,:] = np.array([
-                                [x_1, y_1, z_1],
-                                [x_2, y_2, z_2],
-                                [x_3, y_3, z_3],
-                                [x_4, y_4, z_4],
-                                [x_5, y_5, z_5]])
-    
-            split_to_tetra(vertices2, tetrahedra2)
-            
-            for tetrahedron in tetrahedra2:
-                u[:] = tetrahedron[1]-tetrahedron[0]
-                v[:] = tetrahedron[2]-tetrahedron[0]
-                w[:] = tetrahedron[3]-tetrahedron[0]
-                
-                wedge[0] = v[1]*w[2] - v[2]*w[1]
-                wedge[1] = v[2]*w[0] - v[0]*w[2]
-                wedge[2] = v[0]*w[1] - v[1]*w[0]
-                
-                center[i] = tetrahedron[-1]
-                volume[i] += 1./6*np.fabs(u[0]*wedge[0] + u[1]*wedge[1] + u[2]*wedge[2]) 
 
+
+    # Temporary storage for vertices and tetrahedra
+    vertices = np.zeros((8, 3))
+    tetrahedra = np.zeros((8, 4, 3))
+    
+    # Process each cell
+    for i in range(nbcells):
+        n_vertices = nodeid[i][-1]  # Get the number of vertices in the current cell
+
+        # Extract vertices for the current cell
+        cell_indices = nodeid[i][:n_vertices]
+        vertices[:n_vertices, :] = vertex[cell_indices, :3] #3 is of x,y,z
+
+        # Compute barycenter manually
+        center[i] = 0.0
+        for j in range(n_vertices):
+            center[i] += vertices[j]
+        center[i] /= n_vertices
+
+        # Determine cell type
+        if n_vertices == 4:  # Tetrahedron
+
+            # Compute edge vectors
+            u = vertices[1] - vertices[0]
+            v = vertices[2] - vertices[0]
+            w = vertices[3] - vertices[0]
+            
+            # Compute cross product
+            wedge = np.cross(v, w)
+            
+            # Volume using scalar triple product
+            volume[i] = np.abs(np.dot(u, wedge)) / 6.0
+
+        elif n_vertices == 8:  # Hexahedron
+        
+            # Split the hexahedron into 6 tetrahedra
+            splitting_rules = np.array([
+                [0, 1, 3, 4], [1, 3, 4, 5],
+                [4, 5, 3, 7], [1, 3, 5, 2],
+                [3, 7, 5, 2], [5, 7, 6, 2]
+            ])
+            
+            for t_idx, t_rule in enumerate(splitting_rules):
+                tetrahedra[t_idx] = vertices[t_rule]
+            
+            # Compute volume for each tetrahedron
+            for tetrahedron in tetrahedra[:6]:
+                u = tetrahedron[1] - tetrahedron[0]
+                v = tetrahedron[2] - tetrahedron[0]
+                w = tetrahedron[3] - tetrahedron[0]
+                
+                wedge = np.cross(v, w)
+                volume[i] += np.abs(np.dot(u, wedge)) / 6.0
+
+        elif n_vertices == 5:  # Pyramid
+            
+            # Split the pyramid into 4 tetrahedra
+            splitting_rules = np.array([
+                [0, 1, 2, 4],  # First tetra
+                [0, 2, 3, 4],  # Second tetra
+            ])
+            for t_idx, t_rule in enumerate(splitting_rules):
+                tetrahedra[t_idx] = vertices[t_rule]
+            
+            # Compute volume for each tetrahedron
+            for tetrahedron in tetrahedra[:2]:
+                u = tetrahedron[1] - tetrahedron[0]
+                v = tetrahedron[2] - tetrahedron[0]
+                w = tetrahedron[3] - tetrahedron[0]
+                wedge = np.cross(v, w)
+                volume[i] += np.abs(np.dot(u, wedge)) / 6.0
+    
 def create_3dfaces(nodeidc:'uint32[:,:]', nbelements:'int32', faces:'int32[:,:]',
                    cellf:'int32[:,:]'):
     

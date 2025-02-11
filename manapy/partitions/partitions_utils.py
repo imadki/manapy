@@ -1,7 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan 21 11:24:48 2025
+
+@author: kissami
+"""
+
 import numpy as np
 from numpy import uint32, int32
-
-from manapy.ddm.ddm_utils3d import split_to_tetra
+import meshio
+# from manapy.ddm.ddm_utils3d import split_to_tetra
 from manapy.ddm.ddm_utils2d import split_to_triangle
 
 
@@ -13,32 +21,71 @@ def define_ghost_node(mesh, periodic, nbnodes, dim):
     elif dim == 3:
         typefaces = ["quad", "triangle"]
     
-    ghost = {}
-    if type(mesh.cells) == dict:
-        for i, j in mesh.cell_data.items():
-            if i in typefaces:
-                ghost[i] = j.get('gmsh:physical')
+    MESHIO_VERSION = int(meshio.__version__.split(".")[0])
+    
+    #check meshio version
+    if MESHIO_VERSION < 4:
+        cells = mesh.cells
+        cell_data = {i: j.get('gmsh:physical', None) for i, j in mesh.cell_data.items()}
+    else:
+        cells = mesh.cells_dict
+        cell_data = mesh.cell_data_dict.get('gmsh:physical', {})
 
-        for i, j in mesh.cells.items():
-            if i in typefaces:
-                for k in range(len(ghost[i])):
-                    for index in range(len(j[k])):
-                        if ghost[i][k] == 1 or ghost[i][k] == 2 :#or ghost[k] == 5 or ghost[k] == 6 :
+    ghost = {}
+    for i, j in cell_data.items():
+        if i in typefaces:
+            ghost[i] = j
+    
+    #for 1, 2, 3, 4 boundaries            
+    for i, j in cells.items():
+        if i in typefaces:
+            for k in range(len(ghost[i])):
+                for index in range(len(j[k])):
+                    if ghost[i][k] in [1, 2] :#or ghost[k] == 5 or ghost[k] == 6 :
+                        ghost_nodes[j[k][index]] = int(ghost[i][k])
+        if i in typefaces:
+            for k in range(len(ghost[i])):
+                for index in range(len(j[k])):
+                    if ghost_nodes[j[k][index]] not in [1, 2]:
+                        if ghost[i][k] in [3, 4] :#or ghost[k] == 5 or ghost[k] == 6 :
                             ghost_nodes[j[k][index]] = int(ghost[i][k])
-                            
-            if i in typefaces:
-                for k in range(len(ghost[i])):
-                    for index in range(len(j[k])):
-                        if ghost_nodes[j[k][index]] != 1 and ghost_nodes[j[k][index]] !=2:
-                            if ghost[i][k] == 3 or ghost[i][k] == 4 :#or ghost[k] == 5 or ghost[k] == 6 :
-                                ghost_nodes[j[k][index]] = int(ghost[i][k])
-            
-        for i, j in mesh.cells.items():
+   
+    #for 3D ghosts (5 => front, 6=> back)
+    for i, j in cells.items():       
+        for i, j in cells.items():
             if i in typefaces:
                 for k in range(len(ghost[i])):
                     for index in range(len(j[k])):
                         if ghost_nodes[j[k][index]] == 0:
                             ghost_nodes[j[k][index]] = int(ghost[i][k])
+    
+    # print(ghost_nodes)
+    # ghost = {}
+    # if type(mesh.cells) == dict:
+    #     for i, j in mesh.cell_data.items():
+    #         if i in typefaces:
+    #             ghost[i] = j.get('gmsh:physical')
+
+    #     for i, j in mesh.cells.items():
+    #         if i in typefaces:
+    #             for k in range(len(ghost[i])):
+    #                 for index in range(len(j[k])):
+    #                     if ghost[i][k] == 1 or ghost[i][k] == 2 :#or ghost[k] == 5 or ghost[k] == 6 :
+    #                         ghost_nodes[j[k][index]] = int(ghost[i][k])
+                            
+    #         if i in typefaces:
+    #             for k in range(len(ghost[i])):
+    #                 for index in range(len(j[k])):
+    #                     if ghost_nodes[j[k][index]] != 1 and ghost_nodes[j[k][index]] !=2:
+    #                         if ghost[i][k] == 3 or ghost[i][k] == 4 :#or ghost[k] == 5 or ghost[k] == 6 :
+    #                             ghost_nodes[j[k][index]] = int(ghost[i][k])
+            
+    #     for i, j in mesh.cells.items():
+    #         if i in typefaces:
+    #             for k in range(len(ghost[i])):
+    #                 for index in range(len(j[k])):
+    #                     if ghost_nodes[j[k][index]] == 0:
+    #                         ghost_nodes[j[k][index]] = int(ghost[i][k])
     
     if periodic[0] == 1:
         for i in range(len(ghost_nodes)):
@@ -195,7 +242,128 @@ def create_npart_cpart(cell_nodeid:'uint32[:,:]', npart:'uint32[:]',
     return npartnew, cpart, neighsub, halo_cellid, globcelltoloc, locnodetoglob, tc
 
 
-def compute_halocell(halo_cellid, cpart, cell_nodeid, nodes, neighsub, SIZE, dim, precision ):
+def _compute_2d_halo(haloint, centvol, haloextloc, halointloc, halointlen, SIZE, neighsub,
+                     cell_nodeid, nodes, precision):
+
+    vertices = np.zeros((4, 2), dtype=precision)
+    triangles = np.zeros((4, 3, 2), dtype=precision)
+    
+    for i in range(SIZE):
+        for j in range(len(neighsub[i])):
+            halointloc[i].extend(haloint[(i, neighsub[i][j])])
+            halointlen[i].append(len(haloint[(i, neighsub[i][j])]))
+            
+            for k in haloint[(neighsub[i][j], i)]:
+                n_vertices = cell_nodeid[k][-1]
+                cell_vertices = cell_nodeid[k][:n_vertices]
+                
+                if n_vertices == 3:  # Triangle
+                    coords = nodes[cell_vertices, :2]
+                    x1, y1 = coords[0]
+                    x2, y2 = coords[1]
+                    x3, y3 = coords[2]
+
+                    center = (x1 + x2 + x3) / 3, (y1 + y2 + y3) / 3
+                    volume = 0.5 * abs((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1))
+
+                    centvol[i].append([*center, 0.0, volume])
+                    haloextloc[i].append([k, *cell_vertices, -1, 4])
+
+                elif n_vertices == 4:  # Quadrilateral
+                    coords = nodes[cell_vertices, :2]
+                    vertices[:4] = coords
+                    split_to_triangle(vertices, triangles)
+
+                    center = triangles[0][2]
+                    volume = sum(
+                        0.5 * abs((tri[1][0] - tri[0][0]) * (tri[2][1] - tri[0][1]) -
+                                  (tri[2][0] - tri[0][0]) * (tri[1][1] - tri[0][1]))
+                        for tri in triangles
+                    )
+
+                    centvol[i].append([*center, 0.0, volume])
+                    haloextloc[i].append([k, *cell_vertices, -1, 5])
+          
+def _compute_3d_halo(haloint, centvol, haloextloc, halointloc, halointlen, SIZE, neighsub, 
+                     cell_nodeid, nodes, precision):
+    
+    """Compute halo information for 3D cells."""
+    wedge = np.zeros(3, dtype=precision)
+    u = np.zeros(3, dtype=precision)
+    v = np.zeros(3, dtype=precision)
+    w = np.zeros(3, dtype=precision)
+
+    for i in range(SIZE):
+        for j in range(len(neighsub[i])):
+            halointloc[i].extend(haloint[(i, neighsub[i][j])])
+            halointlen[i].append(len(haloint[(i, neighsub[i][j])]))
+
+            for k in haloint[(neighsub[i][j], i)]:
+                n_vertices = cell_nodeid[k][-1]
+                cell_vertices = cell_nodeid[k][:n_vertices]
+                coords = nodes[cell_vertices, :3]
+
+                if n_vertices == 4:  # Tetrahedron
+                    u = coords[1] - coords[0]
+                    v = coords[2] - coords[0]
+                    w = coords[3] - coords[0]
+
+                    wedge = np.cross(v, w)
+                    volume = (abs(np.dot(u, wedge)) / 6.0).astype(precision)
+                    
+                    # Compute barycenter manually
+                    center = coords.mean(axis=0)
+                    
+                    centvol[i].append([*center, volume])
+                    haloextloc[i].append([k, *cell_vertices, -1, -1, -1, -1, 5])
+
+                elif n_vertices == 5:  # Pyramid
+                    # Manually split the pyramid into 4 tetrahedra
+                    tetrahedra = [
+                        [coords[0], coords[1], coords[2], coords[4]],  # First tetrahedron
+                        [coords[0], coords[2], coords[3], coords[4]]   # Second tetrahedron
+                    ]
+                    
+                    volume = 0.0
+                    for tetra in tetrahedra:
+                        u = tetra[1] - tetra[0]
+                        v = tetra[2] - tetra[0]
+                        w = tetra[3] - tetra[0]
+
+                        wedge = np.cross(v, w)
+                        volume += (abs(np.dot(u, wedge)) / 6.0).astype(precision)
+
+                    center = coords.mean(axis=0)
+                    centvol[i].append([*center, volume])
+                    haloextloc[i].append([k, *cell_vertices, -1, -1, -1, 6])
+
+                elif n_vertices == 8:  # Hexahedron
+                    # Manually split the hexahedron into 6 tetrahedra
+                    tetrahedra = [
+                        [coords[0], coords[1], coords[3], coords[4]],
+                        [coords[1], coords[3], coords[4], coords[5]],
+                        [coords[4], coords[5], coords[3], coords[7]],
+                        [coords[1], coords[3], coords[5], coords[2]],
+                        [coords[3], coords[7], coords[5], coords[2]],
+                        [coords[5], coords[7], coords[6], coords[2]]
+                    ]
+
+                    volume = 0.0
+                    for tetra in tetrahedra:
+                        u = tetra[1] - tetra[0]
+                        v = tetra[2] - tetra[0]
+                        w = tetra[3] - tetra[0]
+
+                        wedge = np.cross(v, w)
+                        volume += (abs(np.dot(u, wedge)) / 6.0).astype(precision)
+
+                    center = coords.mean(axis=0)
+                    centvol[i].append([*center, volume])
+                    haloextloc[i].append([k, *cell_vertices, 9])
+
+
+def compute_halocell(halo_cellid, cpart, cell_nodeid, nodes, neighsub, SIZE, dim, precision):
+    
     haloint = {}
     for i in range(SIZE):
         for cell in halo_cellid[i]:
@@ -208,159 +376,10 @@ def compute_halocell(halo_cellid, cpart, cell_nodeid, nodes, neighsub, SIZE, dim
     halointlen = [[] for i in range(SIZE)]
     
     if dim == 2:
-        vertices = np.zeros((4, 2))
-        triangles = np.zeros((4, 3, 2))
-        for i in range(SIZE):
-            for j in range(len(neighsub[i])):
-                halointloc[i].extend(haloint[(i, neighsub[i][j])])
-                halointlen[i].append(len(haloint[(i, neighsub[i][j])]))
-                for k in range(len(haloint[(neighsub[i][j], i)])):
-                    
-                    if cell_nodeid[haloint[(neighsub[i][j], i)][k]][-1] == 3:
-                        
-                        s_1 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][0]
-                        s_2 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][1]
-                        s_3 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][2]
-                        
-                        x_1 = nodes[s_1][0]; y_1 = nodes[s_1][1]
-                        x_2 = nodes[s_2][0]; y_2 = nodes[s_2][1]
-                        x_3 = nodes[s_3][0]; y_3 = nodes[s_3][1]
-            
-                        centvol[i].append([1./3 * (x_1 + x_2 + x_3), 1./3*(y_1 + y_2 + y_3), 0.,
-                                           (1./2) * abs((x_1-x_2)*(y_1-y_3)-(x_1-x_3)*(y_1-y_2))])
-                        
-                        haloextloc[i].append([haloint[(neighsub[i][j], i)][k], s_1, s_2, s_3, -1, 4])
-                        
-                    elif cell_nodeid[haloint[(neighsub[i][j], i)][k]][-1] == 4:
-                        
-                        s_1 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][0]
-                        s_2 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][1]
-                        s_3 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][2]
-                        s_4 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][3]
-                        
-                        vertices[:,:] = np.vstack((nodes[s_1][:dim], nodes[s_2][:dim], 
-                                                   nodes[s_3][:dim], nodes[s_4][:dim]))
-                        split_to_triangle(vertices, triangles)
-                        
-                        center = triangles[0][2]
-                        volume = 0.
-                        for triangle in triangles:
-                            x1 = triangle[0][0]; y1 = triangle[0][1]
-                            x2 = triangle[1][0]; y2 = triangle[1][1]
-                            x3 = triangle[2][0]; y3 = triangle[2][1]
-                            volume += (1./2) * abs((x1-x2)*(y1-y3)-(x1-x3)*(y1-y2))
-            
-                        centvol[i].append([center[0], center[1], 0., volume])
-                        haloextloc[i].append([haloint[(neighsub[i][j], i)][k], s_1, s_2, s_3, s_4, 5])
-                        
-                        
-    if dim == 3:
-        wedge = np.zeros(3, dtype=precision)
-        u = np.zeros(3, dtype=precision)
-        v = np.zeros(3, dtype=precision)
-        w = np.zeros(3, dtype=precision)
-        
-        #arrays for split tetra
-        vertices1 = np.zeros((8, 3))
-        vertices2 = np.zeros((5, 3))
-        tetrahedra1 = np.zeros((8, 4, 3))
-        tetrahedra2 = np.zeros((5, 4, 3))
-        
-        for i in range(SIZE):
-            for j in range(len(neighsub[i])):
-                halointloc[i].extend(haloint[(i, neighsub[i][j])])
-                halointlen[i].append(len(haloint[(i, neighsub[i][j])]))
-                for k in range(len(haloint[(neighsub[i][j], i)])):
-                    if cell_nodeid[haloint[(neighsub[i][j], i)][k]][-1] == 4:
-                    
-                        s_1 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][0]
-                        s_2 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][1]
-                        s_3 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][2]
-                        s_4 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][3]
-                        
-                        x_1 = nodes[s_1][0]; y_1 = nodes[s_1][1]; z_1 = nodes[s_1][2]
-                        x_2 = nodes[s_2][0]; y_2 = nodes[s_2][1]; z_2 = nodes[s_2][2] 
-                        x_3 = nodes[s_3][0]; y_3 = nodes[s_3][1]; z_3 = nodes[s_3][2] 
-                        x_4 = nodes[s_4][0]; y_4 = nodes[s_4][1]; z_4 = nodes[s_4][2]
-            
-                        u[:] = nodes[s_2][0:3]- nodes[s_1][0:3]
-                        v[:] = nodes[s_3][0:3]- nodes[s_1][0:3]
-                        w[:] = nodes[s_4][0:3]- nodes[s_1][0:3]
-                        
-                        wedge[0] = v[1]*w[2] - v[2]*w[1]
-                        wedge[1] = v[2]*w[0] - v[0]*w[2]
-                        wedge[2] = v[0]*w[1] - v[1]*w[0]
-                        
-                        volume = 1./6*np.fabs(u[0]*wedge[0] + u[1]*wedge[1] + u[2]*wedge[2]) 
-                        
-                        centvol[i].append([1./4 * (x_1 + x_2 + x_3 + x_4), 1./4*(y_1 + y_2 + y_3 + y_4), 
-                                           1./4*(z_1 + z_2 + z_3 + z_4), 
-                                           volume])
-    
-                        haloextloc[i].append([haloint[(neighsub[i][j], i)][k], s_1, s_2, s_3, s_4, -1, -1, -1, -1,  5])
-                        
-                    elif cell_nodeid[haloint[(neighsub[i][j], i)][k]][-1] == 5:
-            
-                        s_1 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][0]
-                        s_2 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][1]
-                        s_3 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][2]
-                        s_4 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][3]
-                        s_5 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][4]
-                        
-                        vertices2[:,:] = np.vstack((nodes[s_1][:dim], nodes[s_2][:dim], 
-                                                    nodes[s_3][:dim], nodes[s_4][:dim],
-                                                    nodes[s_5][:dim]))
-                        
-                        split_to_tetra(vertices2, tetrahedra2)
-                        
-                        volume = 0.
-                        for tetrahedron in tetrahedra2:
-                            u[:] = tetrahedron[1]-tetrahedron[0]
-                            v[:] = tetrahedron[2]-tetrahedron[0]
-                            w[:] = tetrahedron[3]-tetrahedron[0]
-                            
-                            wedge[0] = v[1]*w[2] - v[2]*w[1]
-                            wedge[1] = v[2]*w[0] - v[0]*w[2]
-                            wedge[2] = v[0]*w[1] - v[1]*w[0]
-                            
-                            center = tetrahedron[-1]
-                            volume += 1./6*np.fabs(u[0]*wedge[0] + u[1]*wedge[1] + u[2]*wedge[2]) 
-                            
-                        centvol[i].append([center[0], center[1], center[2], volume])
-                        haloextloc[i].append([haloint[(neighsub[i][j], i)][k], s_1, s_2, s_3, s_4, s_5, -1, -1, -1,  6])
-                        
-                    elif cell_nodeid[haloint[(neighsub[i][j], i)][k]][-1] == 8:
-                        
-                        s_1 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][0]
-                        s_2 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][1]
-                        s_3 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][2]
-                        s_4 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][3]
-                        s_5 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][4]
-                        s_6 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][5]
-                        s_7 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][6]
-                        s_8 = cell_nodeid[haloint[(neighsub[i][j], i)][k]][7]
-                        
-                        vertices1[:,:] = np.vstack((nodes[s_1][:dim], nodes[s_2][:dim], 
-                                                    nodes[s_3][:dim], nodes[s_4][:dim],
-                                                    nodes[s_5][:dim], nodes[s_6][:dim],
-                                                    nodes[s_7][:dim], nodes[s_8][:dim]))
-                        
-                        split_to_tetra(vertices1, tetrahedra1)
-                        
-                        volume = 0.
-                        for tetrahedron in tetrahedra1:
-                            u[:] = tetrahedron[1]-tetrahedron[0]
-                            v[:] = tetrahedron[2]-tetrahedron[0]
-                            w[:] = tetrahedron[3]-tetrahedron[0]
-                            
-                            wedge[0] = v[1]*w[2] - v[2]*w[1]
-                            wedge[1] = v[2]*w[0] - v[0]*w[2]
-                            wedge[2] = v[0]*w[1] - v[1]*w[0]
-                            
-                            center = tetrahedron[-1]
-                            volume += 1./6*np.fabs(u[0]*wedge[0] + u[1]*wedge[1] + u[2]*wedge[2]) 
-                        
-                        centvol[i].append([center[0], center[1], center[2], volume])
-                        haloextloc[i].append([haloint[(neighsub[i][j], i)][k], s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, 9])
-    
+        _compute_2d_halo(haloint, centvol, haloextloc, halointloc, halointlen, SIZE, 
+                         neighsub, cell_nodeid, nodes, precision)
+    elif dim == 3:
+        _compute_3d_halo(haloint, centvol, haloextloc, halointloc, halointlen, SIZE, 
+                         neighsub, cell_nodeid, nodes, precision)
+  
     return centvol, haloextloc, halointloc, halointlen
