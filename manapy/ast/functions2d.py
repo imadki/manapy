@@ -1,4 +1,4 @@
-from numpy import  int32, float, uint32
+from numpy import  int32, uint32
 import numpy as np
 #from manapy.ast.ast_utils import search_element
 

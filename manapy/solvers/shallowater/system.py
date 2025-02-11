@@ -9,11 +9,12 @@ from numpy import zeros
 from mpi4py import MPI
 
 from manapy.solvers.shallowater import (update_SW, time_step_SW, explicitscheme_convective_SW, 
-                                        term_source_srnh_SW, term_friction_SW, term_coriolis_SW)
+                                        term_source_srnh_SW, term_friction_SW, term_coriolis_SW,
+                                        term_wind_SW)
 
 from manapy.solvers.advecdiff import (explicitscheme_dissipative)
-from manapy.comms import Iall_to_all
-from manapy.comms import define_halosend
+from manapy.comms import Iall_to_all, define_halosend, HaloUpdater
+#from manapy.comms import define_halosend
 
 from manapy.ast import Variable
 from manapy.base.base import Struct
@@ -29,14 +30,16 @@ class ShallowWaterSolver():
                     'time step'),
                     ('order', int, 1, 1,
                      'order of the convective scheme'),
-                    ('cfl', float, .4, 0,
+                    ('cfl', float, .8, 0,
                      'cfl of the explicit scheme'),
                     ('Mann', float, 0., 0.,
                      'Manning number for the friction'),
                      ('fc', float, 0., 0.,
                      'Coriolis force'),
                      ('grav', float, 9.81, 0.,
-                      'gravity constant')
+                      'gravity constant'),
+                     ('wind', bool, False, True,
+                      'wind')
     ]
     
     @classmethod
@@ -127,7 +130,6 @@ class ShallowWaterSolver():
             for term in terms:
                 var.__dict__[term] = zeros(self.domain.nbcells, dtype=self.float_precision)
         
-        
         # Constants
         self.Dxx   = get("Dxx")
         self.Dyy   = get("Dyy")
@@ -138,6 +140,7 @@ class ShallowWaterSolver():
         self.Mann  = get("Mann")
         self.fc    = get("fc")
         self.grav  = get("grav")
+        self.wind  = get("wind")
         
         
         if self.Dxx == self.Dyy == 0:
@@ -152,6 +155,8 @@ class ShallowWaterSolver():
         self._update_new_value = self.backend.compile(update_SW, signature=self.signature)
         self._term_coriolis_SW = self.backend.compile(term_coriolis_SW, signature=self.signature)
         self._term_friction_SW = self.backend.compile(term_friction_SW, signature=self.signature)
+        self._term_wind_SW = self.backend.compile(term_wind_SW, signature=self.signature)
+        self._term_source_srnh = self.backend.compile(term_source_srnh_SW, signature=self.signature)
         
     
     def explicit_convective(self):
@@ -184,34 +189,42 @@ class ShallowWaterSolver():
                                   self.domain.cells.volume, self.domain.cells.faceid, self.grav, self.Dxx, self.Dyy)
         
         self.dt = self.comm.allreduce(dt_c, MPI.MIN)
-        return  self.dt
+#        return  self.dt
     
     
     def update_halo_values(self):
+        
+#        updater = HaloUpdater(self.domain, self.varbs, self.comm)
+#        updater.update_halo_values()
         requests = []
         for var in self.varbs.values():
             define_halosend(var.cell, var.halotosend, var.domain.halos.indsend)
             req = Iall_to_all(var.halotosend, var.nbhalos, var.domain.halos.scount, var.domain.halos.rcount, var.halo, 
                               var.comm)
             requests.append(req)
-        MPI.Request.Waitall( requests )
-
+        #MPI.Request.Waitall( requests )
+        
+        return requests
             
     def update_ghost_values(self):
         for var in self.varbs.values():
             var.update_ghost_value()
+            
+    def interpolate_cell2node(self):
+        for var in self.varbs.values():
+            var.interpolate_celltonode()
         
     def update_term_source(self):
-        term_source_srnh_SW(self.h.source, self.hu.source, self.hv.source,self.hc.source, self.Z.source,
-                            self.h.cell, self.hu.cell, self.hv.cell, self.hc.cell, self.Z.cell,
-                            self.h.ghost, self.hu.ghost, self.hv.ghost, self.hc.ghost, self.Z.ghost,
-                            self.h.halo, self.hu.halo, self.hv.halo, self.hc.halo, self.Z.halo,
-                            self.h.gradcellx, self.h.gradcelly, self.hc.psi, self.h.gradhalocellx, self.h.gradhalocelly, 
-                            self.hc.psihalo, 
-                            self.domain.cells.nodeid, self.domain.cells.faceid, self.domain.cells.cellfid, self.domain.faces.cellid,
-                            self.domain.cells.center, self.domain.cells.nf, 
-                            self.domain.faces.name, self.domain.faces.center, self.domain.halos.centvol,
-                            self.domain.nodes.vertex, self.domain.faces.halofid, self.grav, self.order)
+        self._term_source_srnh(self.h.source, self.hu.source, self.hv.source,self.hc.source, self.Z.source,
+                               self.h.cell, self.hu.cell, self.hv.cell, self.hc.cell, self.Z.cell,
+                               self.h.ghost, self.hu.ghost, self.hv.ghost, self.hc.ghost, self.Z.ghost,
+                               self.h.halo, self.hu.halo, self.hv.halo, self.hc.halo, self.Z.halo,
+                               self.h.gradcellx, self.h.gradcelly, self.hc.psi, self.h.gradhalocellx, self.h.gradhalocelly, 
+                               self.hc.psihalo, 
+                               self.domain.cells.nodeid, self.domain.cells.faceid, self.domain.cells.cellfid, self.domain.faces.cellid,
+                               self.domain.cells.center, self.domain.cells.nf, 
+                               self.domain.faces.name, self.domain.faces.center, self.domain.halos.centvol,
+                               self.domain.nodes.vertex, self.domain.faces.halofid, self.grav, self.order)
     
     
     def update_term_friction(self):
@@ -222,21 +235,29 @@ class ShallowWaterSolver():
         
     
     def compute_new_val(self):
-        
         self._update_new_value(self.h.cell, self.hu.cell, self.hv.cell, self.hc.cell, self.Z.cell ,
                                self.h.convective, self.hu.convective, self.hv.convective, self.hc.convective, self.Z.convective,
                                self. h.source, self.hu.source, self.hv.source, self.hc.source, self.Z.source,
                                self.hc.dissipation, self.hu.coriolis, self.hv.coriolis,
                                0., 0., self.dt, self.domain.cells.volume)
         
+        
+    def update_term_wind(self):
+        self._term_wind_SW(self.domain.cells.center, self.Tx_wind, self.Ty_wind, self.wind, self.iteration)
+        
     def compute_fluxes(self):
+        
+        
+        #update halos
+        requests = self.update_halo_values()
         
         #update friction term
         if self.Mann != 0:
             self.update_term_friction() 
         
-        #update halos
-        self.update_halo_values()
+        self.stepper()
+        
+        MPI.Request.Waitall( requests )        
         
         #update boundary conditions
         self.update_ghost_values()
@@ -249,12 +270,13 @@ class ShallowWaterSolver():
             self.var.interpolate_celltonode()
             self.explicit_dissipative()
         
-#        # update term source
-#        self.update_term_source()
+        # update term source
+        self.update_term_source()
         
         if self.fc != 0:
             #update coriolis forces
             self.update_term_coriolis()
             
-        
+        if self.wind:
+            self.update_term_wind()
         

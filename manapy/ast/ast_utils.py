@@ -1,4 +1,4 @@
-from numpy import float, int32
+from numpy import  int32
 from numba import njit
 
 def convert_solution(x1:'float[:]', x1converted:'float[:]', tc:'int32[:]', b0Size:'int32'):

@@ -57,7 +57,7 @@ install_requires = [
     'llvmlite',
     'lxml',
     'mpmath',
-    'numba==0.58.1',
+    'numba',
     'numpy',
     'Pillow',
     'pyparsing',
@@ -68,7 +68,7 @@ install_requires = [
     'termcolor',
     'textX',
     'mgmetis',
-    'meshio<4',
+    'meshio',
     'pyccel',
     ]
 

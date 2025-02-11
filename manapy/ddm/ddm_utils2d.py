@@ -434,18 +434,6 @@ def Compute_2dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbce
                                  center:'float[:,:]', volume:'float[:]'):
     
     
-    def split_to_triangle(vertices:'float64[:,:]', triangles:'float64[:,:,:]'):
-        ctr = np.zeros(2)
-        lv = vertices.shape[0]
-        
-        ctr[0] = sum(vertices[:,0])/lv
-        ctr[1] = sum(vertices[:,1])/lv
-        
-        for i in range(lv):
-            triangles[i][0] = vertices[i]
-            triangles[i][1] = vertices[(i + 1) % lv]
-            triangles[i][2] = ctr
-    
     vertices = np.zeros((4,2))
     triangles = np.zeros((4, 3,2))
     #calcul du barycentre et volume

@@ -125,6 +125,10 @@ class Domain():
         self._comm = comm
         self._dim  = np.int32(dim)
         
+        self.create_domain(self._comm.Get_size(), self._comm.Get_rank())
+        
+    def create_domain(self, size, rank):
+        
         self._size = self._comm.Get_size()
         self._rank = self._comm.Get_rank()
         
@@ -796,14 +800,10 @@ class Domain():
         points = self._nodes._vertex[:, :3]
         
         nvalues=len(values)
-        data_bis={}
-        for k in range(0,nvalues):
-            data_bis[variables[k]]=values[k]
         
-        data = {}
-        for k in range(0,nvalues):
-            data[variables[k]]=data_bis
-            
+        # data
+        data = {variables[k]: [values[k]] for k in range(nvalues)}
+        
         maxw = max(values[0])
         
         integral_maxw = np.zeros(1, dtype=self.float_precision)
