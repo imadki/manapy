@@ -50,7 +50,7 @@ def term_source_srnh_SW(src_h:'float[:]', src_hu:'float[:]', src_hv:'float[:]', 
                         nodeidc:'int32[:,:]', faceidc:'int32[:,:]', cellidc:'int32[:,:]',  cellidf:'int32[:,:]',
                         centerc:'float[:,:]', normalc:'float[:,:,:]', 
                         namef:'int32[:]', centerf:'float[:,:]', centerh:'float[:,:]',
-                        vertexn:'float[:,:]', halofid:'int32[:]', grav:'float', order:'int'):
+                        vertexn:'float[:,:]', halofid:'int32[:]', grav:'float', order:'intc'):
     
     nbelement = len(h_c)
     hi_p =  zeros(3)
@@ -105,7 +105,6 @@ def term_source_srnh_SW(src_h:'float[:]', src_hu:'float[:]', src_hv:'float[:]', 
             zv[j] = z_p1
             mata[j] = h_p1*ss[j][0]
             matb[j] = h_p1*ss[j][1]
-
             
             c_1 = c_1 + (0.5*(h_1p + h_p1)*0.5*(h_1p + h_p1))  *ss[j][0]
             c_2 = c_2 + (0.5*(h_1p + h_p1)*0.5*(h_1p + h_p1))  *ss[j][1]
@@ -113,7 +112,6 @@ def term_source_srnh_SW(src_h:'float[:]', src_hu:'float[:]', src_hv:'float[:]', 
             hi_p[j] = h_1p
             zi_p[j] = z_1p
             
-
         c_3 = 3.0 * h_1p
             
         delta = (mata[1]*matb[2]-mata[2]*matb[1]) - (mata[0]*matb[2]-matb[0]*mata[2]) + (mata[0]*matb[1]-matb[0]*mata[1])
@@ -497,12 +495,40 @@ def explicitscheme_convective_SW(rez_h:'float[:]', rez_hu:'float[:]', rez_hv:'fl
         rez_hc[cellidf[i][0]] -= flux[3]
         rez_Z[cellidf[i][0]]  -= flux[4]
           
-def term_coriolis_SW(hu_c:'float[:]', hv_c:'float[:]', corio_hu:'float[:]', corio_hv:'float[:]', f_c:'float'):
+def term_coriolis_SW(hu_c:'float[:]', hv_c:'float[:]', corio_hu:'float[:]', corio_hv:'float[:]', f_c:'float[:]'):
     
     for i in range(len(hu_c)):
-        corio_hu[i] =  f_c * hu_c[i]
-        corio_hv[i] = -f_c * hv_c[i]
+        corio_hu[i] =  f_c[i] * hu_c[i]
+        corio_hv[i] = -f_c[i] * hv_c[i]
     
+# def term_friction_SW(h_c:'float[:]', hu_c:'float[:]', hv_c:'float[:]', grav:'float', eta:'float', time:'float'):
+    
+#     nbelement = len(h_c)
+
+#     for i in range(nbelement):
+#         ufric = hu_c[i]/h_c[i]
+#         vfric = hv_c[i]/h_c[i]
+#         hfric = h_c[i]
+        
+#         A = 1 + grav * time * eta**2 * sqrt(ufric**2 + vfric**2)/(hfric**(4/3))
+        
+#         hutild = hu_c[i]/A
+#         hvtild = hv_c[i]/A
+        
+#         hu_c[i] = hutild
+#         hv_c[i] = hvtild
+
+# def term_wind_SW(uwind:'float', vwind:'float'):
+
+#     RHO_air = 1.28
+#     WNORME = sqrt(uwind**2 + vwind**2)
+#     CW = RHO_air*(0.75 + 0.067*WNORME)*1e-3    
+
+#     TAUXWX = CW * uwind * WNORME
+#     TAUXWY = CW * vwind * WNORME
+
+#     return TAUXWX, TAUXWY
+
 def term_friction_SW(h_c:'float[:]', hu_c:'float[:]', hv_c:'float[:]', grav:'float', eta:'float', time:'float'):
     
     nbelement = len(h_c)
@@ -512,22 +538,78 @@ def term_friction_SW(h_c:'float[:]', hu_c:'float[:]', hv_c:'float[:]', grav:'flo
         vfric = hv_c[i]/h_c[i]
         hfric = h_c[i]
         
-        A = 1 + grav * time * eta**2 * sqrt(ufric**2 + vfric**2)/(hfric**(4/3))
         
-        hutild = hu_c[i]/A
-        hvtild = hv_c[i]/A
+        A = 1+time*grav*(eta**2)*(sqrt(ufric**2 + vfric**2)/(hfric**(4/3)))
+        hutild = hu_c[i]/A 
+        hvtild = hv_c[i]/A 
         
         hu_c[i] = hutild
         hv_c[i] = hvtild
 
-def term_wind_SW(uwind:'float', vwind:'float'):
+def term_wind_SW(Tx_wind:'float[:]', Ty_wind:'float[:]',wind_wx:'float[:]',wind_wy:'float[:]'):
 
-    RHO_air = 1.28
-    WNORME = sqrt(uwind**2 + vwind**2)
-    CW = RHO_air*(0.75 + 0.067*WNORME)*1e-3    
+    ro_a=1.25
+    nbelements = len(Tx_wind)
 
-    TAUXWX = CW * uwind * WNORME
-    TAUXWY = CW * vwind * WNORME
+    for i in range(nbelements):
+        u_wind,v_wind = wind_wx[i],wind_wy[i]
+        nor_v_wind=sqrt(u_wind**2+v_wind**2)
+        C_wind=ro_a*(0.75+0.067* nor_v_wind)*1e-03
+        
+        Tx_wind[i] =  C_wind*u_wind*nor_v_wind
+        Ty_wind[i] =  C_wind*v_wind*nor_v_wind
+        
+        Tx_wind[i] =  C_wind*u_wind*nor_v_wind
+        Ty_wind[i] =  C_wind*v_wind*nor_v_wind
+        
+        
+def ttttterm_wind_SW(center:'float[:,:]',Tx_wind:'float[:]', Ty_wind:'float[:]', wind:'float[:,:]',iter:'int'):
 
-    return TAUXWX, TAUXWY
+    ro_a=1.25
+    nbelements = len(Tx_wind)
 
+    '''
+    XX1,XX2=728347,730383
+    YY1,YY2=515676,515754
+    a=(YY2-YY1)/(XX2-XX1)
+    b=YY1-a*XX1
+
+    X11,X22=732909,733016
+    Y11,Y22=513571,505290
+    a1=(Y22-Y11)/(X22-X11)
+    b2=Y11-a1*X11
+
+    X111,X222=733016,739929
+    Y111,Y222=505290,507391
+    a11=(Y222-Y111)/(X222-X111)
+    b22=Y111-a11*X111
+    '''
+    XX1,XX2=734232,730041
+    YY1,YY2=512884,506799
+    a=(YY2-YY1)/(XX2-XX1)
+    b=YY1-a*XX1
+    for i in range(nbelements):
+        '''
+        xcent = center[i][0]
+        ycent = center[i][1]
+        if (ycent >= (xcent*a+b)):
+             u_wind,v_wind = wind[iter][0],wind[iter][1]
+        elif (ycent <= (xcent*a+b)):
+             u_wind,v_wind = wind[iter][0],wind[iter][1]
+        '''
+        '''
+        if (ycent >= (xcent*a+b)):
+             u_wind,v_wind = x1,y1
+        elif (ycent <= (xcent*a+b)) and (ycent >= (xcent*a1+b2)):
+             u_wind,v_wind = x2,y2
+        elif (ycent <= (xcent*a1+b2)) and (ycent >= (xcent*a11+b22)):
+             u_wind,v_wind = x3,y3
+        elif (ycent >= (xcent*a11+b22)):
+             u_wind,v_wind = x4,y4
+        '''
+        u_wind,v_wind = wind[iter][0],wind[iter][1]
+        nor_v_wind=sqrt(u_wind**2+v_wind**2)
+        C_wind=ro_a*(0.75+0.067* nor_v_wind)*1e-03
+        
+        Tx_wind[i] =  C_wind*u_wind*nor_v_wind
+        Ty_wind[i] =  C_wind*v_wind*nor_v_wind

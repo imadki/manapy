@@ -1,4 +1,4 @@
-from numpy import zeros, fabs, int32, float, uint32
+from numpy import zeros, fabs, int32, uint32
 from manapy.ast.ast_utils import search_element
 
 def cell_gradient_3d(w_c:'float[:]', w_ghost:'float[:]', w_halo:'float[:]', w_haloghost:'float[:]',

@@ -9,11 +9,7 @@ import sys
 import importlib
 
 
-import pythran
 import inspect
-import hashlib
-import imp
-import re
 
 from numba.extending import register_jitable
 
@@ -32,50 +28,6 @@ def get_arg_types(func, float_precision, int_precision):
         arg_type = arg_type.replace("uint32", int_precision)
         arg_types.append(arg_type)
     return tuple(arg_types)
-
-class Pythranjit(object):
-
-    def __init__(self, cache=False, float_precision=None, int_precision=None, **flags):
-        self.flags = flags
-        self.cache = cache
-        self.float_precision = float_precision
-        self.int_precision   = int_precision
-        
-    def __call__(self, fun):
-        # FIXME: gather global dependencies using pythran.analysis.imported_ids
-        module = inspect.getmodule(fun)
-        # Get the path of the module
-        module_path = inspect.getfile(module)
-        # Get the directory path of the module
-        module_dir = os.path.dirname(module_path)
-        
-        src = inspect.getsource(fun)
-        src = re.sub("@.*?\sdef\s","def ", src)
-        
-        fname = fun.__name__
-        m = hashlib.md5()
-        m.update(src.encode())  # Encode the string before hashing
-        
-        header = "#pythran export {}({})\n".format(fname, ", ".join(get_arg_types(fun, self.float_precision, self.int_precision)))
-        header += "import numpy as np \n"
-        
-        output_dir = os.path.dirname(os.path.realpath(__file__))
-        output_dir = os.path.join(module_dir , '.')
-        
-        #FIXME: implement a cache here
-        module_name = "pythranized_" + fname
-        self.flags["extra_compile_args"] = ["-Os", "-march=native", "-lopenblas"]
-    
-        #FIXME: force output in tmp dir
-        module_path = pythran.compile_pythrancode(module_name, header + src, **self.flags)
-        output_path = os.path.join(output_dir, module_name + ".cpython-38-x86_64-linux-gnu.so")
-        os.rename(module_path, output_path)
-        module = imp.load_dynamic(module_name, output_path)
-
-        if not self.cache:
-            os.remove(output_path)
-        
-        return getattr(module, fun.__name__)#(*args, **kwargs)
 
 class CPUBackend(Backend):
     """
@@ -131,19 +83,15 @@ class CPUBackend(Backend):
                 signature = None
             
             if self.device == "gpu":
-                print("here")
+#                print("here")
                 return cuda.jit(nopython=True, fastmath=True, device=True, signature_or_function=signature, cache=self.cache)(func)[2,2]
              
             else:
                 if (self.multithread == 'single'):
-                    print(signature)
+                    # print(signature)
                     return nb.jit(nopython=True, fastmath=True, signature_or_function=signature, cache=self.cache)(func)
                 else:
                     return nb.jit(nopython=True, fastmath=True, parallel=True, signature_or_function=signature, cache=self.cache)(func)
-        
-        elif backend == "pythran":
-            J = Pythranjit(cache=self.cache, float_precision=self.float_precision, int_precision=self.int_precision)
-            return J(func)
         
         elif backend == "pyccel":
             
