@@ -98,3 +98,6 @@ def test_main():
   PATH = os.path.join(PATH, 'mesh', 'carre_hybrid.msh')
   meshio_mesh, domain = load(PATH, dim=2, float_precision='float32')
   main_test(domain, meshio_mesh, decimal_precision=4)
+
+if __name__ == '__main__':
+  test_main()

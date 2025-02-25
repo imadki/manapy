@@ -36,7 +36,7 @@ def Iall_to_all(w_halosend, taille, scount, rcount, w_halorecv, comm_ptr):
     w_halorecv = r_msg[0]
     
     return req
-    
+
 def prepare_comm(cells, halos):
 
     taille = 0
@@ -70,7 +70,6 @@ def prepare_comm(cells, halos):
     return scount, rcount, indsend, taille, comm_ptr
 
 def update_haloghost_info_2d(nodes, cells, halos, nbnodes, halonodes, comm_ptr, precision, mpi_precision):
-    
     ghostcenter = {}
     ghostfaceinfo = {}
     nodes._haloghostcenter = [[]  for i in range(nbnodes)]  
