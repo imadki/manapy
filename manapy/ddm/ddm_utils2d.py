@@ -4,9 +4,9 @@ from numba import njit
 
 from mpi4py import MPI
 
-comm = MPI.COMM_WORLD
-size = comm.Get_size()
-rank = comm.Get_rank()
+#comm = MPI.COMM_WORLD
+#size = comm.Get_size()
+#rank = comm.Get_rank()
 
 ###############################################################################
 def create_cellsOfFace(faceid:'int32[:,:]', nbelements:'int32', nbfaces:'int32', cellid:'int32[:,:]', maxcellfid:'int32'):
