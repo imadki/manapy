@@ -12,6 +12,7 @@ import meshio
 from mpi4py import MPI
 import numpy as np
 
+import manapy.comms as manapy_comms
 from manapy.comms          import update_haloghost_info_2d, update_haloghost_info_3d, prepare_comm
 
 from manapy.ddm.ddm_utils2d  import (create_NeighborCellByFace, create_node_cellid, create_cellsOfFace, create_NormalFacesOfCell,
@@ -129,8 +130,9 @@ class Domain():
         self.create_domain(self._comm.Get_size(), self._comm.Get_rank())
         
 
-
     def create_domain(self, size, rank):
+        manapy_comms.SIZE = size
+        manapy_comms.RANK = rank
         self._size = size
         self._rank = rank
 

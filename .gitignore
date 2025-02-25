@@ -9,6 +9,7 @@ manapy.egg-info
 __epyccel__
 .idea
 meshes*PROC
+domain_meshes*PROC
 test
 Notes
 
