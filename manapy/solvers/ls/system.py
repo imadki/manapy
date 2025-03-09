@@ -249,11 +249,7 @@ class MUMPSSolver(LinearSolver):
     
     def __init__(self, domain=None, var=None, comm=None, conf=None, **kwargs):
         
-        import manapy.solvers.ls.ls_mumps as mumps
-        
-        if not mumps.use_mpi:
-            raise AttributeError('No mpi4py found! Required by MUMPS solver.')
-        mumps.load_mumps_libraries()
+        import mumps4py.mumps_solver as mumps
         
         self.mumps = mumps
         self.mumps_ls = None
@@ -291,8 +287,8 @@ class MUMPSSolver(LinearSolver):
         if not conf.reuse_mtx:
             self.clear()
             
-        import timeit
-        ts = timeit.default_timer()
+        #import timeit
+        #ts = timeit.default_timer()
             
         self.presolve(reuse_mtx=self.conf.reuse_mtx, with_mtx=self.conf.with_mtx)
         
@@ -304,7 +300,7 @@ class MUMPSSolver(LinearSolver):
         #Allocation size of rhs
         if self.comm.Get_rank() == 0:
             self.sol = rhs.copy().astype(np.double)
-            self.mumps_ls.set_rhs(self.sol)
+            self.mumps_ls.set_rhs_centralized(self.sol)
         
         #Solution Phase
         self.mumps_ls._mumps_call(job=3)
@@ -324,30 +320,36 @@ class MUMPSSolver(LinearSolver):
     def presolve(self,reuse_mtx=False, with_mtx=False):
         if not reuse_mtx or (self.mumps_ls is None):
             self.update_ghost_values()
+            
             #assembly row, col , data, rhs(bc)
             if not with_mtx:
                 self.assembly()
             if self.conf.reordering  and self.comm.Get_size() == 1:
                 self.reordering_matrix()
             
-#            print( self._data.shape[0], self._row.shape[0], self._col.shape[0], with_mtx)
             self.rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
 
             if self.mumps_ls is None:
-                system = 'real'
+                system = 'double'
                 mem_relax = self.conf.memory_relaxation
-                self.mumps_ls = self.mumps.MumpsSolver(system=system, #is_sym=1,
-                                                       mem_relax=mem_relax,)
+                self.mumps_ls = self.mumps.MumpsSolver(verbose=False, system=system,
+                                                       mem_relax=mem_relax)
+
             if self.conf.verbose:
                 self.mumps_ls.set_verbose()
             
-#            print(self._row.shape[0], self._col.shape[0], self._data.shape[0] )
-            self.mumps_ls.set_rcd_distributed(self._row+1, self._col+1, self._data.astype(np.float64))
+            #Fortran indexing
+            self._row +=1
+            self._col +=1
+            
+            self.mumps_ls.set_rcd_distributed(self._row, self._col, 
+                                              self._data, 
+                                              self.globalsize)
+            
             self.mumps_ls.set_icntl(18,3)
             self.mumps_ls.set_icntl(16,1)
             
             if self.comm.Get_rank() == 0:
-                self.mumps_ls.struct.n = self.globalsize
                 self.sol = self.rhs00.copy()
                 
             #Analyse 
@@ -357,7 +359,7 @@ class MUMPSSolver(LinearSolver):
             
             #Allocation size of rhs
             if self.comm.Get_rank() == 0:
-                self.mumps_ls.set_rhs(self.sol)
+                self.mumps_ls.set_rhs_centralized(self.sol)
             else :
                 self.sol = np.zeros(self.globalsize, dtype=self.float_precision)                                                                                                                                                    
     
