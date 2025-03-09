@@ -34,7 +34,7 @@ except:
     BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
  
-filename = "rectangle_1K.msh"
+filename = "carre.msh"
 
 #File name
 filename = os.path.join(MESH_DIR, filename)
@@ -44,7 +44,7 @@ dim = 2
 #backend numba or python
 #signature: add types to functions (make them faster) but compilation take time
 #cache: avoid recompilation in the next run
-running_conf = Struct(backend="numba", signature=True, cache=True)#, precision="double")
+running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="double")
 mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0,0,0])
 
 #Create the informations about cells, faces and nodes
@@ -89,7 +89,7 @@ v  = Variable(domain=domain)
 P  = Variable(domain=domain)
 
 #Call the transport solver
-conf = Struct(order=2, cfl=0.8)
+conf = Struct(order=1, cfl=0.8)
 S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 
 ####Initialisation
