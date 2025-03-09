@@ -35,16 +35,6 @@ setup_args = dict(
 packages = find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"])
 # ...
 
-# Dependencies
-#install_requires = [
-#    'numpy',
-#    'meshio<4',
-#    'mpi4py',
-#    'mgmetis',
-#    'numba==0.53.0',
-#    'scipy',
-#    ]
-
 install_requires = [
     'h5py',
     'wheel',
