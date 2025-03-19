@@ -70,6 +70,7 @@ def create_partitions(mesh_file_path, float_precision, dim):
   running_conf = Struct(backend="numba", signature=True, cache=True, float_precision=float_precision)
   MeshPartition(mesh_file_path, dim=dim, conf=running_conf, periodic=[0,0,0])
   domain = Domain(dim=dim, conf=running_conf)
+
   save_tables(domain)
 
 
