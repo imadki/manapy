@@ -145,8 +145,7 @@ def update_haloghost_info_2d(nodes, cells, halos, nbnodes, halonodes, comm_ptr, 
         for i in halonodes:
             if recvbuf1.get(nodes._loctoglob[i]):
                 nodes._haloghostcenter[i].extend(recvbuf1[nodes._loctoglob[i]])
-                
-                
+
     #########################Ghost face info####################################
         sendbuf2 = []
             
@@ -211,7 +210,7 @@ def update_haloghost_info_2d(nodes, cells, halos, nbnodes, halonodes, comm_ptr, 
     for i in halonodes:
         for j in range(nodes._halonid[i][-1]):
             haloexttoind[halos._halosext[nodes._halonid[i][j]][0]] = nodes._halonid[i][j]
-    
+
     cmpt = 0
     new_vals = {}
     new_indexes = []
@@ -240,7 +239,7 @@ def update_haloghost_info_2d(nodes, cells, halos, nbnodes, halonodes, comm_ptr, 
     nodes._haloghostcenter   = np.asarray(nodes._haloghostcenter, dtype=precision)
     nodes._ghostfaceinfo     = np.asarray(nodes._ghostfaceinfo, dtype=precision)
     nodes._haloghostfaceinfo = np.asarray(nodes._haloghostfaceinfo, dtype=precision)
-    
+
     return maxsize
 
 def update_haloghost_info_3d(nodes, cells, halos, nbnodes, halonodes, comm_ptr, precision, mpi_precision):

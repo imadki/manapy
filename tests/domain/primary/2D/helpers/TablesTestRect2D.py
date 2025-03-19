@@ -1,6 +1,6 @@
 import numpy as np
 
-class TestTablesRect2D:
+class TablesTestRect2D:
   def __init__(self, float_precision, d_cell_loctoglob, g_cell_nodeid):
     """
     d_cell_loctoglob: loctoglob of the local domain
@@ -58,7 +58,7 @@ class TestTablesRect2D:
     self.l_node_cellid = np.ones(shape=(self.nb_cells, 4, 5), dtype=np.int32) * -1
     self.node_halonid = np.ones(shape=(self.nb_cells, 4, 5), dtype=np.int32) * -1
     self.g_node_name = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
-    self.l_node_name = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
+    self.l_node_name = np.ones(shape=self.nb_nodes, dtype=np.int32) * -1
 
     self.ghost_info = np.ones(shape=(self.nb_ghosts, 6), dtype=float_precision) * -1
     self.g_cell_ghostnid = np.ones(shape=(self.nb_cells, 5), dtype=np.int32) * -1
@@ -67,7 +67,7 @@ class TestTablesRect2D:
     self.face_ghostid = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
     self.g_node_ghostid = np.ones(shape=(self.nb_nodes, 3), dtype=np.int32) * -1
     self.l_node_ghostid = np.ones(shape=(self.nb_cells, 4, 3), dtype=np.int32) * -1
-    self.node_haloghostid = np.ones(shape=(self.nb_cells, 4, 2), dtype=np.int32) * -1
+    self.node_haloghostid = np.ones(shape=(self.nb_cells, 4, 3), dtype=np.int32) * -1
 
     self.halo_halosint = np.array([], np.int32)
     self.halo_neigh = np.zeros(shape=(self.nb_partitions, self.nb_partitions), dtype=np.int32)
@@ -135,11 +135,11 @@ class TestTablesRect2D:
 
       self.face_normal[i] = normal
 
-  def _set_face_ghostcenter(self, ghost_id, face_ghostid):
+  def _set_face_ghostcenter(self, ghost_info, face_ghostid):
     for i in range(self.nb_cells):
       for j in range(4):
         if face_ghostid[i, j] != -1:
-          self.face_ghostcenter[i][j][:] = ghost_id[face_ghostid[i, j]][0:3]
+          self.face_ghostcenter[i][j][:] = ghost_info[face_ghostid[i, j]][0:3]
         else:
           self.face_ghostcenter[i][j][:] = -1
 
@@ -226,8 +226,8 @@ class TestTablesRect2D:
     width = self.width
     cmp = 0
     for sq_id in range(self.nb_cells):
-      sq_id_x = sq_id // self.width
-      sq_id_y = sq_id % self.width
+      sq_id_x = sq_id // width
+      sq_id_y = sq_id % width
       cell_center = np.array([
         sq_id_x * x_length + x_length * 0.5,
         sq_id_y * y_length + y_length * 0.5
@@ -285,9 +285,9 @@ class TestTablesRect2D:
         self.node_haloghostid[cell_id, i, 0:len(arr)] = arr[:]
         self.node_haloghostid[cell_id, i, -1] = len(arr)
 
-  def _set_g_cell_ghostnid(self, node_ghostid, g_cell_nodeid):
+  def _set_g_cell_ghostnid(self, g_node_ghostid, g_cell_nodeid):
     for cell_id in range(self.nb_cells):
-      res = (node_ghostid[g_cell_nodeid[cell_id][0:4]][:, 0:-1]).flatten()
+      res = (g_node_ghostid[g_cell_nodeid[cell_id][0:4]][:, 0:-1]).flatten()
       res = np.unique(res[res != -1])
       self.g_cell_ghostnid[cell_id, 0:len(res)] = res[:]
       self.g_cell_ghostnid[cell_id, -1] = len(res)
@@ -373,16 +373,30 @@ class TestTablesRect2D:
 
       self.g_node_name[sq_id] = name
 
-      # TODO local name
-      # for i in range(0, 4):
-      #   face_cellid = g_face_cellid[sq_id][i]
-      #   if face_cellid[0] != -1 and face_cellid[1] != -1:
-      #     cell_1_partition = cell_which_partition[face_cellid[0]]
-      #     cell_2_partition = cell_which_partition[face_cellid[1]]
-      #     if cell_1_partition != cell_2_partition:
-      #       name[i] = 10
-      #
-      # self.l_face_name[sq_id] = name
+  def _set_node_name(self, g_node_name, l_face_name, g_cell_nodeid):
+    for sq_id in range(self.nb_cells):
+      name = g_node_name[sq_id].copy()
+
+      cell_nodes = g_cell_nodeid[sq_id]
+      cell_nodes = cell_nodes[0:cell_nodes[-1]]
+      face_nodes = np.array([
+          [0, 1],
+          [1, 2],
+          [2, 3],
+          [3, 0]
+      ])
+      for face_id in range(0, 4):
+        face_name = l_face_name[sq_id][face_id]
+        for node_id in range(2):
+          l_node_id = face_nodes[face_id][node_id]
+          g_node_id = cell_nodes[l_node_id]
+          if face_name == 10:
+            self.l_node_name[g_node_id] = face_name
+          if self.l_node_name[g_node_id] == -1:
+            self.l_node_name[g_node_id] = name[l_node_id]
+
+
+
 
   ###################
   ## Halo Info
@@ -414,11 +428,14 @@ class TestTablesRect2D:
         self.halo_neigh[p][j] = np.sum(cell_which_partition[tmp] == j) #ext that belong to partition j
 
   def _set_halo_sizehaloghost(self, node_haloghostid, cell_which_partition):
-    a = node_haloghostid[:, :, -1]
+    a = node_haloghostid[:, :, 0:-1]
+    haloghost_cells = [[] for i in range(self.nb_partitions)]
     for i in range(len(a)):
-      if np.any(a[i] > 0):
-        p = cell_which_partition[i]
-        self.halo_sizehaloghost[p] += np.sum(a[i] > 0)
+      b = a[i][a[i] > 0]
+      p = cell_which_partition[i]
+      haloghost_cells[p].extend(b)
+    for p in range(self.nb_partitions):
+      self.halo_sizehaloghost[p] = len(np.unique(haloghost_cells[p]))
 
   ###################
   ## Cell Info
@@ -581,6 +598,7 @@ class TestTablesRect2D:
     self._set_l_node_cellid(self.g_cell_nodeid, self.g_node_cellid, self.cell_which_partition)
     self._set_node_halonid(self.g_cell_nodeid, self.g_node_cellid, self.cell_which_partition)
     self._set_node_oldname()
+    self._set_node_name(self.g_node_name, self.l_face_name, self.g_cell_nodeid)
     self._set_l_node_ghostid(self.ghost_info, self.g_node_ghostid, self.g_cell_nodeid, self.cell_which_partition)
     self._set_node_haloghostid(self.ghost_info, self.g_node_ghostid, self.g_cell_nodeid, self.cell_which_partition)
 
