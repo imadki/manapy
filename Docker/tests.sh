@@ -3,7 +3,7 @@
 #tail -f
 set -e
 
-python3 -m pytest --color=yes -s
+python3 -m pytest
 
 pushd tests
 mpirun --allow-run-as-root --use-hwthread-cpus -n 2 python3 mpi_test.py

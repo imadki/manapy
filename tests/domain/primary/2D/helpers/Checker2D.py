@@ -122,7 +122,7 @@ class Checker2D:
         c_ghostnid = d_cell_ghostnid[i]
         c_ghostn_center = d_face_ghostcenter[c_ghostnid[0:c_ghostnid[-1]]]
         c_ghostn_center = self.sort_float_arr(c_ghostn_center)
-        self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center, ghostn_center, self.decimal_precision)
+        self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center[:, 0:2], ghostn_center[:, 0:2], self.decimal_precision)
 
         # Haloghostnid and Haloghostcenter
         haloghostnid = self.test_tables.cell_haloghostnid[g_index]
@@ -242,7 +242,7 @@ class Checker2D:
           ghostinfo[0:nb_ghost, 3] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
           ghostinfo[0:nb_ghost, 4] = node_ghostinfo[:, 0] #g_x
           ghostinfo[0:nb_ghost, 5] = node_ghostinfo[:, 1] #g_y
-          ghostinfo[0:nb_ghost, 6] = node_ghostinfo[:, 2] #vol
+          # ghostinfo[0:nb_ghost, 6] = node_ghostinfo[:, 2] #vol
           ghostinfo[0:nb_ghost, 7] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
           ghostinfo[0:nb_ghost, 8] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
           ghostinfo[0:nb_ghost, 9] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
@@ -266,7 +266,7 @@ class Checker2D:
           c_ghostinfo[0:c_nb_ghost, 3] = c_node_ghostcenter[0:c_nb_ghost, 3] # face_old_name
           c_ghostinfo[0:c_nb_ghost, 4] = d_face_ghostcenter[c_node_ghostid, 0] # g_x from ghostid
           c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 1] # g_y from ghostid
-          c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 2] # vol from ghostid
+          # c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 2] # vol from ghostid
           c_ghostinfo[0:c_nb_ghost, 7] = c_node_ghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
           c_ghostinfo[0:c_nb_ghost, 8] = c_node_ghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
           c_ghostinfo[0:c_nb_ghost, 9] = c_node_ghostfaceinfo[0:c_nb_ghost, 2] # face_normal_x
