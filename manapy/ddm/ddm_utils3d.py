@@ -672,43 +672,41 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
         tangentf[i][:] = tangent[:]
         
         
-@njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
-def split_to_tetra(vertices, tetrahedra):
-    center = np.zeros(3)
-    lv = vertices.shape[0]
+# @njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
+# def split_to_tetra(vertices, tetrahedra):
+#     center = np.zeros(3)
+#     lv = vertices.shape[0]
+    
+#     center[0] = sum(vertices[:,0])/lv
+#     center[1] = sum(vertices[:,1])/lv
+#     center[2] = sum(vertices[:,2])/lv
+    
+#     for i in range(lv):
+#         tetrahedra[i][0] = vertices[i]
+#         tetrahedra[i][1] = vertices[(i + 1) % lv]
+#         tetrahedra[i][2] = vertices[(i + 2) % lv]
+#         tetrahedra[i][3] = center
 
-    center[0] = sum(vertices[:,0])/lv
-    center[1] = sum(vertices[:,1])/lv
-    center[2] = sum(vertices[:,2])/lv
-
-    for i in range(lv):
-        tetrahedra[i][0] = vertices[i]
-        tetrahedra[i][1] = vertices[(i + 1) % lv]
-        tetrahedra[i][2] = vertices[(i + 2) % lv]
-        tetrahedra[i][3] = center
-
-
-
-
-
-def Compute_3dcentervolumeOfCell(nodeid: 'uint32[:,:]', vertex: 'float[:,:]', nbcells: 'int32',
-                                 center: 'float[:,:]', volume: 'float[:]'):
+def Compute_3dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbcells:'int32',
+                                 center:'float[:,:]', volume:'float[:]'):
+    
     wedge = np.zeros(3)
     u = np.zeros(3)
     v = np.zeros(3)
     w = np.zeros(3)
 
+
     # Temporary storage for vertices and tetrahedra
     vertices = np.zeros((8, 3))
     tetrahedra = np.zeros((8, 4, 3))
-
+    
     # Process each cell
     for i in range(nbcells):
         n_vertices = nodeid[i][-1]  # Get the number of vertices in the current cell
 
         # Extract vertices for the current cell
         cell_indices = nodeid[i][:n_vertices]
-        vertices[:n_vertices, :] = vertex[cell_indices, :3]  # 3 is of x,y,z
+        vertices[:n_vertices, :] = vertex[cell_indices, :3] #3 is of x,y,z
 
         # Compute barycenter manually
         center[i] = 0.0
@@ -723,36 +721,36 @@ def Compute_3dcentervolumeOfCell(nodeid: 'uint32[:,:]', vertex: 'float[:,:]', nb
             u = vertices[1] - vertices[0]
             v = vertices[2] - vertices[0]
             w = vertices[3] - vertices[0]
-
+            
             # Compute cross product
             wedge = np.cross(v, w)
-
+            
             # Volume using scalar triple product
             volume[i] = np.abs(np.dot(u, wedge)) / 6.0
 
         elif n_vertices == 8:  # Hexahedron
-
+        
             # Split the hexahedron into 6 tetrahedra
             splitting_rules = np.array([
                 [0, 1, 3, 4], [1, 3, 4, 5],
                 [4, 5, 3, 7], [1, 3, 5, 2],
                 [3, 7, 5, 2], [5, 7, 6, 2]
             ])
-
+            
             for t_idx, t_rule in enumerate(splitting_rules):
                 tetrahedra[t_idx] = vertices[t_rule]
-
+            
             # Compute volume for each tetrahedron
             for tetrahedron in tetrahedra[:6]:
                 u = tetrahedron[1] - tetrahedron[0]
                 v = tetrahedron[2] - tetrahedron[0]
                 w = tetrahedron[3] - tetrahedron[0]
-
+                
                 wedge = np.cross(v, w)
                 volume[i] += np.abs(np.dot(u, wedge)) / 6.0
 
         elif n_vertices == 5:  # Pyramid
-
+            
             # Split the pyramid into 4 tetrahedra
             splitting_rules = np.array([
                 [0, 1, 2, 4],  # First tetra
@@ -760,15 +758,15 @@ def Compute_3dcentervolumeOfCell(nodeid: 'uint32[:,:]', vertex: 'float[:,:]', nb
             ])
             for t_idx, t_rule in enumerate(splitting_rules):
                 tetrahedra[t_idx] = vertices[t_rule]
-
+            
             # Compute volume for each tetrahedron
-            for tetrahedron in tetrahedra[:4]:
+            for tetrahedron in tetrahedra[:2]:
                 u = tetrahedron[1] - tetrahedron[0]
                 v = tetrahedron[2] - tetrahedron[0]
                 w = tetrahedron[3] - tetrahedron[0]
                 wedge = np.cross(v, w)
                 volume[i] += np.abs(np.dot(u, wedge)) / 6.0
-
+    
 def create_3dfaces(nodeidc:'uint32[:,:]', nbelements:'int32', faces:'int32[:,:]',
                    cellf:'int32[:,:]'):
     

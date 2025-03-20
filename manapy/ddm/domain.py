@@ -12,7 +12,6 @@ import meshio
 from mpi4py import MPI
 import numpy as np
 
-import manapy.comms as manapy_comms
 from manapy.comms          import update_haloghost_info_2d, update_haloghost_info_3d, prepare_comm
 
 from manapy.ddm.ddm_utils2d  import (create_NeighborCellByFace, create_node_cellid, create_cellsOfFace, create_NormalFacesOfCell,
@@ -125,28 +124,25 @@ class Domain():
         
         self._comm = comm
         self._dim  = np.int32(dim)
-
-
+        
         self.create_domain(self._comm.Get_size(), self._comm.Get_rank())
         
-
     def create_domain(self, size, rank):
-        manapy_comms.SIZE = size
-        manapy_comms.RANK = rank
-        self._size = size
-        self._rank = rank
-
+        
+        self._size = self._comm.Get_size()
+        self._rank = self._comm.Get_rank()
+        
         if self._rank == 0:
-            print("Local domain contruction ...")
-
+             print("Local domain contruction ...")
+        
         self._nodes = Node()
         self._cells = Cell()
         self._faces = Face()
         self._halos = Halo()
-
+        
         self._setup_vtkpath()
         self._remove_existing_vtk_files()
-
+        
         self._read_partition()
         self._define_bounds()
         self._compute_cells_info()
@@ -161,7 +157,7 @@ class Domain():
         self._update_periodic_boudaries()
         self._update_haloghost()
         self._compute_diamondCell_info()
-        self._compute_orthocenter()  # Only in 2D
+        self._compute_orthocenter() #Only in 2D
         
     def _setup_vtkpath(self):
         """
@@ -191,7 +187,6 @@ class Domain():
         """
         read the hdf5 partition file
         """
-
         #read nodes.vertex, cells.tc, cells.nodeid
         self._cells._tc, \
         self._cells._nodeid, \
@@ -805,14 +800,10 @@ class Domain():
         points = self._nodes._vertex[:, :3]
         
         nvalues=len(values)
-        data_bis={}
-        for k in range(0,nvalues):
-            data_bis[variables[k]]=values[k]
         
-        data = {}
-        for k in range(0,nvalues):
-            data[variables[k]]=data_bis
-            
+        # data
+        data = {variables[k]: [values[k]] for k in range(nvalues)}
+        
         maxw = max(values[0])
         
         integral_maxw = np.zeros(1, dtype=self.float_precision)
