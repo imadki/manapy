@@ -110,8 +110,9 @@ class LinearSolver():
         self.globalsize = self.comm.allreduce(self.localsize, op=MPI.SUM)
         self.domain.globalsize = self.globalsize
         
-        
-        self.sendcounts1 = np.array(self.comm.gather(self.localsize, root=0), dtype=self.float_precision)
+        self.sendcounts1 = self.comm.gather(self.localsize, root=0)
+        if comm.Get_rank() == 0:
+            self.sendcounts1 = np.array(self.sendcounts1, dtype=np.int32)
         self.x1converted = np.zeros(self.globalsize, dtype=self.float_precision)
         
         self.domain.Pbordnode = np.zeros(self.domain.nbnodes, dtype=self.float_precision)
@@ -248,11 +249,7 @@ class MUMPSSolver(LinearSolver):
     
     def __init__(self, domain=None, var=None, comm=None, conf=None, **kwargs):
         
-        import manapy.solvers.ls.ls_mumps as mumps
-        
-        if not mumps.use_mpi:
-            raise AttributeError('No mpi4py found! Required by MUMPS solver.')
-        mumps.load_mumps_libraries()
+        import mumps4py.mumps_solver as mumps
         
         self.mumps = mumps
         self.mumps_ls = None
@@ -290,8 +287,8 @@ class MUMPSSolver(LinearSolver):
         if not conf.reuse_mtx:
             self.clear()
             
-        import timeit
-        ts = timeit.default_timer()
+        #import timeit
+        #ts = timeit.default_timer()
             
         self.presolve(reuse_mtx=self.conf.reuse_mtx, with_mtx=self.conf.with_mtx)
         
@@ -303,14 +300,12 @@ class MUMPSSolver(LinearSolver):
         #Allocation size of rhs
         if self.comm.Get_rank() == 0:
             self.sol = rhs.copy().astype(np.double)
-            self.mumps_ls.set_rhs(self.sol)
+            self.mumps_ls.set_rhs_centralized(self.sol)
         
-        
-
         #Solution Phase
         self.mumps_ls._mumps_call(job=3)
         
-        print("solving time", timeit.default_timer() - ts)
+        #print("solving time", timeit.default_timer() - ts)
         
         if self.conf.reordering and self.comm.Get_size() == 1:
             self.sol = self.sol[np.argsort(self.perm)]
@@ -318,36 +313,43 @@ class MUMPSSolver(LinearSolver):
         if self.comm.Get_rank() == 0:
             #Convert solution for scattering
             self.convert_solution(self.sol.astype(self.float_precision), self.x1converted, self.domain.cells.tc, self.globalsize)
-        self.comm.Scatterv([self.x1converted, self.sendcounts1, self.mpi_precision], self.var.cell, root = 0)
+
+        self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision], recvbuf=self.var.cell,
+                           root = 0)
         
     def presolve(self,reuse_mtx=False, with_mtx=False):
         if not reuse_mtx or (self.mumps_ls is None):
             self.update_ghost_values()
+            
             #assembly row, col , data, rhs(bc)
             if not with_mtx:
                 self.assembly()
             if self.conf.reordering  and self.comm.Get_size() == 1:
                 self.reordering_matrix()
             
-#            print( self._data.shape[0], self._row.shape[0], self._col.shape[0], with_mtx)
             self.rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
 
             if self.mumps_ls is None:
-                system = 'real'
+                system = 'double'
                 mem_relax = self.conf.memory_relaxation
-                self.mumps_ls = self.mumps.MumpsSolver(system=system, #is_sym=1,
-                                                       mem_relax=mem_relax,)
+                self.mumps_ls = self.mumps.MumpsSolver(verbose=False, system=system,
+                                                       mem_relax=mem_relax)
+
             if self.conf.verbose:
                 self.mumps_ls.set_verbose()
             
-#            print(self._row.shape[0], self._col.shape[0], self._data.shape[0] )
-            self.mumps_ls.set_rcd_distributed(self._row+1, self._col+1, self._data.astype(np.float64))
+            #Fortran indexing
+            self._row +=1
+            self._col +=1
+            
+            self.mumps_ls.set_rcd_distributed(self._row, self._col, 
+                                              self._data, 
+                                              self.globalsize)
+            
             self.mumps_ls.set_icntl(18,3)
-            #self.ctx.set_icntl(28,2)
-            #self.ctx.set_icntl(16,2)
+            self.mumps_ls.set_icntl(16,1)
             
             if self.comm.Get_rank() == 0:
-                self.mumps_ls.struct.n = self.globalsize
                 self.sol = self.rhs00.copy()
                 
             #Analyse 
@@ -357,7 +359,7 @@ class MUMPSSolver(LinearSolver):
             
             #Allocation size of rhs
             if self.comm.Get_rank() == 0:
-                self.mumps_ls.set_rhs(self.sol)
+                self.mumps_ls.set_rhs_centralized(self.sol)
             else :
                 self.sol = np.zeros(self.globalsize, dtype=self.float_precision)                                                                                                                                                    
     
@@ -404,16 +406,17 @@ class PETScKrylovSolver(LinearSolver):
         try_imports(['import petsc4py',],
                     'cannot import petsc4py solver!')
         
-        from petsc4py import PETSc as petsc
-#        import petsc4py
-#        import sys
-#        petsc4py.init(sys.argv)
+        import petsc4py
+        import sys
+        petsc4py.init(sys.argv)
         
-        self.petsc = petsc
+        from petsc4py import PETSc
+
+        self.petsc = PETSc
         self.ksp   = None
         
         self.converged_reasons = {}                                                                                                                                                                             
-        for key, val in six.iteritems(petsc.KSP.ConvergedReason.__dict__):                                                                                                                                 
+        for key, val in six.iteritems(PETSc.KSP.ConvergedReason.__dict__):                                                                                                                                 
             if isinstance(val, int):                                                                                                                                                                       
                 self.converged_reasons[val] = key               
         
@@ -432,7 +435,7 @@ class PETScKrylovSolver(LinearSolver):
         self.var = var
         self._domain.solver = "petsc"
         
-        self.rhs0 = np.zeros(self.globalsize, dtype=self.float_precision)
+        self.rhs0 = np.zeros(self.localsize, dtype=self.float_precision)
         
         if self._dim == 2:
             self._get_rhs_loc = get_rhs_loc_2d
@@ -481,13 +484,18 @@ class PETScKrylovSolver(LinearSolver):
         self.comm.Scatterv([self.x1converted, self.sendcounts1, self.mpi_precision], self.var.cell, root = 0)
         
     def create_ksp(self, options=None, comm=None):
+        
         optDB = self.petsc.Options()
         
+        #MPI compatibility with CUDA
+        optDB['use_gpu_aware_mpi'] = 0
+
         optDB['sub_pc_type'] = self.conf.sub_precond
+        
         if options is not None:
             for key, val in six.iteritems(options):
                 optDB[key] = val
-        
+                
         self.ksp = self.petsc.KSP()
         self.ksp.create(comm)
 
@@ -503,11 +511,12 @@ class PETScKrylovSolver(LinearSolver):
             pc.setFactorSolverType(self.conf.factor_solver)
         
         self.ksp.setFromOptions()
-    
+        
     def update_rhs(self, rhs=None):
         self.rhs = self.mat.getVecLeft()
         for i in range(self.domain.nbcells):
                 self.rhs.setValues(self.domain.cells.loctoglob[i], self.rhs0[i]+rhs[i])
+        
         
         self.rhs.assemblyBegin()
         self.rhs.assemblyEnd()
@@ -540,7 +549,8 @@ class PETScKrylovSolver(LinearSolver):
             ###################################################################
             #non zero values for each rows
             NNZ_loc = np.zeros(self.globalsize, dtype=np.int32)
-            unique, counts = np.unique(np.asarray(self._row, dtype=np.int32), return_counts=True)
+            unique, counts = np.unique(np.asarray(self._row, dtype=np.int32), 
+                                       return_counts=True)
             
             for i in range(self.domain.nbcells):
                 NNZ_loc[self.domain.cells.loctoglob[i]] = counts[i]
@@ -554,7 +564,7 @@ class PETScKrylovSolver(LinearSolver):
             self.mat.setSizes(self.globalsize)
             self.mat.setType("mpiaij")
             self.mat.setFromOptions()
-            self.mat.setPreallocationNNZ(self.NNZ)
+            self.mat.setPreallocationNNZ(max(self.NNZ))
             self.mat.setOption(option=19, flag=0)
             
             

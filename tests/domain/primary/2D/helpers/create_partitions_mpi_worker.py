@@ -78,7 +78,7 @@ if len(sys.argv) == 4:
   mesh_file_path = sys.argv[1]
   float_precision = sys.argv[2]
   dim = int(sys.argv[3])
-  if (float_precision == 'float32' or float_precision == 'float64') and (dim == 2 or dim == 2):
+  if (float_precision == 'float32' or float_precision == 'float64') and (dim == 2 or dim == 3):
     print("path", mesh_file_path, "precision", float_precision, "dim", dim, "rank", rank)
     create_partitions(mesh_file_path, float_precision, dim)
   else:

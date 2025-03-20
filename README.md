@@ -1,6 +1,3 @@
-[![Build Status](https://travis-ci.org/pyccel/manapy.svg?branch=master)](https://travis-ci.org/pyccel/manapy)
-
-
 **MANAPY** is a Python 3 Library for Finite Volume using unstructured grids.
 
 ## Requirements
@@ -46,10 +43,12 @@ python3 -m pytest  manapy -m "not parallel"
 
 To use Mumps solver
 
+- Install mumps libraries
 ```sh
 sudo apt install libmumps-ptscotch-dev
 ```
 
+- Install mumps4py from https://github.com/imadki/mumps4py
 
 To use petsc4py solver
 

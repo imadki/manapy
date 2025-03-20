@@ -64,14 +64,14 @@ canvas.bind("<Configure>", lambda event: on_canvas_configure(event, canvas, scro
 
 
 colors = ["red", "blue", "green", "orange", "purple", "yellow", "magenta", "black", "gray", "white", "black"]
-SIZE = 1
+SIZE = 0
 
 def draw_rec(center_x, center_y, width, height, k, yOffset):
   # Calculate the coordinates of the top-left and bottom-right corners
-  center_x = center_x * 50 + 100
-  center_y = center_y * 50 + yOffset
-  width *= 50
-  height *= 50
+  center_x = center_x * 100 + 200
+  center_y = center_y * 100 + yOffset
+  width *= 100
+  height *= 100
   top_left_x = center_x - width // 2
   top_left_y = center_y - height // 2
   bottom_right_x = center_x + width // 2
@@ -145,11 +145,11 @@ def show_partition():
 
     for i in range(len(cells)):
       p = d_cell_center[i] * 2
-      draw_rec(p[0], p[1], 2, 1, k, 50)
+      draw_rec(p[0], p[1], 2, 1, k, 100)
 
     for i in range(len(d_cell_center)):
       p = d_cell_center[i] * 2
-      draw_rec(p[0], p[1], 0.5, 0.5, 10, 50)
+      draw_rec(p[0], p[1], 0.5, 0.5, 10, 100)
       ft_put_item(p[0], p[1], k, 9, -1, 50)
 
 def show_face():

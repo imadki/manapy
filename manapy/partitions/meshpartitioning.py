@@ -159,8 +159,16 @@ class MeshPartition():
         
     def _readgmsh(self):
         import meshio
+        MESHIO_VERSION = int(meshio.__version__.split(".")[0])
         #load mesh
         self._mesh = meshio.read(self._filename)
+        
+        #check meshio version
+        if MESHIO_VERSION < 4:
+            cells = self._mesh.cells  # Convertir en dict pour compatibilité
+        else:
+            cells = self._mesh.cells_dict  # Accès direct à cells_dict
+        
         self._nbnodes = len(self._mesh.points)
         
         #coordinates x, y of each node
@@ -174,9 +182,9 @@ class MeshPartition():
         self._elemetis = defaultdict(list)
         cmpt = 0
         for i in self._etypes[self._dim]:
-            if i in self._mesh.cells.keys():
-                self._elements["ele"+str(cmpt)] = self._mesh.cells[i].astype(self.int_precision)
-                self._elemetis["ele"+str(cmpt)] = self._mesh.cells[i].astype(self.int_precision)
+            if i in cells.keys():
+                self._elements["ele"+str(cmpt)] = cells[i].astype(self.int_precision)
+                self._elemetis["ele"+str(cmpt)] = cells[i].astype(self.int_precision)
                 cmpt += 1
             else:
                 self._elements["ele"+str(cmpt)] = np.zeros((1,1), dtype=self.int_precision)
@@ -184,7 +192,6 @@ class MeshPartition():
                 
         if self._dim == 2:   self._convert_args = [self._elements["ele0"], self._elements["ele1"]]
         elif self._dim == 3: self._convert_args = [self._elements["ele0"], self._elements["ele1"], self._elements["ele2"]]
-            
         
     def _make_partition(self):
         from mgmetis import metis
@@ -228,7 +235,6 @@ class MeshPartition():
         self._halointlen = compute_halocell(self._halo_cellid, self._cpart, self._cell_nodeid, 
                                             self._vertices, self._neighsub, self._size, self._dim, 
                                             self.float_precision)
-        
     def _savemesh(self):
         
         import h5py

@@ -137,3 +137,5 @@ def haloghost_value_nonslip(w_halo:'float[:]', w_haloghost:'float[:]', haloghost
 #                    u_g = u_i*(s_n[1]*s_n[1] - s_n[0]*s_n[0]) - 2.0*v_i*s_n[0]*s_n[1]
 #                        
 #                    w_haloghost[i] = u_halo[cellghost] * u_g
+
+
