@@ -535,13 +535,17 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
     snorm  = np.zeros(3)
     u      = np.zeros(3)
     v      = np.zeros(3)
-    tangent      = np.zeros(3)
-    binormal      = np.zeros(3)    
     
     for i in range(nbfaces):
              
         if nodeid[i][-1] == 3:
             centerf[i][:] = 1./3 * (vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3])
+            # Triangle
+            u[:] = vertex[nodeid[i][1]][0:3] - vertex[nodeid[i][0]][0:3]
+            v[:] = vertex[nodeid[i][2]][0:3] - vertex[nodeid[i][0]][0:3]
+            norm[:] = 0.5 * np.cross(u, v)  # Vecteur aire
+            mesuref[i] = np.sqrt(norm[0]**2 + norm[1]**2 + norm[2]**2)  # Aire du triangle
+            
             if (cellid[i][1] == -1 ):      
                 if namen[nodeid[i][0]] == namen[nodeid[i][1]] and namen[nodeid[i][0]] == namen[nodeid[i][2]] :
                     namef[i] = namen[nodeid[i][0]]
@@ -591,6 +595,23 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
                     
         elif nodeid[i][-1] == 4:
             centerf[i][:] = 1./4 * (vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3] + vertex[nodeid[i][3]][:3])
+            
+            # Quadrilatère : division en deux triangles (0-1-2 et 0-2-3)
+            u[:] = vertex[nodeid[i][1]][0:3] - vertex[nodeid[i][0]][0:3]
+            v[:] = vertex[nodeid[i][2]][0:3] - vertex[nodeid[i][0]][0:3]
+            area1 = 0.5 * np.cross(u, v)  # Vecteur aire triangle 0-1-2
+            # u[:] = vertex[nodeid[i][2]][0:3] - vertex[nodeid[i][0]][0:3]
+            # v[:] = vertex[nodeid[i][3]][0:3] - vertex[nodeid[i][0]][0:3]
+            area2 = area1#0.5 * np.cross(u, v)  # Vecteur aire triangle 0-2-3
+            
+            # Normale comme somme des vecteurs aire
+            norm[:] = area1 + area2 #TODO
+            
+            # Mesure comme somme des aires des triangles
+            area1_magnitude = np.sqrt(area1[0]**2 + area1[1]**2 + area1[2]**2)
+            area2_magnitude = np.sqrt(area2[0]**2 + area2[1]**2 + area2[2]**2)
+            mesuref[i] = area1_magnitude + area2_magnitude
+            
             if (cellid[i][1] == -1 ):          
                 if (namen[nodeid[i][0]] == namen[nodeid[i][1]] and namen[nodeid[i][0]] == namen[nodeid[i][2]] and
                     namen[nodeid[i][0]] == namen[nodeid[i][3]]) :
@@ -646,19 +667,8 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
                     namef[i] = 44
                 else:
                     namef[i] = 200
-              
-        u[:] = vertex[nodeid[i][1]][0:3]-vertex[nodeid[i][0]][0:3]
-        v[:] = vertex[nodeid[i][2]][0:3]-vertex[nodeid[i][0]][0:3]
-        
-        norm[0] = 0.5*(u[1]*v[2] - u[2]*v[1])
-        norm[1] = 0.5*(u[2]*v[0] - u[0]*v[2])
-        norm[2] = 0.5*(u[0]*v[1] - u[1]*v[0])
-    
-        tangent[:]=u[:]
-        
-        binormal[0] = 0.5*(u[1]*norm[2] - u[2]*norm[1])
-        binormal[1] = 0.5*(u[2]*norm[0] - u[0]*norm[2])
-        binormal[2] = 0.5*(u[0]*norm[1] - u[1]*norm[0])
+                      
+       
                 
         snorm[:] = centerc[cellid[i][0]][:] - centerf[i][:]
     
@@ -667,26 +677,12 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
         else:
             normalf[i][:] = norm[:]
     
-        mesuref[i] = np.sqrt(normalf[i][0]**2 + normalf[i][1]**2 + normalf[i][2]**2)
-        binormalf[i][:] = binormal[:]
-        tangentf[i][:] = tangent[:]
+        # Calcul du binormal
+        u[:] = vertex[nodeid[i][1]][0:3] - vertex[nodeid[i][0]][0:3]
+        tangentf[:]=u[:]
+        binormalf[i][:] = 0.5 * np.cross(u, normalf[i])
         
         
-# @njit("void(float64[:,:], float64[:,:,:])", fastmath=True)
-# def split_to_tetra(vertices, tetrahedra):
-#     center = np.zeros(3)
-#     lv = vertices.shape[0]
-    
-#     center[0] = sum(vertices[:,0])/lv
-#     center[1] = sum(vertices[:,1])/lv
-#     center[2] = sum(vertices[:,2])/lv
-    
-#     for i in range(lv):
-#         tetrahedra[i][0] = vertices[i]
-#         tetrahedra[i][1] = vertices[(i + 1) % lv]
-#         tetrahedra[i][2] = vertices[(i + 2) % lv]
-#         tetrahedra[i][3] = center
-
 def Compute_3dcentervolumeOfCell(nodeid:'uint32[:,:]', vertex:'float[:,:]', nbcells:'int32',
                                  center:'float[:,:]', volume:'float[:]'):
     
