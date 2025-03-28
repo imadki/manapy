@@ -93,7 +93,7 @@ class LinearSolver():
         self.conf = new_conf
         get = make_get_conf(self.conf, kwargs)
         
-        scheme = get("scheme")
+        self.scheme = scheme = get("scheme")
         self.verbose = get("verbose")
         
         self.var    = var
@@ -157,7 +157,7 @@ class LinearSolver():
             self._col = np.zeros(self.dataSize, dtype=np.int32)
             self._data = np.zeros(self.dataSize, dtype=self.float_precision)
             
-            self.convert_solution = self.backend.compile(convert_solution, signature=self.signature)
+        self.convert_solution = self.backend.compile(convert_solution, signature=self.signature)
     
     def assembly(self):
         self._get_triplet(self.domain.faces.cellid, self.domain.faces.nodeid, self.domain.nodes.vertex, self.domain.faces.halofid, 
@@ -240,6 +240,8 @@ class MUMPSSolver(LinearSolver):
          'If True, pre-factorize the matrix.'),
         ('with_mtx', 'bool', False, True,
          'If True, the matrix should be given.'),
+        ('system', "str", "double", "double", 
+         'Mumps precision'),
         ('memory_relaxation', 'int', 20, False,
          'The percentage increase in the estimated working space.'),
          ('verbose', 'bool', False, False,
@@ -265,6 +267,8 @@ class MUMPSSolver(LinearSolver):
         LinearSolver.__init__(self, domain=domain, var=var, conf=conf, **kwargs)
         
         self._domain = domain
+        self.system  = self.conf.system
+        
         self._dim = self._domain.dim
         self.var = var
         self._domain.solver = "mumps"
@@ -278,7 +282,8 @@ class MUMPSSolver(LinearSolver):
 
         #compile functions
         self._get_rhs = self.backend.compile(self._get_rhs_glob, signature=self.signature)
-        self._get_triplet = self.backend.compile(self._get_triplet, signature=self.signature)
+        if self.system == "diamond":
+            self._get_triplet = self.backend.compile(self._get_triplet, signature=self.signature)
         self._compute_P_gradient = self.backend.compile(self._compute_P_gradient, signature=self.signature)
     
     @standard_call
@@ -299,7 +304,7 @@ class MUMPSSolver(LinearSolver):
         
         #Allocation size of rhs
         if self.comm.Get_rank() == 0:
-            self.sol = rhs.copy().astype(np.double)
+            self.sol = rhs.copy()
             self.mumps_ls.set_rhs_centralized(self.sol)
         
         #Solution Phase
@@ -312,7 +317,7 @@ class MUMPSSolver(LinearSolver):
         
         if self.comm.Get_rank() == 0:
             #Convert solution for scattering
-            self.convert_solution(self.sol.astype(self.float_precision), self.x1converted, self.domain.cells.tc, self.globalsize)
+            self.convert_solution(self.sol, self.x1converted, self.domain.cells.tc, self.globalsize)
 
         self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision], recvbuf=self.var.cell,
                            root = 0)
@@ -330,9 +335,8 @@ class MUMPSSolver(LinearSolver):
             self.rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
 
             if self.mumps_ls is None:
-                system = 'double'
                 mem_relax = self.conf.memory_relaxation
-                self.mumps_ls = self.mumps.MumpsSolver(verbose=False, system=system,
+                self.mumps_ls = self.mumps.MumpsSolver(verbose=False, system=self.system,
                                                        mem_relax=mem_relax)
 
             if self.conf.verbose:
@@ -341,6 +345,8 @@ class MUMPSSolver(LinearSolver):
             #Fortran indexing
             self._row +=1
             self._col +=1
+            
+            print(self._data.dtype, self.rhs00.dtype)
             
             self.mumps_ls.set_rcd_distributed(self._row, self._col, 
                                               self._data, 
@@ -361,7 +367,8 @@ class MUMPSSolver(LinearSolver):
             if self.comm.Get_rank() == 0:
                 self.mumps_ls.set_rhs_centralized(self.sol)
             else :
-                self.sol = np.zeros(self.globalsize, dtype=self.float_precision)                                                                                                                                                    
+                self.sol = np.zeros(self.globalsize, dtype=self.float_precision)     
+
     
     def clear(self):
         if self.mumps_ls is not None:
