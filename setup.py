@@ -13,22 +13,20 @@ exec(path.read_text())
 NAME    = 'manapy'
 VERSION = __version__
 AUTHOR  = 'Imad Kissami'
-EMAIL   = 'imad.kissami@gmail.ma'
+EMAIL   = 'kissami.imad@gmail.ma'
 URL     = 'https://github.com/imadki/manapy'
 DESCR   = 'TODO.'
 KEYWORDS = ['math']
-LICENSE = "LICENSE"
+LICENSE = "MIT"
 
 setup_args = dict(
     name                 = NAME,
     version              = VERSION,
     description          = DESCR,
-    #long_description     = open('README.rst').read(),
     author               = AUTHOR,
     author_email         = EMAIL,
     license              = LICENSE,
     keywords             = KEYWORDS,
-#    url                  = URL,
 )
 
 # ...
@@ -59,7 +57,6 @@ install_requires = [
     'textX',
     'mgmetis',
     'meshio',
-    'pyccel',
     ]
 
 def setup_package():
