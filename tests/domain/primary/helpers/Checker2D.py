@@ -316,8 +316,8 @@ class Checker2D:
 
           c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
           c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
-          c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter[0:c_nb_ghost, 3] # face_old_name
           c_haloghostinfo[0:c_nb_ghost, 2] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
+          c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter[0:c_nb_ghost, 3] # face_old_name
 
           c_haloghostinfo[0:c_nb_ghost, 4] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
           c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid
@@ -462,10 +462,9 @@ class Checker2D:
       self.logger.testing("Halo vol", np.testing.assert_almost_equal, halosext_vol, d_halo_centvol[:, 3], decimal=self.decimal_precision)
 
       # Halo : sizehaloghost
-      sizehaloghost = np.sort(self.test_tables.halo_sizehaloghost)
-      c_sizehaloghost = np.sort(d_halo_sizehaloghost)
+      sizehaloghost = self.test_tables.halo_sizehaloghost
+      c_sizehaloghost = d_halo_sizehaloghost
 
-      # TODO c_sizehaloghost in rect mesh count duplicate haloghostcells
       self.logger.testing("Halo sizehaloghost *", np.testing.assert_equal, sizehaloghost, c_sizehaloghost)
 
 
@@ -486,3 +485,4 @@ class Checker2D:
 # checker.test_face_info()
 # checker.test_node_info()
 # checker.test_halo_info()
+# checker.summary()

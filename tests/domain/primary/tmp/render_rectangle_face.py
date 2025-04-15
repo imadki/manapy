@@ -5,7 +5,8 @@ import sys
 import os
 
 # Add the parent directory to sys.path
-sys.path.append("/media/aben-ham/SSD/aben-ham/work/manapy/tests/domain/primary/2D")
+
+sys.path.append("/home/aben-ham/Desktop/work/manapy/tests/domain/primary/2D")
 
 import subprocess
 import os

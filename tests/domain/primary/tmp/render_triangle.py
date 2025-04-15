@@ -1,12 +1,12 @@
 import tkinter as tk
 import sys
-
-# Add the parent directory to sys.path
-sys.path.append("/media/aben-ham/SSD/aben-ham/work/manapy/tests/domain/primary/2D")
-
 import subprocess
 import os
 import numpy as np
+
+# Add the parent directory to sys.path
+helpers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+sys.path.append(helpers_path)
 from helpers.DomainTables import DomainTables
 
 mpi_exec = "/usr/bin/mpirun"
@@ -29,7 +29,7 @@ def create_partitions(nb_partitions, mesh_name, float_precision, dim):
     print(result.__str__(), os.getcwd())
     raise SystemExit(result.returncode)
 
-domain_tables = DomainTables(nb_partitions=7, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
+domain_tables = DomainTables(nb_partitions=5, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
 unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
 size = domain_tables.nb_partitions
 
@@ -68,7 +68,7 @@ def getColor(i, flag=1):
   return colors[i % 2 + 9]
 
 def scale(p):
-  p[:] = p * 200 + 1000
+  p[:] = p * 100 + 200
 
 def create_polygon(points, color):
   canvas.create_polygon(list(points), fill=color, outline="black", width=1)
@@ -114,12 +114,12 @@ def test():
 
       p = node_coords
       scale(p)
-      ft_put_item(p, d_node_oldname[i], getColor(0, flag=0), 24)
+      ft_put_item(p, d_node_oldname[i], getColor(0, flag=0), 12)
 
     for i in range(len(d_cell_center)):
       p = d_cell_center[i]
       scale(p)
-      ft_put_item(p, f"{k}, {i}", getColor(0, flag=0), 24)
+      ft_put_item(p, f"{k}, {i}", getColor(0, flag=0), 12)
 
 test()
 root.mainloop()
