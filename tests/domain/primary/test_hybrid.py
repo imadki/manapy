@@ -66,12 +66,19 @@ def main_test(domain, meshio_mesh, decimal_precision):
 
   :details For each cell in the domain, retrieve the cell vertices, get the corresponding Meshio cell vertices, and check for validity.
   """
+
+  MESHIO_VERSION = int(meshio.__version__.split(".")[0])
+  if MESHIO_VERSION < 4:
+    meshio_mesh_cells = meshio_mesh.cells
+  else:
+    meshio_mesh_cells = meshio_mesh.cells_dict
+
   d_cells = domain._cells._nodeid
   d_points = domain._nodes._vertex
   d_center = domain._cells._center
   d_area = domain._cells._volume
-  m_triangles = meshio_mesh.cells['triangle']
-  m_rectangles = meshio_mesh.cells['quad']
+  m_triangles = meshio_mesh_cells['triangle']
+  m_rectangles = meshio_mesh_cells['quad']
   m_points = meshio_mesh.points
 
   t_cmp = 0
