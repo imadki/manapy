@@ -525,151 +525,184 @@ def face_gradient_info_3d(cellidf:'int32[:,:]', nodeidf:'int32[:,:]', centergf:'
         param1[i] = (np.dot(np.ascontiguousarray(n1[i]), np.ascontiguousarray(normalf[i]))) / airDiamond[i]
         param2[i] = (np.dot(np.ascontiguousarray(n2[i]), np.ascontiguousarray(normalf[i]))) / airDiamond[i]
         param3[i] = (np.dot(np.ascontiguousarray(normalf[i]), np.ascontiguousarray(normalf[i]))) / airDiamond[i]
-     
 
-def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[:]', vertex:'float[:,:]', 
-                        centerc:'float[:,:]', nbfaces:'int32', normalf:'float[:,:]', tangentf:'float[:,:]', binormalf:'float[:,:]', mesuref:'float[:]',
-                        centerf:'float[:,:]', namef:'uint32[:]'):
-    
-    norm   = np.zeros(3)
-    snorm  = np.zeros(3)
-    u      = np.zeros(3)
-    v      = np.zeros(3)
-    tangent      = np.zeros(3)
-    binormal      = np.zeros(3)    
-    
+
+def create_info_3dfaces(cellid: 'int32[:,:]', nodeid: 'int32[:,:]', namen: 'uint32[:]', vertex: 'float[:,:]',
+                        centerc: 'float[:,:]', nbfaces: 'int32', normalf: 'float[:,:]', tangentf: 'float[:,:]',
+                        binormalf: 'float[:,:]', mesuref: 'float[:]',
+                        centerf: 'float[:,:]', namef: 'uint32[:]'):
+    norm = np.zeros(3)
+    snorm = np.zeros(3)
+    u = np.zeros(3)
+    v = np.zeros(3)
+
     for i in range(nbfaces):
-             
+
         if nodeid[i][-1] == 3:
-            centerf[i][:] = 1./3 * (vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3])
-            if (cellid[i][1] == -1 ):      
-                if namen[nodeid[i][0]] == namen[nodeid[i][1]] and namen[nodeid[i][0]] == namen[nodeid[i][2]] :
+            centerf[i][:] = 1. / 3 * (vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3])
+            # Triangle norm calculation
+            u[:] = vertex[nodeid[i][1]][0:3] - vertex[nodeid[i][0]][0:3]
+            v[:] = vertex[nodeid[i][2]][0:3] - vertex[nodeid[i][0]][0:3]
+            norm = 0.5 * np.cross(u, v)
+
+            if (cellid[i][1] == -1):
+                if namen[nodeid[i][0]] == namen[nodeid[i][1]] and namen[nodeid[i][0]] == namen[nodeid[i][2]]:
                     namef[i] = namen[nodeid[i][0]]
-           
+
                 elif ((namen[nodeid[i][0]] == 5 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 5 and namen[nodeid[i][2]] !=0) or 
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 5 and namen[nodeid[i][2]] != 0) or
                       (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 5)):
-                        namef[i] = 5
-                
-                elif ((namen[nodeid[i][0]] == 6 and namen[nodeid[i][1]] !=0 and namen[nodeid[i][2]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 6 and namen[nodeid[i][2]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 6)):
+                    namef[i] = 5
+
+                elif ((namen[nodeid[i][0]] == 6 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 6 and namen[nodeid[i][2]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 6)):
                     namef[i] = 6
-                    
+
                 elif ((namen[nodeid[i][0]] == 3 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 3 and namen[nodeid[i][2]] != 0) or 
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 3 and namen[nodeid[i][2]] != 0) or
                       (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 3)):
-                        namef[i] = 3
-                
-                elif ((namen[nodeid[i][0]] == 4 and namen[nodeid[i][1]] !=0 and namen[nodeid[i][2]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 4 and namen[nodeid[i][2]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 4)):
+                    namef[i] = 3
+
+                elif ((namen[nodeid[i][0]] == 4 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 4 and namen[nodeid[i][2]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 4)):
                     namef[i] = 4
-                
+
                 elif ((namen[nodeid[i][0]] == 55 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 55 and namen[nodeid[i][2]] != 0) or 
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 55 and namen[nodeid[i][2]] != 0) or
                       (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 55)):
-                        namef[i] = 55
-                
+                    namef[i] = 55
+
                 elif ((namen[nodeid[i][0]] == 66 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 66 and namen[nodeid[i][2]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 66)):
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 66 and namen[nodeid[i][2]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 66)):
                     namef[i] = 66
-                    
+
                 elif ((namen[nodeid[i][0]] == 33 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 33 and namen[nodeid[i][2]] != 0) or 
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 33 and namen[nodeid[i][2]] != 0) or
                       (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 33)):
-                        namef[i] = 33
-                
+                    namef[i] = 33
+
                 elif ((namen[nodeid[i][0]] == 44 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 44 and namen[nodeid[i][2]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 44)):
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 44 and namen[nodeid[i][2]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 44)):
                     namef[i] = 44
                 else:
                     namef[i] = 100
-                
-                    
+
+
         elif nodeid[i][-1] == 4:
-            centerf[i][:] = 1./4 * (vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3] + vertex[nodeid[i][3]][:3])
-            if (cellid[i][1] == -1 ):          
+            centerf[i][:] = 1. / 4 * (
+                        vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3] + vertex[
+                                                                                                             nodeid[i][
+                                                                                                                 3]][
+                                                                                                         :3])
+
+            # rectangle norm calculation
+            u[:] = vertex[nodeid[i][2]][0:3] - vertex[nodeid[i][0]][0:3]
+            v[:] = vertex[nodeid[i][3]][0:3] - vertex[nodeid[i][0]][0:3]
+            norm = np.cross(u, v)  # we do not divide by 2
+
+            if (cellid[i][1] == -1):
                 if (namen[nodeid[i][0]] == namen[nodeid[i][1]] and namen[nodeid[i][0]] == namen[nodeid[i][2]] and
-                    namen[nodeid[i][0]] == namen[nodeid[i][3]]) :
+                        namen[nodeid[i][0]] == namen[nodeid[i][3]]):
                     namef[i] = namen[nodeid[i][0]]
-               
-                elif ((namen[nodeid[i][0]] == 5 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 5 and namen[nodeid[i][2]] !=0  and namen[nodeid[i][3]] != 0) or 
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 5 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] == 5)):
-                        namef[i] = 5
-                
-                elif ((namen[nodeid[i][0]] == 6 and namen[nodeid[i][1]] !=0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 6 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 6  and namen[nodeid[i][3]] != 0)or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] == 6)):
+
+                elif ((namen[nodeid[i][0]] == 5 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 5 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 5 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 5)):
+                    namef[i] = 5
+
+                elif ((namen[nodeid[i][0]] == 6 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 6 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 6 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 6)):
                     namef[i] = 6
-                    
-                 
-                elif ((namen[nodeid[i][0]] == 3 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 3 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or 
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 3 and namen[nodeid[i][3]] != 0) or 
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] == 3)):
-                        namef[i] = 3
-                
-                elif ((namen[nodeid[i][0]] == 4 and namen[nodeid[i][1]] !=0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 4 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 4  and namen[nodeid[i][3]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] == 4)):
+
+
+                elif ((namen[nodeid[i][0]] == 3 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 3 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 3 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 3)):
+                    namef[i] = 3
+
+                elif ((namen[nodeid[i][0]] == 4 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 4 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 4 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 4)):
                     namef[i] = 4
-                
-                elif ((namen[nodeid[i][0]] == 55 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 55 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or 
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 55 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] == 55)):
-                        namef[i] = 55
-                
-                elif ((namen[nodeid[i][0]] == 66 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 66 and namen[nodeid[i][2]] != 0   and namen[nodeid[i][3]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 66   and namen[nodeid[i][3]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] == 66)):
+
+                elif ((namen[nodeid[i][0]] == 55 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 55 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 55 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 55)):
+                    namef[i] = 55
+
+                elif ((namen[nodeid[i][0]] == 66 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 66 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 66 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 66)):
                     namef[i] = 66
-                    
-                elif ((namen[nodeid[i][0]] == 33 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 33 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or 
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 33 and namen[nodeid[i][3]] != 0) or
-                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] == 33)):
-                        namef[i] = 33
-                
-                elif ((namen[nodeid[i][0]] == 44 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[nodeid[i][3]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 44 and namen[nodeid[i][2]] != 0   and namen[nodeid[i][3]] != 0) or 
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 44   and namen[nodeid[i][3]] != 0) or
-                    (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0  and namen[nodeid[i][3]] == 44)):
+
+                elif ((namen[nodeid[i][0]] == 33 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 33 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 33 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 33)):
+                    namef[i] = 33
+
+                elif ((namen[nodeid[i][0]] == 44 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                    nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] == 44 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] == 44 and namen[
+                          nodeid[i][3]] != 0) or
+                      (namen[nodeid[i][0]] != 0 and namen[nodeid[i][1]] != 0 and namen[nodeid[i][2]] != 0 and namen[
+                          nodeid[i][3]] == 44)):
                     namef[i] = 44
                 else:
                     namef[i] = 200
-              
-        u[:] = vertex[nodeid[i][1]][0:3]-vertex[nodeid[i][0]][0:3]
-        v[:] = vertex[nodeid[i][2]][0:3]-vertex[nodeid[i][0]][0:3]
-        
-        norm[0] = 0.5*(u[1]*v[2] - u[2]*v[1])
-        norm[1] = 0.5*(u[2]*v[0] - u[0]*v[2])
-        norm[2] = 0.5*(u[0]*v[1] - u[1]*v[0])
-    
-        tangent[:]=u[:]
-        
-        binormal[0] = 0.5*(u[1]*norm[2] - u[2]*norm[1])
-        binormal[1] = 0.5*(u[2]*norm[0] - u[0]*norm[2])
-        binormal[2] = 0.5*(u[0]*norm[1] - u[1]*norm[0])
-                
+
+        binormalf[i][:] = 0.5 * np.cross(u, norm)
+        tangentf[:] = u[:]
+
         snorm[:] = centerc[cellid[i][0]][:] - centerf[i][:]
-    
+
         if (snorm[0] * norm[0] + snorm[1] * norm[1] + snorm[2] * norm[2]) > 0:
-            normalf[i][:] = -1*norm[:]
+            normalf[i][:] = -1 * norm[:]
         else:
             normalf[i][:] = norm[:]
-    
-        mesuref[i] = np.sqrt(normalf[i][0]**2 + normalf[i][1]**2 + normalf[i][2]**2)
-        binormalf[i][:] = binormal[:]
-        tangentf[i][:] = tangent[:]
+
+        mesuref[i] = np.sqrt(normalf[i][0] ** 2 + normalf[i][1] ** 2 + normalf[i][2] ** 2)
         
         
 # @njit("void(float64[:,:], float64[:,:,:])", fastmath=True)

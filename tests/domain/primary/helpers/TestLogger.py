@@ -28,6 +28,8 @@ class TestLogger:
       if not self.entities[label].error:
         self.entities[label].error = str(e)
         self.entities[label].error_index = self.entities[label].nbr_tests
+      return False
+    return True
 
 
   def summary(self):
@@ -57,7 +59,7 @@ class TestLogger:
       counter += 1
       entity = self.entities[item]
       if entity.error:
-        print(colored(f"* [F] {counter}/{number_of_tests}: {entity.name} {entity.error_index} / {entity.nbr_tests} ", "red"))
+        print(colored(f"* [F] {counter}/{number_of_tests}: {entity.name} {entity.error_index} / {entity.nbr_tests} {entity.failed} Failed", "red"))
         print(colored("\n".join("\t" + line for line in entity.error.splitlines()), "red"), end="")
         print()
       else:
