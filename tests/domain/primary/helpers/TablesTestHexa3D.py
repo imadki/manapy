@@ -83,7 +83,6 @@ class TablesTestHexa3D:
     self.l_face_name = np.ones(shape=(self.nb_cells, 6), dtype=np.int32) * -1
     self.g_face_cellid = np.ones(shape=(self.nb_cells, 6, 2), dtype=np.int32) * -1
     self.l_face_cellid = np.ones(shape=(self.nb_cells, 6, 2), dtype=np.int32) * -1
-    self.face_nodeid = np.ones(shape=(self.nb_cells, 6, 4), dtype=np.int32) * -1
 
     self.g_node_cellid = np.ones(shape=(self.nb_nodes, 9), dtype=np.int32) * -1
     self.l_node_cellid = np.ones(shape=(self.nb_cells, 8, 9), dtype=np.int32) * -1
@@ -91,6 +90,7 @@ class TablesTestHexa3D:
     self.g_node_name = np.ones(shape=(self.nb_cells, 8), dtype=np.int32) * -1
     self.l_node_name = np.ones(shape=self.nb_nodes, dtype=np.int32) * -1
 
+    self.face_nodeid = np.ones(shape=(self.nb_cells, 6, 4), dtype=np.int32) * -1
     self.ghost_info = np.ones(shape=(self.nb_ghosts, 7), dtype=float_precision) * -1
     self.g_cell_ghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=np.int32) * -1
     self.l_cell_ghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=np.int32) * -1
@@ -105,18 +105,6 @@ class TablesTestHexa3D:
     self.halo_neigh = np.zeros(shape=(self.nb_partitions, self.nb_partitions), dtype=np.int32)
     self.halo_sizehaloghost = np.zeros(shape=(self.nb_partitions), dtype=np.int32)
 
-
-
-
-  def _set_face_nodeid(self, g_cell_nodeid):
-    for i in range(0, self.nb_cells):
-      cell_nodes = g_cell_nodeid[i]
-      self.face_nodeid[i, 0] = np.array([cell_nodes[[0, 1, 2, 3]]], dtype=np.int32)
-      self.face_nodeid[i, 1] = np.array([cell_nodes[[4, 7, 5, 6]]], dtype=np.int32)
-      self.face_nodeid[i, 2] = np.array([cell_nodes[[0, 4, 7, 3]]], dtype=np.int32)
-      self.face_nodeid[i, 3] = np.array([cell_nodes[[1, 5, 6, 2]]], dtype=np.int32)
-      self.face_nodeid[i, 4] = np.array([cell_nodes[[0, 4, 5, 1]]], dtype=np.int32)
-      self.face_nodeid[i, 5] = np.array([cell_nodes[[3, 7, 6, 2]]], dtype=np.int32)
 
   def _set_face_measure(self):
     x = self.x_length
@@ -184,14 +172,6 @@ class TablesTestHexa3D:
 
       self.face_normal[i] = normal
 
-  def _set_face_ghostcenter(self, ghost_info, face_ghostid):
-    # self.face_ghostcenter => [center_x center_y center_z gamma]
-    for i in range(self.nb_cells):
-      for j in range(6):
-        if face_ghostid[i, j] != -1:
-          self.face_ghostcenter[i][j][:] = ghost_info[face_ghostid[i, j]][0:4]
-        else:
-          self.face_ghostcenter[i][j][:] = -1
 
   def _set_face_vertices(self, cell_vertices):
     for i in range(self.nb_cells):
@@ -253,13 +233,13 @@ class TablesTestHexa3D:
 
       self.g_face_name[sq_id] = name
 
-      for i in range(0, 6):
-        face_cellid = g_face_cellid[sq_id][i]
+      for j in range(0, 6):
+        face_cellid = g_face_cellid[sq_id][j]
         if face_cellid[0] != -1 and face_cellid[1] != -1:
           cell_1_partition = cell_which_partition[face_cellid[0]]
           cell_2_partition = cell_which_partition[face_cellid[1]]
           if cell_1_partition != cell_2_partition:
-            name[i] = 10
+            name[j] = 10
 
       self.l_face_name[sq_id] = name
 
@@ -309,6 +289,24 @@ class TablesTestHexa3D:
           add_ghost(ghostcenter, i, cmp, j)
           cmp += 1
 
+  def _set_face_nodeid(self, g_cell_nodeid):
+    for i in range(0, self.nb_cells):
+      cell_nodes = g_cell_nodeid[i]
+      self.face_nodeid[i, 0] = np.array([cell_nodes[[0, 1, 2, 3]]], dtype=np.int32)
+      self.face_nodeid[i, 1] = np.array([cell_nodes[[4, 7, 5, 6]]], dtype=np.int32)
+      self.face_nodeid[i, 2] = np.array([cell_nodes[[0, 4, 7, 3]]], dtype=np.int32)
+      self.face_nodeid[i, 3] = np.array([cell_nodes[[1, 5, 6, 2]]], dtype=np.int32)
+      self.face_nodeid[i, 4] = np.array([cell_nodes[[0, 4, 5, 1]]], dtype=np.int32)
+      self.face_nodeid[i, 5] = np.array([cell_nodes[[3, 7, 6, 2]]], dtype=np.int32)
+
+  def _set_face_ghostcenter(self, ghost_info, face_ghostid):
+    # self.face_ghostcenter => [center_x center_y center_z gamma]
+    for i in range(self.nb_cells):
+      for j in range(6):
+        if face_ghostid[i, j] != -1:
+          self.face_ghostcenter[i][j][:] = ghost_info[face_ghostid[i, j]][0:4]
+        else:
+          self.face_ghostcenter[i][j][:] = -1
 
   def _set_l_node_ghostid(self, ghost_info, g_node_ghostid, g_cell_nodeid, cell_which_partition):
     for cell_id in range(self.nb_cells):

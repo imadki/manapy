@@ -13,7 +13,7 @@ mpi_exec = "/usr/bin/mpirun"
 python_exec = "/home/aben-ham/anaconda3/envs/work/bin/python3"
 float_precision = 'float32'
 dim=3
-mesh_name = 'cube.msh'
+mesh_name = 'tetrahedron.msh'
 
 
 def create_partitions(nb_partitions, mesh_name, float_precision, dim):
@@ -27,7 +27,7 @@ def create_partitions(nb_partitions, mesh_name, float_precision, dim):
     print(result.__str__(), os.getcwd())
     raise SystemExit(result.returncode)
 
-domain_tables = DomainTables(nb_partitions=4, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
+domain_tables = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
 unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
 domain = domain_tables
 size = domain.nb_partitions
@@ -99,14 +99,15 @@ def render_node_name():
         if node_name != 0:
           text = vedo.Text3D(str(node_name), pos=(p[0], p[1], p[2]), s=0.2, justify="center")
           objects.append(text)
+
       # cell_faces = domain.d_cell_faces[k][i]
       # for j in range(cell_faces[-1]):
       #   face = domain.d_cell_faces[k][i, j]
       #   face_center = domain.d_face_center[k][face]
       #   face_oldname = domain.d_face_oldname[k][face]
       #   p = face_center
-      #   # print(j, p, face_oldname)
-      #   if face_oldname != 0:
+      #   if face_oldname == 4:
+      #     print(j, p, face_oldname)
       #     text = vedo.Text3D(str(face_oldname), pos=(p[0], p[1], p[2]), s=0.2, justify="center")
       #     objects.append(text)
 
@@ -122,6 +123,6 @@ def render_node_name():
   #   objects.append(text)
 
 
-render_cells()
-# render_node_name()
+#render_cells()
+render_node_name()
 show(*objects, axes=1, bg='white')
