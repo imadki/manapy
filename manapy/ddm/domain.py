@@ -145,10 +145,15 @@ class Domain():
         
         self._read_partition()
         self._define_bounds()
+        import time
+        print("Start ...")
+        start = time.time()
         self._compute_cells_info()
         self._make_neighbors()
         self._define_eltypes()
         self._create_faces_cons()
+        end = time.time()
+        print(f"Execution time: {end - start:.6f} seconds")
         self._define_face_info()
         self._make_halo_info()
         self._update_boundaries()
