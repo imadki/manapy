@@ -23,6 +23,8 @@ tests/domain/primary/mesh/tetrahedron_big_2.msh
 tests/domain/primary/tmp/tmp/
 tests/domain/primary/manapy_domain/manapy_part/manapy_domain.egg-info
 tests/domain/primary/manapy_domain/metis/metis_example
+tests/domain/primary/manapy_domain/manapy_part/GKlib
+tests/domain/primary/manapy_domain/manapy_part/METIS
 *.so
 
 cuda_cpu_results_saved
