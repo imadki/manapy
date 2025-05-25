@@ -1,788 +1,96 @@
 import numpy as np
 import meshio
-import numba
 import time
-
-def _is_in_array(array: 'int[:]', item: 'int') -> 'int':
-  """
-    Check if an item is in the array
-    Return 1 if the item is in the array otherwise 0
-
-    Note:
-      The number of item in the array must be array[-1]
-  """
-  for i in range(array[-1]):
-    if item == array[i]:
-      return 1
-  return 0
-
-
-def binary_search(array: 'int[:]', item: 'int') -> 'int':
-  """
-    Check if an item is in the array
-    Return index >= 0 if the item is in the array otherwise -1
-
-    Note:
-      The number of item in the array must be array[-1]
-  """
-  size = array[-1]
-  left = 0
-  right = size - 1
-
-  while left <= right:
-    mid = (left + right) // 2
-    mid_val = array[mid]
-
-    if mid_val == item:
-      return mid
-    elif mid_val < item:
-      left = mid + 1
-    else:
-      right = mid - 1
-
-  return -1
-
-
-def _append(cells, cells_item: 'int[:]', counter: 'int'):
-  for i in range(len(cells_item)):
-    cells[counter, 0:len(cells_item[i])] = cells_item[i]
-    cells[counter, -1] = len(cells_item[i])
-    counter += 1
-
-
-def _count_max_node_cellid(cells: 'int[:, :]', res: 'int[:]'):
-  """
-    Determine the max neighboring cells of a node across all cells
-  """
-
-  for cell in cells:
-    for i in range(cell[-1]):
-      node = cell[i]
-      res[node] += 1
-
-
-def _create_node_cellid(cells: 'int[:, :]', node_cellid: 'int[:, :]'):
-  """
-    Create neighboring cells for each node
-  """
-  for i in range(cells.shape[0]):
-    for j in range(cells[i][-1]):
-      node = node_cellid[cells[i][j]]
-      size = node[-1]
-      node[-1] += 1
-      node[size] = i
-
-  for i in range(node_cellid.shape[0]):
-    node = node_cellid[i]
-    node[0:node[-1]].sort()
-
-
-def _count_max_cell_cellnid(cells: 'int[:, :]', node_cellid: 'int[:, :]', visited: 'int[:]'):
-  """
-    Get the maximum number of neighboring cells per cell's nodes across the mesh
-
-    Details:
-    For each cell in the mesh, we need to examine its nodes and count the cells that neighbor those nodes.
-    to get all neighboring cells of the cell
-    Then, determine the highest number of neighboring cells
-
-    Args:
-      cells: (cell_id => nodes of the cell)
-      node_cellid: (node_id => neighboring cells of the node)
-
-    Return:
-      Maximum number of neighboring cells per cell's nodes across the mesh
-
-    Implementation details:
-      to ensure that a neighboring cell is visited only once, we set `visited[neighbor_cell] = cell_id`
-      thus for the same neighboring cell `visited[neighbor_cell]` is already set by `cell_id`
-      for the next cell `visited` will automatically reset because next_cell_id != all_old_cell_id
-  """
-
-
-  max_counter = 0
-  for i in range(cells.shape[0]):
-    counter = 0
-    for j in range(cells[i][-1]):
-      node_n = node_cellid[cells[i][j]]
-      for k in range(node_n[-1]):
-        if node_n[k] != i and visited[node_n[k]] != i:
-          visited[node_n[k]] = i
-          counter += 1
-    max_counter = max(max_counter, counter)
-  return max_counter
-
-
-def _create_cell_cellnid(
-  cells: 'int[:, :]',
-  node_cellid: 'int[:, :]',
-  cell_cellnid: 'int[:, :]',
-):
-  """
-    Get all neighboring cells by collecting adjacent cells from each node of the cell.
-  """
-
-  for i in range(cells.shape[0]):
-    for j in range(cells[i, -1]):
-      node_n = node_cellid[cells[i][j]]
-      for k in range(node_n[-1]):
-        nc = node_n[k]
-        size = cell_cellnid[nc, -1]
-        if nc != i and (size <= 0 or cell_cellnid[nc, size - 1] != i):
-          cell_cellnid[nc, size] = i
-          cell_cellnid[nc, -1] += 1
-
-  # for i in range(cells.shape[0]):
-  #   for j in range(cells[i][-1]):
-  #     node_n = node_cellid[cells[i][j]]
-  #     for k in range(node_n[-1]):
-  #       if node_n[k] != i and _is_in_array(cell_cellnid[i], node_n[k]) == 0:
-  #         size = cell_cellnid[i][-1]
-  #         cell_cellnid[i][-1] += 1
-  #         cell_cellnid[i][size] = node_n[k]
-
-# #################
-# Create Info
-# #################
-
-
-def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:, :]',
-                     intersect_cell: 'int[:]'):
-  """
-    Get the common cells of neighboring cells of the face's nodes.
-
-    Details:
-    Identify the neighboring cells associated with each of the nodes that belong to a specific face.
-    After identifying the neighboring cells for each of these nodes, we are interested in finding the common cells that are shared among all these neighboring cells.
-
-    Args:
-      face_nodes: nodes of the face
-      nb_nodes : number of nodes of the face
-      node_cellid: for each node get the neighbor cells
-
-    Return:
-      intersect_cell: array(2) common cells between all neighbors of each node (two at most)
-  """
-  index = 0
-
-  intersect_cell[0] = -1
-  intersect_cell[1] = -1
-
-  cells = node_cellid[face_nodes[0]]
-  for i in range(cells[-1]):
-    intersect_cell[index] = cells[i]
-    for j in range(1, nb_nodes):
-      if binary_search(node_cellid[face_nodes[j]], cells[i]) == -1:
-        intersect_cell[index] = -1
-        break
-    if intersect_cell[index] != -1:
-      index = index + 1
-    if index >= 2:
-      return
-
-
-def _create_cell_faces_n(cells: 'int[:, :]', tmp_cell_faces: 'int[:, :, :]', tmp_size_info: 'int[:, :]', cell_type_map: 'int[:]'):
-  """
-    Create cell faces
-
-    Args:
-      nodes : nodes of the cell
-      cell_type :
-        1 => triangle
-        2 => rectangle
-        3 => tetrahedron
-        4 => hexahedron
-        5 => pyramid
-
-    Return:
-      out_faces: faces of the cell
-      size_info:
-        size_info[:-1] contains number of nodes of each face
-        size_info[-1] total number of faces of the cell
-
-    Notes:
-    'triangle': {'line': [[0, 1], [1, 2], [2, 0]]},
-    'rectangle': {'line': [[0, 1], [1, 2], [2, 3], [3, 0]},
-    'tet': {'tri': [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]},
-    'hex': {'quad': [[0, 1, 2, 3], [0, 1, 4, 5], [1, 2, 5, 6],
-                     [2, 3, 6, 7], [0, 3, 4, 7], [4, 5, 6, 7]]},
-    'pyr': {'quad': [[0, 1, 2, 3]],
-            'tri': [[0, 1, 4], [1, 2, 4], [2, 3, 4], [0, 3, 4]]}
-
-  """
-  triangle = 1
-  rectangle = 2
-  tetrahedron = 3
-  hexahedron = 4
-  pyramid = 5
-
-  for i in range(cells.shape[0]):
-    nodes = cells[i]
-    out_faces = tmp_cell_faces[i]
-    size_info = tmp_size_info[i]
-    cell_type = cell_type_map[i]
-
-    if cell_type == triangle:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      size_info[0] = 2  # number of nodes
-
-      out_faces[1][0] = nodes[1]
-      out_faces[1][1] = nodes[2]
-      size_info[1] = 2
-
-      out_faces[2][0] = nodes[2]
-      out_faces[2][1] = nodes[0]
-      size_info[2] = 2
-
-      size_info[-1] = 3  # number of faces
-    elif cell_type == rectangle:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      size_info[0] = 2  # number of nodes
-
-      out_faces[1][0] = nodes[1]
-      out_faces[1][1] = nodes[2]
-      size_info[1] = 2
-
-      out_faces[2][0] = nodes[2]
-      out_faces[2][1] = nodes[3]
-      size_info[2] = 2
-
-      out_faces[3][0] = nodes[3]
-      out_faces[3][1] = nodes[0]
-      size_info[3] = 2
-
-      size_info[-1] = 4  # number of faces
-    elif cell_type == tetrahedron:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      out_faces[0][2] = nodes[2]
-      size_info[0] = 3  # number of nodes
-
-      out_faces[1][0] = nodes[0]
-      out_faces[1][1] = nodes[1]
-      out_faces[1][2] = nodes[3]
-      size_info[1] = 3
-
-      out_faces[2][0] = nodes[0]
-      out_faces[2][1] = nodes[2]
-      out_faces[2][2] = nodes[3]
-      size_info[2] = 3
-
-      out_faces[3][0] = nodes[1]
-      out_faces[3][1] = nodes[2]
-      out_faces[3][2] = nodes[3]
-      size_info[3] = 3
-
-      size_info[-1] = 4  # number of faces
-    elif cell_type == hexahedron:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      out_faces[0][2] = nodes[2]
-      out_faces[0][3] = nodes[3]
-      size_info[0] = 4
-
-      out_faces[1][0] = nodes[0]
-      out_faces[1][1] = nodes[1]
-      out_faces[1][2] = nodes[4]
-      out_faces[1][3] = nodes[5]
-      size_info[1] = 4
-
-      out_faces[2][0] = nodes[1]
-      out_faces[2][1] = nodes[2]
-      out_faces[2][2] = nodes[5]
-      out_faces[2][3] = nodes[6]
-      size_info[2] = 4
-
-      out_faces[3][0] = nodes[2]
-      out_faces[3][1] = nodes[3]
-      out_faces[3][2] = nodes[6]
-      out_faces[3][3] = nodes[7]
-      size_info[3] = 4
-
-      out_faces[4][0] = nodes[0]
-      out_faces[4][1] = nodes[3]
-      out_faces[4][2] = nodes[4]
-      out_faces[4][3] = nodes[7]
-      size_info[4] = 4
-
-      out_faces[5][0] = nodes[4]
-      out_faces[5][1] = nodes[5]
-      out_faces[5][2] = nodes[6]
-      out_faces[5][3] = nodes[7]
-      size_info[5] = 4
-
-      size_info[-1] = 6
-    elif cell_type == pyramid:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      out_faces[0][2] = nodes[2]
-      out_faces[0][3] = nodes[3]
-      size_info[0] = 4
-
-      out_faces[1][0] = nodes[0]
-      out_faces[1][1] = nodes[1]
-      out_faces[1][2] = nodes[4]
-      size_info[1] = 3
-
-      out_faces[2][0] = nodes[1]
-      out_faces[2][1] = nodes[2]
-      out_faces[2][2] = nodes[4]
-      size_info[2] = 3
-
-      out_faces[3][0] = nodes[2]
-      out_faces[3][1] = nodes[3]
-      out_faces[3][2] = nodes[4]
-      size_info[3] = 3
-
-      out_faces[4][0] = nodes[0]
-      out_faces[4][1] = nodes[3]
-      out_faces[4][2] = nodes[4]
-      size_info[4] = 3
-
-      size_info[-1] = 5
-
-
-def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[:]', cell_type: 'int[:]'):
-  """
-    Create cell faces
-
-    Args:
-      nodes : nodes of the cell
-      cell_type :
-        1 => triangle
-        2 => rectangle
-        3 => tetrahedron
-        4 => hexahedron
-        5 => pyramid
-
-    Return:
-      out_faces: faces of the cell
-      size_info:
-        size_info[:-1] contains number of nodes of each face
-        size_info[-1] total number of faces of the cell
-
-    Notes:
-    'triangle': {'line': [[0, 1], [1, 2], [2, 0]]},
-    'rectangle': {'line': [[0, 1], [1, 2], [2, 3], [3, 0]},
-    'tet': {'tri': [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]},
-    'hex': {'quad': [[0, 1, 2, 3], [0, 1, 4, 5], [1, 2, 5, 6],
-                     [2, 3, 6, 7], [0, 3, 4, 7], [4, 5, 6, 7]]},
-    'pyr': {'quad': [[0, 1, 2, 3]],
-            'tri': [[0, 1, 4], [1, 2, 4], [2, 3, 4], [0, 3, 4]]}
-
-  """
-  triangle = 1
-  rectangle = 2
-  tetrahedron = 3
-  hexahedron = 4
-  pyramid = 5
-
-
-  if cell_type == triangle:
-    out_faces[0][0] = nodes[0]
-    out_faces[0][1] = nodes[1]
-    size_info[0] = 2  # number of nodes
-
-    out_faces[1][0] = nodes[1]
-    out_faces[1][1] = nodes[2]
-    size_info[1] = 2
-
-    out_faces[2][0] = nodes[2]
-    out_faces[2][1] = nodes[0]
-    size_info[2] = 2
-
-    size_info[-1] = 3  # number of faces
-  elif cell_type == rectangle:
-    out_faces[0][0] = nodes[0]
-    out_faces[0][1] = nodes[1]
-    size_info[0] = 2  # number of nodes
-
-    out_faces[1][0] = nodes[1]
-    out_faces[1][1] = nodes[2]
-    size_info[1] = 2
-
-    out_faces[2][0] = nodes[2]
-    out_faces[2][1] = nodes[3]
-    size_info[2] = 2
-
-    out_faces[3][0] = nodes[3]
-    out_faces[3][1] = nodes[0]
-    size_info[3] = 2
-
-    size_info[-1] = 4  # number of faces
-  elif cell_type == tetrahedron:
-    out_faces[0][0] = nodes[0]
-    out_faces[0][1] = nodes[1]
-    out_faces[0][2] = nodes[2]
-    size_info[0] = 3  # number of nodes
-
-    out_faces[1][0] = nodes[0]
-    out_faces[1][1] = nodes[1]
-    out_faces[1][2] = nodes[3]
-    size_info[1] = 3
-
-    out_faces[2][0] = nodes[0]
-    out_faces[2][1] = nodes[2]
-    out_faces[2][2] = nodes[3]
-    size_info[2] = 3
-
-    out_faces[3][0] = nodes[1]
-    out_faces[3][1] = nodes[2]
-    out_faces[3][2] = nodes[3]
-    size_info[3] = 3
-
-    size_info[-1] = 4  # number of faces
-  elif cell_type == hexahedron:
-    out_faces[0][0] = nodes[0]
-    out_faces[0][1] = nodes[1]
-    out_faces[0][2] = nodes[2]
-    out_faces[0][3] = nodes[3]
-    size_info[0] = 4
-
-    out_faces[1][0] = nodes[0]
-    out_faces[1][1] = nodes[1]
-    out_faces[1][2] = nodes[4]
-    out_faces[1][3] = nodes[5]
-    size_info[1] = 4
-
-    out_faces[2][0] = nodes[1]
-    out_faces[2][1] = nodes[2]
-    out_faces[2][2] = nodes[5]
-    out_faces[2][3] = nodes[6]
-    size_info[2] = 4
-
-    out_faces[3][0] = nodes[2]
-    out_faces[3][1] = nodes[3]
-    out_faces[3][2] = nodes[6]
-    out_faces[3][3] = nodes[7]
-    size_info[3] = 4
-
-    out_faces[4][0] = nodes[0]
-    out_faces[4][1] = nodes[3]
-    out_faces[4][2] = nodes[4]
-    out_faces[4][3] = nodes[7]
-    size_info[4] = 4
-
-    out_faces[5][0] = nodes[4]
-    out_faces[5][1] = nodes[5]
-    out_faces[5][2] = nodes[6]
-    out_faces[5][3] = nodes[7]
-    size_info[5] = 4
-
-    size_info[-1] = 6
-  elif cell_type == pyramid:
-    out_faces[0][0] = nodes[0]
-    out_faces[0][1] = nodes[1]
-    out_faces[0][2] = nodes[2]
-    out_faces[0][3] = nodes[3]
-    size_info[0] = 4
-
-    out_faces[1][0] = nodes[0]
-    out_faces[1][1] = nodes[1]
-    out_faces[1][2] = nodes[4]
-    size_info[1] = 3
-
-    out_faces[2][0] = nodes[1]
-    out_faces[2][1] = nodes[2]
-    out_faces[2][2] = nodes[4]
-    size_info[2] = 3
-
-    out_faces[3][0] = nodes[2]
-    out_faces[3][1] = nodes[3]
-    out_faces[3][2] = nodes[4]
-    size_info[3] = 3
-
-    out_faces[4][0] = nodes[0]
-    out_faces[4][1] = nodes[3]
-    out_faces[4][2] = nodes[4]
-    size_info[4] = 3
-
-    size_info[-1] = 5
-
-# @numba.jit(nopython=True)
-# def _create_info(
-#   cells: 'int[:, :]',
-#   node_cellid: 'int[:, :]',
-#   cell_type: 'int[:]',
-#   tmp_cell_faces: 'int[:, :, :]',
-#   tmp_size_info: 'int[:, :]',
-#   tmp_cell_faces_map: 'int[:, :]',
-#   faces: 'int[:, :]',
-#   cell_faceid: 'int[:, :]',
-#   face_cellid: 'int[:, :]',
-#   cell_cellfid: 'int[:, :]',
-#   faces_counter: 'int[:]'
-# ):
-#   """
-#     - Create faces
-#     - Create cells with their corresponding faces (cells.cellfid).
-#     - Create neighboring cells for each face (faces.cellid).
-#     - Create neighboring cells of a cell by face (cells.cellid).
-#
-#     Args:
-#       cells: cells with their nodes (cell => cell nodes)
-#       node_cellid: neighbor cells of each node (node => neighbor cells)
-#       max_nb_nodes : maximum number of nodes on faces
-#       max_nb_faces : maximum number of faces on cells
-#
-#     Return:
-#       faces : (face => face nodes)
-#       cell_faces : (cell => cell faces)
-#       face_cellid : (face => neighboring cells of the face)
-#       faces_counter : array(1) face counter
-#       cell_cellfid : (cell => neighboring cells of a cell by face)
-#
-#   """
-#   intersect_cells = np.zeros(2, dtype=np.int32)
-#   _create_cell_faces_n(cells, tmp_cell_faces, tmp_size_info, cell_type)
-#   nb_faces = (tmp_cell_faces_map.shape[1] - 1) // 2
-#
-#   for i in range(cells.shape[0]):
-#     # For every face of the cell[i]
-#     # Get the intersection of the neighboring cells of this face's nodes (N*n*n)
-#     # The result should be two cells `intersect_cells`
-#     for j in range(tmp_size_info[i, -1]):
-#       _intersect_nodes(tmp_cell_faces[i, j], tmp_size_info[i, j], node_cellid, intersect_cells)
-#       # The face has at most two neighbors
-#       # swap to make intersect_cells[0] = cell_i id
-#       if intersect_cells[1] == i:
-#         intersect_cells[1] = intersect_cells[0]
-#         intersect_cells[0] = i
-#
-#       face_id = -1
-#       # Check if the face already exist
-#       if intersect_cells[1] != -1:
-#         for k in range(tmp_cell_faces_map[i, -1]):
-#           if tmp_cell_faces_map[i, k] == intersect_cells[1]:
-#             face_id = tmp_cell_faces_map[i, nb_faces + k]
-#
-#       if face_id == -1:
-#         face_id = faces_counter[0]
-#         faces_counter[0] += 1
-#         # copy nodes from tmp_cell_faces
-#         for k in range(tmp_size_info[i, j]):
-#           faces[face_id, k] = tmp_cell_faces[i, j, k]
-#         faces[face_id, -1] = tmp_size_info[i, j]
-#
-#         # Store the face in tmp_cell_faces_map for later existence verification.
-#         if intersect_cells[1] != -1:
-#           a = tmp_cell_faces_map[intersect_cells[1]]
-#           size = a[-1]
-#           a[size] = i
-#           a[nb_faces + size] = face_id
-#           a[-1] += 1
-#
-#       # (cell_faces) Create cell faces
-#       cell_faceid[i, j] = face_id
-#       cell_faceid[i, -1] += 1
-#
-#       # (face_cellid) Create neighboring cells of each face
-#       face_cellid[face_id, 0] = intersect_cells[0]
-#       face_cellid[face_id, 1] = intersect_cells[1]
-#
-#       # (cell_cellfid) Create neighboring cells of the cell by face
-#       if intersect_cells[1] != -1:
-#         cell_cellfid[i, j] = intersect_cells[1]
-#         cell_cellfid[i, -1] += 1
-
-# @numba.jit(nopython=True)
-
-def _create_info(
-  cells: 'int[:, :]',
-  node_cellid: 'int[:, :]',
-  cell_type: 'int[:]',
-  tmp_cell_faces: 'int[:, :, :]',
-  tmp_size_info: 'int[:, :]',
-  tmp_cell_faces_map: 'int[:, :]',
-  faces: 'int[:, :]',
-  cell_faceid: 'int[:, :]',
-  face_cellid: 'int[:, :]',
-  cell_cellfid: 'int[:, :]',
-  faces_counter: 'int[:]'
-):
-  """
-    - Create faces
-    - Create cells with their corresponding faces (cells.cellfid).
-    - Create neighboring cells for each face (faces.cellid).
-    - Create neighboring cells of a cell by face (cells.cellid).
-
-    Args:
-      cells: cells with their nodes (cell => cell nodes)
-      node_cellid: neighbor cells of each node (node => neighbor cells)
-      max_nb_nodes : maximum number of nodes on faces
-      max_nb_faces : maximum number of faces on cells
-
-    Return:
-      faces : (face => face nodes)
-      cell_faces : (cell => cell faces)
-      face_cellid : (face => neighboring cells of the face)
-      faces_counter : array(1) face counter
-      cell_cellfid : (cell => neighboring cells of a cell by face)
-
-  """
-  intersect_cells = np.zeros(2, dtype=np.int32)
-
-  nb_faces = (tmp_cell_faces_map.shape[1] - 1) // 2
-  for i in range(cells.shape[0]):
-    _create_cell_faces(cells[i], tmp_cell_faces, tmp_size_info, cell_type[i])
-    # For every face of the cell[i]
-    # Get the intersection of the neighboring cells of this face's nodes (N*n*n)
-    # The result should be two cells `intersect_cells`
-    for j in range(tmp_size_info[-1]):
-      _intersect_nodes(tmp_cell_faces[j], tmp_size_info[j], node_cellid, intersect_cells)
-      # The face has at most two neighbors
-      # swap to make intersect_cells[0] = cell_i id
-      if intersect_cells[1] == i:
-        intersect_cells[1] = intersect_cells[0]
-        intersect_cells[0] = i
-
-      face_id = -1
-      # Check if the face already exist
-      if intersect_cells[1] != -1:
-        for k in range(tmp_cell_faces_map[i, -1]):
-          if tmp_cell_faces_map[i, k] == intersect_cells[1]:
-            face_id = tmp_cell_faces_map[i, nb_faces + k]
-
-      if face_id == -1:
-        face_id = faces_counter[0]
-        faces_counter[0] += 1
-        # copy nodes from tmp_cell_faces
-        for k in range(tmp_size_info[j]):
-          faces[face_id, k] = tmp_cell_faces[j, k]
-        faces[face_id, -1] = tmp_size_info[j]
-
-        # Store the face in tmp_cell_faces_map for later existence verification.
-        if intersect_cells[1] != -1:
-          a = tmp_cell_faces_map[intersect_cells[1]]
-          size = a[-1]
-          a[size] = i
-          a[nb_faces + size] = face_id
-          a[-1] += 1
-
-      # (cell_faces) Create cell faces
-      cell_faceid[i, j] = face_id
-      cell_faceid[i, -1] += 1
-
-      # (face_cellid) Create neighboring cells of each face
-      face_cellid[face_id, 0] = intersect_cells[0]
-      face_cellid[face_id, 1] = intersect_cells[1]
-
-      # (cell_cellfid) Create neighboring cells of the cell by face
-      if intersect_cells[1] != -1:
-        cell_cellfid[i, j] = intersect_cells[1]
-        cell_cellfid[i, -1] += 1
-
-def compile(func):
-  # return func
-  return numba.jit(nopython=True, fastmath=True, cache=True)(func)
-
-_is_in_array = compile(_is_in_array)
-binary_search = compile(binary_search)
-_append = compile(_append)
-_count_max_node_cellid = compile(_count_max_node_cellid)
-_create_node_cellid = compile(_create_node_cellid)
-_count_max_cell_cellnid = compile(_count_max_cell_cellnid)
-_create_cell_cellnid = compile(_create_cell_cellnid)
-_intersect_nodes = compile(_intersect_nodes)
-_create_cell_faces = compile(_create_cell_faces)
-_create_info = compile(_create_info)
-
-class Domain:
+import pymetis
+import warnings
+import manapy_domain
+from create_domain_utils import (append,
+                                  append_1d,
+                                  count_max_node_cellid,
+                                  create_node_cellid,
+                                  count_max_cell_cellnid,
+                                  create_cell_cellnid,
+                                  create_info,
+                                  create_cell_info_2d,
+                                  get_max_node_faceid,
+                                  get_node_faceid,
+                                  define_face_and_node_name,
+                                  _intersect_nodes,
+                                  create_cell_info_3d,
+                                  create_cellfid
+                                  )
+
+
+class Mesh:
   def __init__(self, mesh_path, dim):
-    meshio_mesh_dic, meshio_mesh_points = self._read_mesh(mesh_path)
-
     if not (isinstance(dim, int) and dim == 2 or dim == 3):
       raise ValueError('Invalid dimension')
+
+    mesh, cells_dict, points, cell_data_dict = self._read_mesh(mesh_path)
+    cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid = self._create_cells(cells_dict, dim)
+    phy_faces, phy_faces_name = self._create_phy_faces(cells_dict, cell_data_dict, dim)
+
+    self.mesh = mesh
+    self.cells = cells
+    self.cells_type = cells_type
+    self.max_cell_nodeid = max_cell_nodeid
+    self.max_cell_faceid = max_cell_faceid
+    self.max_face_nodeid = max_face_nodeid
+    self.points = points
+    self.phy_faces = phy_faces
+    self.phy_faces_name = phy_faces_name
     self.dim = dim
 
-    start = time.time()
-    print("Init")
-    (
-      self.max_cell_faceid,
-      self.max_cell_nodeid,
-      self.max_face_nodeid,
-      self.nb_cells
-    ) = self._init(meshio_mesh_dic, self.dim)
-    print("_create_cells")
-    (
-      self.cells,
-      self.cell_type
-    ) = self._create_cells(meshio_mesh_dic, self.nb_cells, self.max_cell_nodeid, self.dim)
-
-    self.nodes = meshio_mesh_points
-    self.nb_nodes = np.int32(len(meshio_mesh_points))
-    self.nb_cells = np.int32(len(self.cells))
-    print("node_cellid")
-    self.max_node_cellid = self._count_max_node_cellid(self.cells, self.nb_nodes)
-    self.node_cellid = self._create_node_cellid(self.cells, self.nb_nodes, self.max_node_cellid)
-    print("cell_cellnid")
-    self.max_cell_cellnid = self._count_max_cell_cellnid(self.cells, self.node_cellid)
-    self.cell_cellnid = self._create_cell_cellnid(self.cells, self.node_cellid, self.max_cell_cellnid)
-    print("_create_info")
-    (
-      self.faces,
-      self.cell_faceid,
-      self.face_cellid,
-      self.cell_cellfid,
-      self.faces_counter
-    ) = self._create_info(self.cells, self.node_cellid, self.cell_type, self.max_cell_faceid, self.max_face_nodeid)
-    end = time.time()
-    print(f"Execution time: {end - start:.6f} seconds")
-
   def _read_mesh(self, mesh_path):
-    meshio_mesh = meshio.read(mesh_path)
+    mesh = meshio.read(mesh_path)
     MESHIO_VERSION = int(meshio.__version__.split(".")[0])
     if MESHIO_VERSION < 4:
-      meshio_mesh_dic = meshio_mesh.cells
+      # print(mesh.cell_data['triangle']['gmsh:physical'])
+      # print(mesh.cells['triangle'])
+      #cells_dict = mesh.cells
+      raise NotImplementedError
     else:
-      meshio_mesh_dic = meshio_mesh.cells_dict
+      # print(mesh.cell_data_dict['gmsh:physical']['triangle'])
+      # print(mesh.cells_dict['triangle'])
+      cells_dict = mesh.cells_dict
+      cell_data_dict = mesh.cell_data_dict
+    points = mesh.points
 
-    return meshio_mesh_dic, meshio_mesh.points
+    return mesh, cells_dict, points, cell_data_dict
 
-  def _init(self, meshio_mesh_dic, dim):
-    max_cell_faceid = -1
-    max_cell_nodeid = -1
-    max_face_nodeid = -1
-    for item in meshio_mesh_dic.keys():
-      print(item)
-      if item == 'triangle':
-        max_cell_faceid = max(max_cell_faceid, 3)
-        max_face_nodeid = max(max_face_nodeid, 2)
-        max_cell_nodeid = max(max_cell_nodeid, 3)
-      elif item == 'quad':
-        max_cell_faceid = max(max_cell_faceid, 4)
-        max_face_nodeid = max(max_face_nodeid, 2)
-        max_cell_nodeid = max(max_cell_nodeid, 4)
-      elif item == 'tetra':
-        max_cell_faceid = max(max_cell_faceid, 4)
-        max_face_nodeid = max(max_face_nodeid, 3)
-        max_cell_nodeid = max(max_cell_nodeid, 4)
-      elif item == 'hexahedron':
-        max_cell_faceid = max(max_cell_faceid, 6)
-        max_face_nodeid = max(max_face_nodeid, 4)
-        max_cell_nodeid = max(max_cell_nodeid, 8)
-      elif item == 'pyramid':
-        max_cell_faceid = max(max_cell_faceid, 5)
-        max_face_nodeid = max(max_face_nodeid, 4)
-        max_cell_nodeid = max(max_cell_nodeid, 5)
+  def _create_phy_faces(self, cells_dict, cell_data_dict, dim):
+    physicals = cell_data_dict['gmsh:physical']
+    physicals_key = ['line']
+    if dim == 3:
+      physicals_key = ['quad', 'triangle']
+    max_nb_face_nodes = 2
+    counter = 0
 
+    for k in physicals_key:
+      if physicals.get(k) is not None:
+        counter += len(physicals[k])
+        if k == 'triangle':
+          max_nb_face_nodes = max(max_nb_face_nodes, 3)
+        elif k == 'quad':
+          max_nb_face_nodes = max(max_nb_face_nodes, 4)
 
-    number_of_cells = 0
-    for item in meshio_mesh_dic.keys():
-      if dim == 3 and (item == 'triangle' or item == 'quad'):
-        continue
-      number_of_cells += len(meshio_mesh_dic[item])
+    phy_faces = np.zeros(shape=(counter, max_nb_face_nodes + 1), dtype=np.int32)
+    phy_faces_name = np.zeros(shape=counter, dtype=np.int32)
 
-    return (
-      max_cell_faceid,
-      max_cell_nodeid,
-      max_face_nodeid,
-      number_of_cells
-    )
+    counter = 0
+    for k in physicals_key:
+      if physicals.get(k) is not None:
+        append(phy_faces, cells_dict[k], counter)
+        append_1d(phy_faces_name, physicals[k], counter)
+        counter += len(physicals[k])
 
-  def _create_cells(self, meshio_mesh_dic, number_of_cells, max_cell_nodeid, dim):
+    return phy_faces, phy_faces_name
+
+  def _create_cells(self, meshio_mesh_dic, dim):
+    # TODO make cell Types global constant
+    allowed_cells = ['quad', 'triangle']
+    if dim == 3:
+      allowed_cells = ['pyramid', 'hexahedron', 'tetra']
     cell_type_dic = {
       "triangle": 1,
       "quad": 2,
@@ -790,46 +98,478 @@ class Domain:
       "hexahedron": 4,
       "pyramid": 5,
     }
+    max_cell_nodeid = -1
+    max_cell_faceid = -1
+    max_face_nodeid = -1
+    for item in meshio_mesh_dic.keys():
+      if item == 'triangle':
+        max_cell_nodeid = max(max_cell_nodeid, 3)
+        max_cell_faceid = max(max_cell_faceid, 3)
+        max_face_nodeid = max(max_face_nodeid, 2)
+      elif item == 'quad':
+        max_cell_nodeid = max(max_cell_nodeid, 4)
+        max_cell_faceid = max(max_cell_faceid, 4)
+        max_face_nodeid = max(max_face_nodeid, 2)
+      elif item == 'tetra':
+        max_cell_nodeid = max(max_cell_nodeid, 4)
+        max_cell_faceid = max(max_cell_faceid, 4)
+        max_face_nodeid = max(max_face_nodeid, 3)
+      elif item == 'hexahedron':
+        max_cell_nodeid = max(max_cell_nodeid, 8)
+        max_cell_faceid = max(max_cell_faceid, 6)
+        max_face_nodeid = max(max_face_nodeid, 4)
+      elif item == 'pyramid':
+        max_cell_nodeid = max(max_cell_nodeid, 5)
+        max_cell_faceid = max(max_cell_faceid, 5)
+        max_face_nodeid = max(max_face_nodeid, 4)
+
+    number_of_cells = 0
+    for item in allowed_cells:
+      if meshio_mesh_dic.get(item) is not None:
+        number_of_cells += len(meshio_mesh_dic[item])
 
     cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=np.int32)
-    cell_type = np.zeros(shape=(number_of_cells), dtype=np.int32)
+    cells_type = np.zeros(shape=number_of_cells, dtype=np.uint8)
 
     counter = 0
-    for item in meshio_mesh_dic.keys():
-      if dim == 3 and (item == 'triangle' or item == 'quad'):
-        continue
-      cells_item = meshio_mesh_dic[item]
-      cell_type[counter:counter + len(cells_item)] = cell_type_dic[item]
-      _append(cells, cells_item, counter)
-      counter += len(cells_item)
+    for item in allowed_cells:
+      if meshio_mesh_dic.get(item) is not None:
+        cells_item = meshio_mesh_dic[item]
+        cells_type[counter:counter + len(cells_item)] = cell_type_dic[item]
+        append(cells, cells_item, counter)
+        counter += len(cells_item)
 
-    return (cells, cell_type)
+    return cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid
+
+class LocalDomainStruct:
+  # TODO create cellfid for partitioning with customization
+  def __init__(self):
+    self.nodes = None # [[node x, y, z]]
+    self.cells = None # [[cells nodes]]
+    self.cells_type = None # [cell type]
+    self.phy_faces = None # [[physical face nodes]]
+    self.phy_faces_name = None # [physical face name]
+    self.cell_loctoglob = None # [cell global index]
+    self.node_loctoglob = None # [node global index]
+    self.halo_neighsub = None # [sub domain id]
+    self.node_halos = None # [node, global halo cell index, ...]
+    self.dim = None
+    self.float_precision = None
+    self.max_cell_nodeid = None
+    self.max_cell_faceid = None
+    self.max_face_nodeid = None
+
+
+
+    # To be copied if one partition is specified (recalculated on subdomains)
+    self.node_cellid = None
+    self.cell_cellnid = None
+
+    ## Temporarily
+    self.max_phy_face_nodeid = None
+    self.map_cells = {}
+    self.map_nodes = {}
+    self.map_phy_faces = {}
+
+class Domain:
+
+  def __init__(self, mesh: 'Mesh', float_precision: 'str'):
+    if float_precision != 'float32' and float_precision != 'float64':
+      raise ValueError('Invalid float precision argument')
+
+    self.nodes = np.array(mesh.points).astype(np.float32)
+    self.cells = mesh.cells
+    self.cells_type = mesh.cells_type
+    self.max_cell_nodeid = mesh.max_cell_nodeid
+    self.max_cell_faceid = mesh.max_cell_faceid
+    self.max_face_nodeid = mesh.max_face_nodeid
+    self.phy_faces = mesh.phy_faces
+    self.phy_faces_name = mesh.phy_faces_name
+    self.dim = mesh.dim
+    self.float_precision = float_precision
+    self.nb_nodes = np.int32(len(self.nodes))
+    self.nb_cells = np.int32(len(self.cells))
+
+
+    self.start = time.time()
+    print("node_cellid")
+    self.node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("cell_cellnid")
+    self.cell_cellnid = self.create_cell_cellnid(self.cells, self.node_cellid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("cell_cellfid")
+    self.cell_cellfid = self._create_cellfid(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
   # ###############################
   # ###############################
 
-  def _count_max_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'np.int32'):
-    res = np.zeros(shape=(nb_nodes), dtype=np.int32)
-    _count_max_node_cellid(cells, res)
-    return np.max(res)
+  @staticmethod
+  def create_node_cellid(cells: 'int[:, :]', nb_nodes: 'int'):
+    # Count max node cellid
+    res = np.zeros(shape=nb_nodes, dtype=np.int32)
+    count_max_node_cellid(cells, res)
+    max_node_cellid = np.max(res)
 
-  def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int', max_node_cellid: 'np.int32'):
+    # Create node cellid
     node_cellid = np.zeros(shape=(nb_nodes, max_node_cellid + 1), dtype=np.int32)
-    _create_node_cellid(cells, node_cellid)
+    create_node_cellid(cells, node_cellid)
     return node_cellid
 
-  def _count_max_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]'):
+  @staticmethod
+  def create_cell_cellnid(cells: 'int[:, :]', node_cellid: 'int[:, :]'):
+    # Count max cell cellnid
     visited = np.zeros(cells.shape[0], dtype=np.int32)
-    return _count_max_cell_cellnid(cells, node_cellid, visited)
+    max_cell_cellnid = count_max_cell_cellnid(cells, node_cellid, visited)
 
-  def _create_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]', max_cell_cellnid: 'int'):
+    # Create cell cellnid
     cell_cellnid = np.zeros(shape=(len(cells), max_cell_cellnid + 1), dtype=np.int32)
-    _create_cell_cellnid(cells, node_cellid, cell_cellnid)
+    create_cell_cellnid(cells, node_cellid, cell_cellnid)
     return cell_cellnid
 
-  def _create_info(
-    self,
+  @staticmethod
+  def _create_cellfid(
     cells: 'int[:, :]',
+    node_cellid: 'int[:, :]',
+    cell_type: 'int[:]',
+    max_cell_faceid: 'int',
+    max_face_nodeid: 'int',
+  ):
+    nb_cells = len(cells)
+    tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
+    tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
+    cell_cellfid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32) * -1
+    cell_cellfid[:, -1] = 0
+
+    create_cellfid(
+      cells,
+      node_cellid,
+      cell_type,
+      tmp_cell_faces,
+      tmp_size_info,
+      cell_cellfid,
+    )
+
+
+
+    return cell_cellfid
+
+  def create_sub_domains(self, nb_parts: 'int'):
+    if nb_parts == 1:
+      local_domain = LocalDomainStruct()
+
+      local_domain.nodes = self.nodes
+      local_domain.cells = self.cells
+      local_domain.cells_type = self.cells_type
+      local_domain.phy_faces = self.phy_faces
+      local_domain.phy_faces_name = self.phy_faces_name
+      local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.uint32)
+      local_domain.node_loctoglob = np.zeros(shape=0, dtype=np.uint32)
+      local_domain.halo_neighsub = []
+      local_domain.node_halos = []
+      local_domain.dim = self.dim
+      local_domain.float_precision = self.float_precision
+      local_domain.max_cell_nodeid = self.max_cell_nodeid
+      local_domain.max_cell_faceid = self.max_cell_faceid
+      local_domain.max_face_nodeid = self.max_face_nodeid
+
+      return [local_domain]
+
+    d_cell_cellnid = self.cell_cellnid
+    d_node_cellid = self.node_cellid
+    d_cells = self.cells
+    d_cells_type = self.cells_type
+    d_nodes = self.nodes
+    d_phy_faces = self.phy_faces
+    d_phy_faces_name = self.phy_faces_name
+
+    def get_max_info(cell_type):
+      # return (max_cell_faceid, max_face_nodeid, max_cell_nodeid)
+      if cell_type == 1: #triangle
+        return 3, 2, 3
+      elif cell_type == 2: #'quad'
+        return 4, 2, 4
+      elif cell_type == 3: #'tetra'
+        return 4, 3, 4
+      elif cell_type == 4: #'hexahedron'
+        return 6, 4, 8
+      elif cell_type == 5: #'pyramid'
+        return 5,4, 5
+
+    print("Create graph")
+    # graph = []
+    # for item in d_cell_cellnid:
+    #   c = item[0:item[-1]]
+    #   graph.append(c)
+
+    # print("Partition the graph")
+    # options = pymetis.Options()
+    # options.__setattr__("contig", 1)
+    # cutcount, part_vert = pymetis.part_graph(nparts=nb_parts, adjacency=graph, options=options)
+
+    graph = self.cell_cellfid
+    part_vert = manapy_domain.make_n_part(graph, nb_parts)
+    print(part_vert)
+    print(np.unique(np.array(part_vert)))
+    # nb_parts = len(np.unique(part_vert))
+    print(f"Number of parts: {nb_parts}")
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    local_domains = [LocalDomainStruct() for _ in range(nb_parts)]
+
+    for p in range(nb_parts):
+      local_domains[p].max_cell_nodeid = -1
+      local_domains[p].max_phy_face_nodeid = -1
+      local_domains[p].map_cells = {}
+      local_domains[p].map_nodes = {}
+      local_domains[p].map_phy_faces = {}
+      local_domains[p].max_cell_faceid = -1
+      local_domains[p].max_face_nodeid = -1
+      local_domains[p].max_cell_nodeid = -1
+      local_domains[p].halo_neighsub = set()
+      local_domains[p].node_halos = {}
+
+    print("Create Cell Nodes Parts")
+    for i in range(d_cells.shape[0]):
+      cell_nodes = d_cells[i]
+      p = part_vert[i]
+
+      max_info = get_max_info(d_cells_type[i])
+      local_domains[p].max_cell_faceid = max(max_info[0], local_domains[p].max_cell_faceid)
+      local_domains[p].max_face_nodeid = max(max_info[1], local_domains[p].max_face_nodeid)
+      local_domains[p].max_cell_nodeid = max(max_info[2], local_domains[p].max_cell_nodeid)
+
+
+      cell_local_index = len(local_domains[p].map_cells)
+      local_domains[p].map_cells[i] = cell_local_index
+      for j in range(cell_nodes[-1]):
+        node = cell_nodes[j]
+        if local_domains[p].map_nodes.get(node) is None:
+          local_domains[p].map_nodes[node] = len(local_domains[p].map_nodes)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("Create Physical Faces Parts")
+    # ##############################
+    # PhyFaces
+    ################################
+    intersect_cell = np.zeros(shape=2, dtype=np.int32)
+    nb_phyfaces = 0
+    for i in range(d_phy_faces.shape[0]):
+      phy_face = d_phy_faces[i]
+      # For the “phy_face” to belong to part ‘p’, it must belong to a cell in part ‘p’.
+      _intersect_nodes(phy_face, phy_face[-1], d_node_cellid, intersect_cell)
+      if intersect_cell[0] != -1:
+        p = part_vert[intersect_cell[0]]
+        local_domains[p].max_phy_face_nodeid = max(phy_face[-1], local_domains[p].max_phy_face_nodeid)
+        local_domains[p].map_phy_faces[i] = len(local_domains[p].map_phy_faces)
+        nb_phyfaces += 1
+    if nb_phyfaces != len(d_phy_faces):
+      warnings.warn(f"Warning not all the physical faces match the domain faces !! {nb_phyfaces} Where the number of physical faces is {len(d_phy_faces)}", category=RuntimeWarning)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    # ##############################
+    # Local Domain P
+    ################################
+    print("Create Local Domains Parts")
+    for p in range(nb_parts):
+      map_cells = local_domains[p].map_cells
+      map_nodes = local_domains[p].map_nodes
+      map_phy_faces = local_domains[p].map_phy_faces
+
+      nb_cells = len(map_cells)
+      nb_nodes = len(map_nodes)
+      nb_phy_faces = len(map_phy_faces)
+      max_cell_nodeid = local_domains[p].max_cell_nodeid
+      max_phy_face_nodeid = local_domains[p].max_phy_face_nodeid
+
+      int_dtype = d_cells.dtype
+      nodes_dtype = d_nodes.dtype
+
+      cells = np.zeros(shape=(nb_cells, max_cell_nodeid + 1), dtype=int_dtype)
+      cells_type = np.zeros(shape=nb_cells, dtype=np.int8)
+      cell_loctoglob = np.zeros(shape=nb_cells, dtype=int_dtype)
+
+      nodes = np.zeros(shape=(nb_nodes, 3), dtype=nodes_dtype)
+      node_loctoglob = np.zeros(shape=nb_nodes, dtype=int_dtype)
+
+      phy_faces = np.zeros(shape=(nb_phy_faces, max_phy_face_nodeid + 1), dtype=int_dtype)
+      phy_faces_name = np.zeros(shape=nb_phy_faces, dtype=int_dtype)
+
+      halo_neighsub = set()
+      node_halos = []
+
+      # Cells, CellsType, CellsLocToGlob
+      for k in map_cells.keys():
+        cell_local_index = map_cells[k]
+        cells[cell_local_index] = d_cells[k]
+        cells_type[cell_local_index] = d_cells_type[k]
+        cell_loctoglob[cell_local_index] = k
+        # set new node name
+        for j in range(cells[cell_local_index, -1]):
+          cells[cell_local_index, j] = map_nodes[cells[cell_local_index, j]]
+
+      # Nodes, NodesLocToGlob, HaloNeighSub, NodeHalos
+      for k in map_nodes.keys():
+        l_index = map_nodes[k]
+        nodes[l_index] = d_nodes[k]
+        node_loctoglob[l_index] = k
+
+        # Halos
+        for j in range(d_node_cellid[k, -1]):
+          neighbor_cell = d_node_cellid[k, j]
+          neighbor_part = part_vert[neighbor_cell]
+          if p != neighbor_part:
+            halo_neighsub.add(neighbor_part)
+            node_halos.append(l_index)
+            node_halos.append(neighbor_cell)
+
+      # PhyFaces, PhyFacesName
+      for k in map_phy_faces.keys():
+        cell_local_index = map_phy_faces[k]
+        phy_faces[cell_local_index] = d_phy_faces[k]
+        phy_faces_name[cell_local_index] = d_phy_faces_name[k]
+        # set new node name
+        for j in range(phy_faces[cell_local_index, -1]):
+          phy_faces[cell_local_index, j] = map_nodes[phy_faces[cell_local_index, j]]
+
+      local_domains[p].nodes = nodes
+      local_domains[p].cells = cells
+      local_domains[p].cells_type = cells_type
+      local_domains[p].phy_faces = phy_faces
+      local_domains[p].phy_faces_name = phy_faces_name
+      local_domains[p].cell_loctoglob = cell_loctoglob
+      local_domains[p].node_loctoglob = node_loctoglob
+      local_domains[p].halo_neighsub = list(halo_neighsub)
+      local_domains[p].node_halos = node_halos
+      local_domains[p].dim = self.dim
+      local_domains[p].float_precision = self.float_precision
+      #max_cell_nodeid Assigned above
+      #max_cell_faceid Assigned above
+      #max_face_nodeid Assigned above
+
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+    return local_domains
+
+  def c_create_sub_domains(self, nb_parts: 'int'):
+    if nb_parts == 1:
+      local_domain = LocalDomainStruct()
+
+      local_domain.nodes = self.nodes
+      local_domain.cells = self.cells
+      local_domain.cells_type = self.cells_type
+      local_domain.phy_faces = self.phy_faces
+      local_domain.phy_faces_name = self.phy_faces_name
+      local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.uint32)
+      local_domain.node_loctoglob = np.zeros(shape=0, dtype=np.uint32)
+      local_domain.halo_neighsub = []
+      local_domain.node_halos = []
+      local_domain.dim = self.dim
+      local_domain.float_precision = self.float_precision
+      local_domain.max_cell_nodeid = self.max_cell_nodeid
+      local_domain.max_cell_faceid = self.max_cell_faceid
+      local_domain.max_face_nodeid = self.max_face_nodeid
+
+      return [local_domain]
+
+    print("Start creating sub domains")
+    res = manapy_domain.create_sub_domains(
+      self.cell_cellnid,
+      self.node_cellid,
+      self.cells,
+      self.cells_type,
+      self.nodes,
+      self.phy_faces,
+      self.phy_faces_name,
+      nb_parts,
+    )
+
+    local_domains = []
+    for item in res:
+      l_domain = LocalDomainStruct()
+      l_domain.nodes = item[0]
+      l_domain.cells = item[1]
+      l_domain.cells_type = item[2]
+      l_domain.phy_faces = item[3]
+      l_domain.phy_faces_name = item[4]
+      l_domain.cell_loctoglob = item[5]
+      l_domain.node_loctoglob = item[6]
+      l_domain.halo_neighsub = item[7]
+      l_domain.node_halos = item[8]
+      local_domains.append(l_domain)
+
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+    return local_domains
+
+class LocalDomain:
+  # TODO int32 -> uint32
+  def __init__(self, local_domain_struct: 'LocalDomainStruct'):
+    self.nodes = local_domain_struct.nodes
+    self.cells = local_domain_struct.cells
+    self.cells_type = local_domain_struct.cells_type
+    self.phy_faces = local_domain_struct.phy_faces
+    self.phy_faces_name = local_domain_struct.phy_faces_name
+    self.cell_loctoglob = local_domain_struct.cell_loctoglob
+    self.node_loctoglob = local_domain_struct.node_loctoglob
+    self.halo_neighsub = local_domain_struct.halo_neighsub
+    self.node_halos = local_domain_struct.node_halos
+    self.dim = local_domain_struct.dim
+    self.float_precision = local_domain_struct.float_precision
+    self.max_cell_nodeid = local_domain_struct.max_cell_nodeid
+    self.max_cell_faceid = local_domain_struct.max_cell_faceid
+    self.max_face_nodeid = local_domain_struct.max_face_nodeid
+    self.node_cellid = local_domain_struct.node_cellid
+    self.cell_cellnid = local_domain_struct.cell_cellnid
+    self.nb_nodes = np.uint32(len(self.nodes))
+    self.nb_cells = np.uint32(len(self.cells))
+
+    self.start = time.time()
+    print("node_cellid")
+    self.node_cellid = self._create_node_cellid(self.cells, self.nb_nodes, local_domain_struct.node_cellid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("cell_cellnid")
+    self.cell_cellnid = self._create_cell_cellnid(self.cells, self.node_cellid, local_domain_struct.cell_cellnid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("_create_info")
+    (
+      self.faces,
+      self.cell_faceid,
+      self.face_cellid,
+      self.cell_cellfid
+    ) = self._create_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("Create face and node names")
+    (
+      self.face_name,
+      self.node_name,
+      self.node_phyfaceid,
+    ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    # (
+    #   self.cell_volume,
+    #   self.cell_center
+    # ) = self._create_cell_info(self.cells, self.nodes)
+
+
+  def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int', g_node_cellid):
+    if g_node_cellid is not None:
+      return g_node_cellid
+    return Domain.create_node_cellid(cells, nb_nodes)
+
+  def _create_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]', g_cell_cellnid):
+    if g_cell_cellnid is not None:
+      return g_cell_cellnid
+    return Domain.create_cell_cellnid(cells, node_cellid)
+
+  @staticmethod
+  def _create_info(
+          cells: 'int[:, :]',
     node_cellid: 'int[:, :]',
     cell_type: 'int[:]',
     max_cell_faceid: 'int',
@@ -842,7 +582,7 @@ class Domain:
     tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
     tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
     tmp_cell_faces_map = np.zeros(shape=(nb_cells, max_cell_faceid * 2 + 1), dtype=np.int32)
-    apprx_nb_faces = nb_cells * max_cell_faceid
+    apprx_nb_faces = nb_cells * max_cell_faceid # TODO ((nb_cells * max_cell_faceid + boundary_faces) / 2)
     faces = np.ones(shape=(apprx_nb_faces, max_face_nodeid + 1), dtype=np.int32) * -1
     faces[:, -1] = 0
     cell_faceid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32) * -1
@@ -850,8 +590,9 @@ class Domain:
     face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=np.int32) * -1
     cell_cellfid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32) * -1
     cell_cellfid[:, -1] = 0
-    faces_counter = np.zeros(shape=(1), dtype=np.int32)
-    _create_info(
+    faces_counter = np.zeros(shape=1, dtype=np.int32)
+
+    create_info(
       cells,
       node_cellid,
       cell_type,
@@ -864,7 +605,7 @@ class Domain:
       cell_cellfid,
       faces_counter
     )
-    # ? Return
+
     faces = faces[:faces_counter[0]]
     face_cellid = face_cellid[:faces_counter[0]]
 
@@ -872,6 +613,45 @@ class Domain:
       faces,
       cell_faceid,
       face_cellid,
-      cell_cellfid,
-      faces_counter[0]
+      cell_cellfid
     )
+
+  def _define_face_and_node_name(self,
+                                 phy_faces: 'int[:, :]',
+                                 phy_faces_name: 'int[:]',
+                                 faces: 'int[:, :]',
+                                 ):
+    nb_nodes = self.nb_nodes
+    face_name = np.zeros(shape=faces.shape[0], dtype=np.int32)
+    node_name = np.zeros(shape=nb_nodes, dtype=np.int32)
+
+    # count max_node_faceid
+    tmp = np.zeros(shape=nb_nodes, dtype=np.int32)
+    get_max_node_faceid(phy_faces, tmp)
+    max_node_faceid = np.max(tmp)
+
+    # create node_phyfaceid
+    node_phyfaceid = np.zeros(shape=(nb_nodes, max_node_faceid + 1), dtype=np.int32)
+    get_node_faceid(phy_faces, node_phyfaceid)
+
+    define_face_and_node_name(phy_faces, phy_faces_name, faces, node_phyfaceid, face_name, node_name)
+    return (
+      face_name,
+      node_name,
+      node_phyfaceid
+    )
+
+
+  def _create_cell_info(self, cells, nodes):
+    nb_cells = len(cells)
+    cell_volume = np.ones(shape=nb_cells, dtype=self.float_precision)
+    cell_center = np.zeros(shape=(nb_cells, self.dim), dtype=self.float_precision)
+    if self.dim == 2:
+      create_cell_info_2d(cells, nodes, cell_volume, cell_center)
+    else:
+      create_cell_info_3d(cells, nodes, cell_volume, cell_center)
+    return (
+      cell_volume,
+      cell_center
+    )
+

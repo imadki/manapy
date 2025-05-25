@@ -18,6 +18,13 @@ gpu_accelerator/functions/results
 mesh/2D/large_carre.msh
 mesh/2D/square_larger.msh
 
+tests/domain/primary/mesh/tetrahedron_big.msh
+tests/domain/primary/mesh/tetrahedron_big_2.msh
+tests/domain/primary/tmp/tmp/
+tests/domain/primary/manapy_domain/manapy_part/manapy_domain.egg-info
+tests/domain/primary/manapy_domain/metis/metis_example
+*.so
+
 cuda_cpu_results_saved
 benchmark_result
 .vagrant

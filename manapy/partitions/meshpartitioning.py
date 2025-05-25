@@ -116,8 +116,10 @@ class MeshPartition():
             from mpi4py import MPI
             self._comm = MPI.COMM_WORLD
         
-        self._size = self._comm.Get_size()
-        self._rank = self._comm.Get_rank()
+        # self._size = self._comm.Get_size()
+        # self._rank = self._comm.Get_rank()
+        self._size = 4
+        self._rank = 0
         
         if self._dim == 2:
             from manapy.partitions.partitions_utils import convert_2d_cons_to_array
@@ -137,15 +139,15 @@ class MeshPartition():
             print("Mesh partitionning ...")
             self._make_partition()
 
-        #save mesh files
-        if self._rank == 0:
-            print("Saving partition files ...")
-            self._savemesh()
-        
-            print("Number of Cells:", self._nbcells)
-            print("Number of Vertices:", self._nbnodes)
-            
-        self._comm.Barrier()
+        # #save mesh files
+        # if self._rank == 0:
+        #     print("Saving partition files ...")
+        #     self._savemesh()
+        #
+        #     print("Number of Cells:", self._nbcells)
+        #     print("Number of Vertices:", self._nbnodes)
+        #
+        # self._comm.Barrier()
         
         
     def __str__(self):
@@ -204,10 +206,13 @@ class MeshPartition():
         opts[OPTION.NUMBERING] = 0
         opts[OPTION.OBJTYPE] = 1
         options = opts
-        
+
+        import time
+        start = time.time()
         elem = [item for sublist in self._elemetis.values() for item in sublist]
         objval, self._epart, self._npart = metis.part_mesh_dual(self._size, elem, 
                                                                 opts=options, nv=self._nbnodes)
+        print("Elapsed time: {:.3f} s".format(time.time() - start))
         
         
         
@@ -235,6 +240,8 @@ class MeshPartition():
         self._halointlen = compute_halocell(self._halo_cellid, self._cpart, self._cell_nodeid, 
                                             self._vertices, self._neighsub, self._size, self._dim, 
                                             self.float_precision)
+        print("Elapsed time: {:.3f} s".format(time.time() - start))
+
     def _savemesh(self):
         
         import h5py
