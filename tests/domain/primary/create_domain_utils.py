@@ -4,7 +4,7 @@ import numba
 
 def compile(func):
   #return func
-  return numba.jit(nopython=True, fastmath=True, cache=False)(func)
+  return numba.jit(nopython=True, fastmath=True, cache=True)(func)
 
 
 def _is_in_array(array: 'int[:]', item: 'int') -> 'int':
