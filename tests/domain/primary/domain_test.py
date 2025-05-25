@@ -6,8 +6,8 @@ import gc
 dim = 3
 float_precision = 'float32'
 root_file = os.getcwd()
-mesh_path = 'triangles.msh'
-mesh_path = os.path.join(root_file, 'mesh', mesh_path) # tests/domain/primary/mesh
+mesh_path = 'tetrahedron.msh'
+mesh_path = os.path.join(root_file, 'mesh', mesh_path)
 
 
 # Fast and uses less ram
