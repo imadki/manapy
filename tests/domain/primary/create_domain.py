@@ -1,7 +1,6 @@
 import numpy as np
 import meshio
 import time
-import pymetis
 import warnings
 import manapy_domain
 from create_domain_utils import (append,
@@ -47,8 +46,16 @@ class Mesh:
     if MESHIO_VERSION < 4:
       # print(mesh.cell_data['triangle']['gmsh:physical'])
       # print(mesh.cells['triangle'])
-      #cells_dict = mesh.cells
-      raise NotImplementedError
+      # need to reverse order of access for compatibility
+      cell_data_dict = {}
+      for k1 in mesh.cell_data.keys():
+        for k2 in mesh.cell_data[k1].keys():
+          if cell_data_dict.get(k2) is None:
+            cell_data_dict[k2] = {}
+          cell_data_dict[k2][k1] = mesh.cell_data[k1][k2]
+          print(f"{k2} => {k1}")
+      cells_dict = mesh.cells
+      # raise NotImplementedError
     else:
       # print(mesh.cell_data_dict['gmsh:physical']['triangle'])
       # print(mesh.cells_dict['triangle'])
@@ -476,7 +483,7 @@ class Domain:
 
     print("Start creating sub domains")
     res = manapy_domain.create_sub_domains(
-      self.cell_cellnid,
+      self.cell_cellfid,
       self.node_cellid,
       self.cells,
       self.cells_type,
