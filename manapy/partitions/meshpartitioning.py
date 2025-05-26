@@ -118,7 +118,7 @@ class MeshPartition():
         
         # self._size = self._comm.Get_size()
         # self._rank = self._comm.Get_rank()
-        self._size = 4
+        self._size = 3000
         self._rank = 0
         
         if self._dim == 2:
