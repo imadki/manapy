@@ -537,7 +537,7 @@ def create_info_3dfaces(cellid: 'int32[:,:]', nodeid: 'int32[:,:]', namen: 'uint
     v = np.zeros(3)
 
     for i in range(nbfaces):
-
+        print(f"=> {i}")
         if nodeid[i][-1] == 3:
             centerf[i][:] = 1. / 3 * (vertex[nodeid[i][0]][:3] + vertex[nodeid[i][1]][:3] + vertex[nodeid[i][2]][:3])
             # Triangle norm calculation
