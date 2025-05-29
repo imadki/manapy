@@ -149,20 +149,31 @@ class Domain():
         print("Start ...")
         start = time.time()
         self._compute_cells_info()
+        print(f"_compute_cells_info`: {time.time() - start:.6f} seconds")
         self._make_neighbors()
+        print(f"_make_neighbors: {time.time() - start:.6f} seconds")
         self._define_eltypes()
+        print(f"_define_eltypes: {time.time() - start:.6f} seconds")
         self._create_faces_cons()
-        end = time.time()
-        print(f"Execution time: {end - start:.6f} seconds")
+        print(f"_create_faces_cons: {time.time() - start:.6f} seconds")
         self._define_face_info()
+        print(f"E_define_face_info: {time.time() - start:.6f} seconds")
         self._make_halo_info()
+        print(f"_make_halo_info: {time.time() - start:.6f} seconds")
         self._update_boundaries()
+        print(f"_update_boundaries: {time.time() - start:.6f} seconds")
         self._update_ghost_info()
+        print(f"_update_ghost_info: {time.time() - start:.6f} seconds")
         self._prepare_communication()
+        print(f"_prepare_communication: {time.time() - start:.6f} seconds")
         self._update_periodic_boudaries()
+        print(f"_update_periodic_boudaries: {time.time() - start:.6f} seconds")
         self._update_haloghost()
+        print(f"_update_haloghost: {time.time() - start:.6f} seconds")
         self._compute_diamondCell_info()
+        print(f"_compute_diamondCell_info: {time.time() - start:.6f} seconds")
         self._compute_orthocenter() #Only in 2D
+        print(f"_compute_orthocenter: {time.time() - start:.6f} seconds")
         
     def _setup_vtkpath(self):
         """
@@ -361,7 +372,8 @@ class Domain():
                                 self._faces._center, self._faces._name)
         elif self._dim == 3:
             self._faces._tangent = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
-            self._faces._binormal = np.zeros((self._nbfaces, 3), dtype=self.float_precision)        
+            self._faces._binormal = np.zeros((self._nbfaces, 3), dtype=self.float_precision)
+            print("Create info 3dfaces ...")
             self.backend.compile(create_info_3dfaces, signature=self.signature)(self._faces._cellid, self._faces._nodeid, self._nodes._name, \
                                 self._nodes._vertex, self._cells._center, self._nbfaces, self._faces._normal, self._faces._tangent, self._faces._binormal, self._faces._mesure, \
                                 self._faces._center, self._faces._name)
@@ -376,6 +388,7 @@ class Domain():
         ###########################################################################
         
         if self._dim == 3:
+            print("oriente_3dfacenodeid ...")
             self.backend.compile(oriente_3dfacenodeid, signature=self.signature)(self._faces._nodeid, self._faces._normal, self._nodes._vertex)
         
         ###########################################################################

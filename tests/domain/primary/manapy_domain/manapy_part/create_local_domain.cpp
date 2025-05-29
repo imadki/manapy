@@ -1,3 +1,4 @@
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <iostream>
 #include <tuple>
 #include <vector>
@@ -43,8 +44,8 @@ struct LocalDomainStruct {
 
     LocalDomainStruct() {}
 
-    int create_tables(const idx_t nb_cells, const idx_t nb_nodes, const idx_t nb_phyfaces) {
-        const npy_intp l_cells_dim[2] = {nb_cells, this->max_cell_nodeid};
+    int create_tables(const idx_t nb_cells, const idx_t nb_nodes, const idx_t nb_phyfaces, const idx_t node_dim) {
+        const npy_intp l_cells_dim[2] = {nb_cells, this->max_cell_nodeid + 1};
         PyArrayObject *l_cells = (PyArrayObject *)PyArray_SimpleNew(2, l_cells_dim, int_type);
 
         const npy_intp l_cells_type_dim[1] = {nb_cells};
@@ -53,13 +54,13 @@ struct LocalDomainStruct {
         const npy_intp l_cell_loctoglob_dim[1] = {nb_cells};
         PyArrayObject *l_cell_loctoglob = (PyArrayObject *)PyArray_SimpleNew(1, l_cell_loctoglob_dim, int_type);
 
-        const npy_intp l_nodes_dim[2] = {nb_nodes, 3};
+        const npy_intp l_nodes_dim[2] = {nb_nodes, node_dim};
         PyArrayObject *l_nodes = (PyArrayObject *)PyArray_SimpleNew(2, l_nodes_dim, float_type);
 
         const npy_intp l_node_loctoglob_dim[1] = {nb_nodes};
         PyArrayObject *l_node_loctoglob = (PyArrayObject *)PyArray_SimpleNew(1, l_node_loctoglob_dim, int_type);
 
-        const npy_intp l_phy_faces_dim[2] = {nb_phyfaces, this->max_phy_face_nodeid};
+        const npy_intp l_phy_faces_dim[2] = {nb_phyfaces, this->max_phy_face_nodeid + 1};
         PyArrayObject *l_phy_faces = (PyArrayObject *)PyArray_SimpleNew(2, l_phy_faces_dim, int_type);
 
         const npy_intp l_phy_faces_name_dim[1] = {nb_phyfaces};
@@ -99,8 +100,9 @@ struct LocalDomainStruct {
     }
 
     int create_tuple() {
-        PyObject *tuple = Py_BuildValue("(OOOOOOOOO)", this->nodes, this->cells, this->cells_type,
-            this->phy_faces, this->phy_faces_name, this->cell_loctoglob, this->node_loctoglob, this->halo_neighsub, this->node_halos);
+        PyObject *tuple = Py_BuildValue("(OOOOOOOOOiii)", this->nodes, this->cells, this->cells_type,
+            this->phy_faces, this->phy_faces_name, this->cell_loctoglob, this->node_loctoglob, this->halo_neighsub, this->node_halos,
+            this->max_cell_nodeid, this->max_cell_faceid, this->max_face_nodeid);
         if (!tuple)
             return -1;
         // tuple holds references now
@@ -156,11 +158,11 @@ std::vector<idx_t>    get_max_info(const idx_t cell_type) {
     return {0, 0, 0};
 }
 
-#include <Python.h>
-#include <stdarg.h>
 
+
+// # define PRINT_DEBUG false
 void print_instant(const char *fmt, ...) {
-    return ;
+#ifdef PRINT_DEBUG
     char buffer[512];  // temp string buffer
     va_list args;
     va_start(args, fmt);
@@ -183,6 +185,7 @@ void print_instant(const char *fmt, ...) {
     }
 
     Py_DECREF(sys);
+#endif
 }
 
 
@@ -381,7 +384,6 @@ static int  create_sub_domains(PyArrayObject *graph,
     print_instant("Create local cells\n");
     const npy_intp *cells_dim = PyArray_DIMS(cells);
     for (idx_t i = 0; i < cells_dim[0]; i++) {
-        print_instant("%d\n", i);
         const idx_t size = *(idx_t *)PyArray_GETPTR2(cells, i, cells_dim[1] - 1);
         const idx_t p = part_vert[i];
         const idx_t cell_type = *(idx_t *)PyArray_GETPTR1(cells_type, i);
@@ -443,8 +445,8 @@ static int  create_sub_domains(PyArrayObject *graph,
         const idx_t max_cell_nodeid = local_domains[p].max_cell_nodeid;
         const idx_t max_phy_face_nodeid = local_domains[p].max_phy_face_nodeid;
 
-
-        ret = local_domains[p].create_tables(nb_cells, nb_nodes, nb_phyfaces);
+        const npy_intp *nodes_dim = PyArray_DIMS(nodes); // 3 or 2
+        ret = local_domains[p].create_tables(nb_cells, nb_nodes, nb_phyfaces, nodes_dim[1]);
         if (ret == -1) {
             free(part_vert);
             PyErr_SetString(PyExc_MemoryError, "Failed to allocate NumPy array");
@@ -468,8 +470,6 @@ static int  create_sub_domains(PyArrayObject *graph,
             const idx_t k = iter->first;
             const idx_t local_index = iter->second;
 
-            // print_instant("%d %d %d\n", nb_cells, nb_nodes, nb_phyfaces)
-            // print_instant("%d %d\n", k, local_index);
             l_cells_type_data[local_index] = *(idx_t *)PyArray_GETPTR1(cells_type, k);
             l_cell_loctoglob_data[local_index] = k;
 
@@ -477,22 +477,24 @@ static int  create_sub_domains(PyArrayObject *graph,
 
             const idx_t size = *(idx_t *)PyArray_GETPTR2(cells, k, cells_dim[1] - 1);
             for (idx_t i = 0; i < size; i++) {
-                print_instant("->%d %d %d %d %d %d %ld %ld\n", i, local_index, k, size, max_cell_nodeid, nb_cells, cells_dim[0], cells_dim[1]);
                 const idx_t g_node = *(idx_t *)PyArray_GETPTR2(cells, k, i);
-                l_cells_data[local_index * max_cell_nodeid + i] = map_nodes[g_node];
+                l_cells_data[local_index * (max_cell_nodeid + 1) + i] = map_nodes[g_node];
             }
+            // size
+            l_cells_data[local_index * (max_cell_nodeid + 1) + max_cell_nodeid] = size;
         }
 
         // # Nodes, NodesLocToGlob, HaloNeighSub, NodeHalos
-        print_instant("Nodes, NodesLocToGlob, HaloNeighSub, NodeHalos\n");
         for (auto iter = map_nodes.begin(); iter != map_nodes.end(); ++iter) {
             const idx_t k = iter->first;
             const idx_t local_index = iter->second;
 
             l_node_loctoglob_data[local_index] = k;
 
-            for (idx_t i = 0; i < 3; i++) {
-                l_nodes_data[local_index * 3 + i] = *(fdx_t *)PyArray_GETPTR2(nodes, k, i);
+
+            const idx_t v_size = nodes_dim[1];
+            for (idx_t i = 0; i < v_size; i++) {
+                l_nodes_data[local_index * v_size + i] = *(fdx_t *)PyArray_GETPTR2(nodes, k, i);
             }
 
             // # Halos
@@ -518,8 +520,11 @@ static int  create_sub_domains(PyArrayObject *graph,
             l_phy_faces_name_data[local_index] = *(idx_t *)PyArray_GETPTR1(phy_faces_name, k);
             const idx_t size = *(idx_t *)PyArray_GETPTR2(phy_faces, k, phyfaces_dim[1] - 1);
             for (idx_t i = 0; i < size; i++) {
-                l_phy_faces_data[local_index * max_phy_face_nodeid + i] = *(idx_t *)PyArray_GETPTR2(phy_faces, k, i);
+                const idx_t g_node = *(idx_t *)PyArray_GETPTR2(phy_faces, k, i);
+                l_phy_faces_data[local_index * (max_phy_face_nodeid + 1) + i] = map_nodes[g_node];
             }
+            //size
+            l_phy_faces_data[local_index * (max_phy_face_nodeid + 1) + max_phy_face_nodeid] = size;
         }
 
         // # Halo neighsub, Node_halos_data
@@ -657,8 +662,7 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
 
 
     print_instant("Start Creating SubDomains \n");
-    LocalDomainStruct *local_domains = new LocalDomainStruct[nb_part];
-    //TODO
+    LocalDomainStruct *local_domains = new (std::nothrow) LocalDomainStruct[nb_part];
     if (!local_domains ||
         create_sub_domains(graph, node_cellid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_part, local_domains) == -1
         ) {
@@ -672,7 +676,7 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
         Py_XDECREF(phy_faces_name);
         if (!local_domains)
             PyErr_SetString(PyExc_MemoryError, "Failed to allocate local domain struct");
-        free(local_domains);
+        delete[] local_domains;
         return nullptr;
     }
     // No need of those
@@ -686,7 +690,7 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
 
     PyObject *py_list_result = PyList_New(nb_part);
     if (!py_list_result) {
-        free(local_domains);
+        delete[] local_domains;
         return nullptr;
     }
 
@@ -694,7 +698,7 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
     for (int i = 0; i < nb_part; i++) {
         if (local_domains[i].create_tuple() == -1) {
             Py_XDECREF(py_list_result);
-            free(local_domains);
+            delete[] local_domains;
             return nullptr;
         }
     }
@@ -706,9 +710,7 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
         local_domains[i].tuple_res = nullptr;
     }
 
-    print_instant("Done \n");
     delete[] local_domains;
-    print_instant("Done !\n");
     return py_list_result;
 }
 
