@@ -189,169 +189,6 @@ def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:,
       return
 _intersect_nodes = compile(_intersect_nodes)
 
-def _create_cell_faces_n(cells: 'int[:, :]', tmp_cell_faces: 'int[:, :, :]', tmp_size_info: 'int[:, :]', cell_type_map: 'int[:]'):
-  """
-    Create cell faces
-
-    Args:
-      nodes : nodes of the cell
-      cell_type :
-        1 => triangle
-        2 => rectangle
-        3 => tetrahedron
-        4 => hexahedron
-        5 => pyramid
-
-    Return:
-      out_faces: faces of the cell
-      size_info:
-        size_info[:-1] contains number of nodes of each face
-        size_info[-1] total number of faces of the cell
-
-    Notes:
-    'triangle': {'line': [[0, 1], [1, 2], [2, 0]]},
-    'rectangle': {'line': [[0, 1], [1, 2], [2, 3], [3, 0]},
-    'tet': {'tri': [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]},
-    'hex': {'quad': [[0, 1, 2, 3], [0, 1, 4, 5], [1, 2, 5, 6],
-                     [2, 3, 6, 7], [0, 3, 4, 7], [4, 5, 6, 7]]},
-    'pyr': {'quad': [[0, 1, 2, 3]],
-            'tri': [[0, 1, 4], [1, 2, 4], [2, 3, 4], [0, 3, 4]]}
-
-  """
-  triangle = 1
-  rectangle = 2
-  tetrahedron = 3
-  hexahedron = 4
-  pyramid = 5
-
-  for i in range(cells.shape[0]):
-    nodes = cells[i]
-    out_faces = tmp_cell_faces[i]
-    size_info = tmp_size_info[i]
-    cell_type = cell_type_map[i]
-
-    if cell_type == triangle:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      size_info[0] = 2  # number of nodes
-
-      out_faces[1][0] = nodes[1]
-      out_faces[1][1] = nodes[2]
-      size_info[1] = 2
-
-      out_faces[2][0] = nodes[2]
-      out_faces[2][1] = nodes[0]
-      size_info[2] = 2
-
-      size_info[-1] = 3  # number of faces
-    elif cell_type == rectangle:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      size_info[0] = 2  # number of nodes
-
-      out_faces[1][0] = nodes[1]
-      out_faces[1][1] = nodes[2]
-      size_info[1] = 2
-
-      out_faces[2][0] = nodes[2]
-      out_faces[2][1] = nodes[3]
-      size_info[2] = 2
-
-      out_faces[3][0] = nodes[3]
-      out_faces[3][1] = nodes[0]
-      size_info[3] = 2
-
-      size_info[-1] = 4  # number of faces
-    elif cell_type == tetrahedron:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      out_faces[0][2] = nodes[2]
-      size_info[0] = 3  # number of nodes
-
-      out_faces[1][0] = nodes[0]
-      out_faces[1][1] = nodes[1]
-      out_faces[1][2] = nodes[3]
-      size_info[1] = 3
-
-      out_faces[2][0] = nodes[0]
-      out_faces[2][1] = nodes[2]
-      out_faces[2][2] = nodes[3]
-      size_info[2] = 3
-
-      out_faces[3][0] = nodes[1]
-      out_faces[3][1] = nodes[2]
-      out_faces[3][2] = nodes[3]
-      size_info[3] = 3
-
-      size_info[-1] = 4  # number of faces
-    elif cell_type == hexahedron:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      out_faces[0][2] = nodes[2]
-      out_faces[0][3] = nodes[3]
-      size_info[0] = 4
-
-      out_faces[1][0] = nodes[0]
-      out_faces[1][1] = nodes[1]
-      out_faces[1][2] = nodes[4]
-      out_faces[1][3] = nodes[5]
-      size_info[1] = 4
-
-      out_faces[2][0] = nodes[1]
-      out_faces[2][1] = nodes[2]
-      out_faces[2][2] = nodes[5]
-      out_faces[2][3] = nodes[6]
-      size_info[2] = 4
-
-      out_faces[3][0] = nodes[2]
-      out_faces[3][1] = nodes[3]
-      out_faces[3][2] = nodes[6]
-      out_faces[3][3] = nodes[7]
-      size_info[3] = 4
-
-      out_faces[4][0] = nodes[0]
-      out_faces[4][1] = nodes[3]
-      out_faces[4][2] = nodes[4]
-      out_faces[4][3] = nodes[7]
-      size_info[4] = 4
-
-      out_faces[5][0] = nodes[4]
-      out_faces[5][1] = nodes[5]
-      out_faces[5][2] = nodes[6]
-      out_faces[5][3] = nodes[7]
-      size_info[5] = 4
-
-      size_info[-1] = 6
-    elif cell_type == pyramid:
-      out_faces[0][0] = nodes[0]
-      out_faces[0][1] = nodes[1]
-      out_faces[0][2] = nodes[2]
-      out_faces[0][3] = nodes[3]
-      size_info[0] = 4
-
-      out_faces[1][0] = nodes[0]
-      out_faces[1][1] = nodes[1]
-      out_faces[1][2] = nodes[4]
-      size_info[1] = 3
-
-      out_faces[2][0] = nodes[1]
-      out_faces[2][1] = nodes[2]
-      out_faces[2][2] = nodes[4]
-      size_info[2] = 3
-
-      out_faces[3][0] = nodes[2]
-      out_faces[3][1] = nodes[3]
-      out_faces[3][2] = nodes[4]
-      size_info[3] = 3
-
-      out_faces[4][0] = nodes[0]
-      out_faces[4][1] = nodes[3]
-      out_faces[4][2] = nodes[4]
-      size_info[4] = 3
-
-      size_info[-1] = 5
-
-
 def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[:]', cell_type: 'int[:]'):
   """
     Create cell faces
@@ -510,7 +347,7 @@ def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[
     size_info[-1] = 5
 _create_cell_faces = compile(_create_cell_faces)
 
-def _polygon_area_2d(points : 'int[:, :]'):
+def _polygon_area_2d(points : 'float[:, :]'):
   n = len(points)
   area = 0.0
   for i in range(n):
@@ -522,7 +359,7 @@ def _polygon_area_2d(points : 'int[:, :]'):
   return abs(area) / 2.0
 _polygon_area_2d = compile(_polygon_area_2d)
 
-def _create_cell_info_2d(cells: 'int[:, :]', nodes: 'int[:, :]', cell_area: 'int[:]', cell_center: 'int[:, :]'):
+def _compute_cell_center_volume_2d(cells: 'int[:, :]', nodes: 'float[:, :]', cell_area: 'float[:]', cell_center: 'float[:, :]'):
   for i in range(len(cells)):
     nb_vertex = cells[i, -1]
     vertices = nodes[cells[i, 0:nb_vertex]]
@@ -530,148 +367,134 @@ def _create_cell_info_2d(cells: 'int[:, :]', nodes: 'int[:, :]', cell_area: 'int
     center = np.sum(vertices, axis=0) / nb_vertex
     cell_center[i] = center[0:2]
 
-def _tetrahedron_volume(points : 'float[:, :]'):
-  a, b, c, d = points
-  matrix = np.array([b - a, c - a, d - a], dtype=points.dtype)
-  volume = np.abs(np.linalg.det(matrix)) / 6
+def _tetrahedron_volume(a : 'float[:]', b : 'float[:]', c: 'float[:]', d : 'float[:]'):
+  # Compute det of [b - a, c - a, d - a] matrix
+  u = b - a
+  v = c - a
+  w = d - a
+
+  cross_x = v[1] * w[2] - v[2] * w[1]
+  cross_y = v[2] * w[0] - v[0] * w[2]
+  cross_z = v[0] * w[1] - v[1] * w[0]
+
+  det = (u[0] * cross_x + u[1] * cross_y + u[2] * cross_z)
+  volume = det / 6
   return volume
 _tetrahedron_volume = compile(_tetrahedron_volume)
 
-def _pyramid_volume(points : 'float[:, :]'):
-  tetrahedrons = np.array([
-      points[[0, 1, 2, 4]],
-      points[[0, 2, 3, 4]],
-  ], dtype=points.dtype)
-  return _tetrahedron_volume(tetrahedrons[0]) + _tetrahedron_volume(tetrahedrons[1])
-_pyramid_volume = compile(_pyramid_volume)
-
-def _hex_volume(points : 'float[:, :]'):
-  tetrahedrons = np.array([
-    points[[0, 1, 3, 4]],
-    points[[1, 3, 4, 5]],
-    points[[4, 5, 3, 7]],
-    points[[1, 3, 5, 2]],
-    points[[3, 7, 5, 2]],
-    points[[5, 7, 6, 2]],
-  ])
-  vol = 0.0
-  for tetra_points in tetrahedrons:
-    vol += _tetrahedron_volume(tetra_points)
-  return vol
-_hex_volume = compile(_hex_volume)
-
-def _get_volume_3d(points : 'int[:, :]'):
-  if len(points) == 4:
-    return _tetrahedron_volume(points)
-  elif len(points) == 8:
-    return _hex_volume(points)
-  elif len(points) == 5:
-    return _pyramid_volume(points)
-  return 0.0
-_get_volume_3d = compile(_get_volume_3d)
-
-def _create_cell_info_3d(cells: 'int[:, :]', nodes: 'int[:, :]', cell_area: 'int[:]', cell_center: 'int[:, :]'):
+def _compute_cell_center_volume_3d(cells: 'int[:, :]', nodes: 'float[:, :]', cell_area: 'float[:]', cell_center: 'float[:, :]'):
   for i in range(len(cells)):
     nb_vertex = cells[i, -1]
-    vertices = nodes[cells[i, 0:nb_vertex]]
-    cell_area[i] = _get_volume_3d(vertices)
-    center = np.sum(vertices, axis=0) / nb_vertex
+    points = nodes[cells[i, 0:nb_vertex]]
+
+    # Center
+    center = np.sum(points, axis=0) / nb_vertex
     cell_center[i] = center[0:3]
 
-# @numba.jit(nopython=True)
-# def _create_info(
-#   cells: 'int[:, :]',
-#   node_cellid: 'int[:, :]',
-#   cell_type: 'int[:]',
-#   tmp_cell_faces: 'int[:, :, :]',
-#   tmp_size_info: 'int[:, :]',
-#   tmp_cell_faces_map: 'int[:, :]',
-#   faces: 'int[:, :]',
-#   cell_faceid: 'int[:, :]',
-#   face_cellid: 'int[:, :]',
-#   cell_cellfid: 'int[:, :]',
-#   faces_counter: 'int[:]'
-# ):
-#   """
-#     - Create faces
-#     - Create cells with their corresponding faces (cells.cellfid).
-#     - Create neighboring cells for each face (faces.cellid).
-#     - Create neighboring cells of a cell by face (cells.cellid).
-#
-#     Args:
-#       cells: cells with their nodes (cell => cell nodes)
-#       node_cellid: neighbor cells of each node (node => neighbor cells)
-#       max_nb_nodes : maximum number of nodes on faces
-#       max_nb_faces : maximum number of faces on cells
-#
-#     Return:
-#       faces : (face => face nodes)
-#       cell_faces : (cell => cell faces)
-#       face_cellid : (face => neighboring cells of the face)
-#       faces_counter : array(1) face counter
-#       cell_cellfid : (cell => neighboring cells of a cell by face)
-#
-#   """
-#   intersect_cells = np.zeros(2, dtype=np.int32)
-#   _create_cell_faces_n(cells, tmp_cell_faces, tmp_size_info, cell_type)
-#   nb_faces = (tmp_cell_faces_map.shape[1] - 1) // 2
-#
-#   for i in range(cells.shape[0]):
-#     # For every face of the cell[i]
-#     # Get the intersection of the neighboring cells of this face's nodes (N*n*n)
-#     # The result should be two cells `intersect_cells`
-#     for j in range(tmp_size_info[i, -1]):
-#       _intersect_nodes(tmp_cell_faces[i, j], tmp_size_info[i, j], node_cellid, intersect_cells)
-#       # The face has at most two neighbors
-#       # swap to make intersect_cells[0] = cell_i id
-#       if intersect_cells[1] == i:
-#         intersect_cells[1] = intersect_cells[0]
-#         intersect_cells[0] = i
-#
-#       face_id = -1
-#       # Check if the face already exist
-#       if intersect_cells[1] != -1:
-#         for k in range(tmp_cell_faces_map[i, -1]):
-#           if tmp_cell_faces_map[i, k] == intersect_cells[1]:
-#             face_id = tmp_cell_faces_map[i, nb_faces + k]
-#
-#       if face_id == -1:
-#         face_id = faces_counter[0]
-#         faces_counter[0] += 1
-#         # copy nodes from tmp_cell_faces
-#         for k in range(tmp_size_info[i, j]):
-#           faces[face_id, k] = tmp_cell_faces[i, j, k]
-#         faces[face_id, -1] = tmp_size_info[i, j]
-#
-#         # Store the face in tmp_cell_faces_map for later existence verification.
-#         if intersect_cells[1] != -1:
-#           a = tmp_cell_faces_map[intersect_cells[1]]
-#           size = a[-1]
-#           a[size] = i
-#           a[nb_faces + size] = face_id
-#           a[-1] += 1
-#
-#       # (cell_faces) Create cell faces
-#       cell_faceid[i, j] = face_id
-#       cell_faceid[i, -1] += 1
-#
-#       # (face_cellid) Create neighboring cells of each face
-#       face_cellid[face_id, 0] = intersect_cells[0]
-#       face_cellid[face_id, 1] = intersect_cells[1]
-#
-#       # (cell_cellfid) Create neighboring cells of the cell by face
-#       if intersect_cells[1] != -1:
-#         cell_cellfid[i, j] = intersect_cells[1]
-#         cell_cellfid[i, -1] += 1
+    # Volume
+    vol = 0.0
+    if nb_vertex == 4: # Tetrahedron
+      vol += _tetrahedron_volume(points[0], points[1], points[2], points[3])
+    elif nb_vertex == 8: # Hexahedron
+      # [0, 1, 3, 4], # 1 tetra
+      # [1, 3, 4, 5], # 2 tetra
+      # [4, 5, 3, 7], # 3 tetra
+      # [1, 3, 5, 2], # 4 tetra
+      # [3, 7, 5, 2], # 5 tetra
+      # [5, 7, 6, 2]  # 6 tetra
+      vol += _tetrahedron_volume(points[0], points[1], points[3], points[4])
+      vol += _tetrahedron_volume(points[1], points[3], points[4], points[5])
+      vol += _tetrahedron_volume(points[4], points[5], points[3], points[7])
+      vol += _tetrahedron_volume(points[1], points[3], points[5], points[2])
+      vol += _tetrahedron_volume(points[3], points[7], points[5], points[2])
+      vol += _tetrahedron_volume(points[5], points[7], points[6], points[2])
+    elif nb_vertex == 5: # Pyramid
+      # [0, 1, 2, 4],  # 1 tetra
+      # [0, 2, 3, 4],  # 2 tetra
+      vol += _tetrahedron_volume(points[0], points[1], points[2], points[4])
+      vol += _tetrahedron_volume(points[0], points[2], points[3], points[4])
+    cell_area[i] = vol
 
-# @numba.jit(nopython=True)
+def _triangle_area_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
+  u = b - a
+  v = c - a
+
+  # cross
+  cross_x = u[1] * v[2] - u[2] * v[1]
+  cross_y = u[2] * v[0] - u[0] * v[2]
+  cross_z = u[0] * v[1] - u[1] * v[0]
+  area = np.sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z)
+  return area * 0.5
+_triangle_area_3d = compile(_triangle_area_3d)
+
+def _triangle_normal_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
+  u = b - a
+  v = c - a
+
+  # cross
+  cross = np.zeros(shape=3, dtype=a.dtype)
+  cross[0] = u[1] * v[2] - u[2] * v[1]
+  cross[1] = u[2] * v[0] - u[0] * v[2]
+  cross[2] = u[0] * v[1] - u[1] * v[0]
+  return cross
+_triangle_normal_3d = compile(_triangle_normal_3d)
+
+def _compute_face_info_2d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]', face_measure : 'float[:]', face_center: 'float[:, :]', face_normal: 'float[:, :]'):
+  for i in range(len(faces)):
+    nb_vertex = faces[i, -1]
+    points = nodes[faces[i, 0:nb_vertex]]
+
+    # Face Measure
+    u = points[0] - points[1]
+    measure = np.sqrt(u[0] * u[0] + u[1] * u[1])
+    face_measure[i] = measure
+
+    # Center
+    center = np.sum(points, axis=0) / nb_vertex
+    face_center[i] = center[0:2]
+
+    # Face Normal
+    normal = np.array([-u[1], u[0]], dtype=u.dtype)
+    snorm = cell_center[face_cellid[i, 0]] - center
+    if (np.dot(normal, snorm)) > 0:
+      normal *= -1
+    face_normal[i] = normal
+
+def _compute_face_info_3d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]', face_measure : 'float[:]', face_center: 'float[:, :]', face_normal: 'float[:, :]'):
+  for i in range(len(faces)):
+    nb_vertex = faces[i, -1]
+    points = nodes[faces[i, 0:nb_vertex]]
+
+    measure = 0
+    normal = np.zeros(shape=3, dtype=points.dtype)
+    if nb_vertex == 3: #Triangle
+      measure = _triangle_area_3d(points[0], points[1], points[2])
+      normal[:] = _triangle_normal_3d(points[0], points[1], points[2])
+    elif nb_vertex == 4: #Rectangle
+      measure = _triangle_area_3d(points[0], points[1], points[2]) * 2
+      normal[:] = _triangle_normal_3d(points[0], points[1], points[2]) * 2
+
+    # Face Measure
+    face_measure[i] = measure
+
+    # Center
+    center = np.sum(points, axis=0) / nb_vertex
+    face_center[i] = center[0:3]
+
+    # Face Normal
+    snorm = cell_center[face_cellid[i, 0]] - center
+    if (np.dot(normal, snorm)) > 0:
+      normal *= -1
+    face_normal[i] = normal
+
+
 
 def _create_info(
   cells: 'int[:, :]',
   node_cellid: 'int[:, :]',
   cell_type: 'int[:]',
-  tmp_cell_faces: 'int[:, :, :]',
-  tmp_size_info: 'int[:, :]',
+  tmp_cell_faces: 'int[:, :]',
+  tmp_size_info: 'int[:]',
   tmp_cell_faces_map: 'int[:, :]',
   faces: 'int[:, :]',
   cell_faceid: 'int[:, :]',
@@ -854,8 +677,10 @@ create_cellfid = compile(_create_cellfid)
 count_max_cell_cellnid = compile(_count_max_cell_cellnid)
 create_cell_cellnid = compile(_create_cell_cellnid)
 create_info = compile(_create_info)
-create_cell_info_2d = compile(_create_cell_info_2d)
-create_cell_info_3d = compile(_create_cell_info_3d)
+compute_cell_center_volume_2d = compile(_compute_cell_center_volume_2d)
+compute_cell_center_volume_3d = compile(_compute_cell_center_volume_3d)
+compute_face_info_2d = compile(_compute_face_info_2d)
+compute_face_info_3d = compile(_compute_face_info_3d)
 get_max_node_faceid = compile(get_max_node_faceid)
 get_node_faceid = compile(get_node_faceid)
 define_face_and_node_name = compile(define_face_and_node_name)

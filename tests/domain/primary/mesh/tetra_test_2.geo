@@ -69,10 +69,10 @@ Physical Surface(6) = {6};
 Physical Volume (1) = {1};
 
 Mesh.Algorithm3D = 1;
-Mesh 3;
+// Mesh 3;
 
 
-Save "tetrahedron_big.msh";
+// Save "tetrahedron_big.msh";
 
 
 

@@ -10,15 +10,18 @@ from create_domain_utils import (append,
                                   count_max_cell_cellnid,
                                   create_cell_cellnid,
                                   create_info,
-                                  create_cell_info_2d,
+                                  compute_cell_center_volume_3d,
                                   get_max_node_faceid,
                                   get_node_faceid,
                                   define_face_and_node_name,
                                   _intersect_nodes,
-                                  create_cell_info_3d,
+                                  compute_cell_center_volume_2d,
+                                  compute_face_info_2d,
+                                  compute_face_info_3d,
                                   create_cellfid
                                   )
 
+# TODO check indexing limit on int32
 
 class Mesh:
   def __init__(self, mesh_path, dim):
@@ -39,6 +42,9 @@ class Mesh:
     self.phy_faces = phy_faces
     self.phy_faces_name = phy_faces_name
     self.dim = dim
+
+    if len(cells) == 0 or len(points) == 0:
+      raise ValueError('Empty mesh')
 
   def _read_mesh(self, mesh_path):
     mesh = meshio.read(mesh_path)
@@ -184,7 +190,7 @@ class Domain:
     if float_precision != 'float32' and float_precision != 'float64':
       raise ValueError('Invalid float precision argument')
 
-    self.nodes = np.array(mesh.points).astype(np.float32)
+    self.nodes = np.array(mesh.points[:, 0:mesh.dim]).astype(np.float32)
     self.cells = mesh.cells
     self.cells_type = mesh.cells_type
     self.max_cell_nodeid = mesh.max_cell_nodeid
@@ -264,6 +270,7 @@ class Domain:
 
     return cell_cellfid
 
+  # Deprecated
   def create_sub_domains(self, nb_parts: 'int'):
     if nb_parts == 1:
       local_domain = LocalDomainStruct()
@@ -478,6 +485,8 @@ class Domain:
       local_domain.max_cell_nodeid = self.max_cell_nodeid
       local_domain.max_cell_faceid = self.max_cell_faceid
       local_domain.max_face_nodeid = self.max_face_nodeid
+      local_domain.node_cellid = self.node_cellid
+      local_domain.cell_cellnid = self.cell_cellnid
 
       return [local_domain]
 
@@ -505,13 +514,19 @@ class Domain:
       l_domain.node_loctoglob = item[6]
       l_domain.halo_neighsub = item[7]
       l_domain.node_halos = item[8]
+      l_domain.dim = self.dim
+      l_domain.float_precision = self.float_precision
+      l_domain.max_cell_nodeid = item[9]
+      l_domain.max_cell_faceid = item[10]
+      l_domain.max_face_nodeid = item[11]
+      l_domain.node_cellid = None
+      l_domain.cell_cellnid = None
       local_domains.append(l_domain)
 
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
     return local_domains
 
 class LocalDomain:
-  # TODO int32 -> uint32
   def __init__(self, local_domain_struct: 'LocalDomainStruct'):
     self.nodes = local_domain_struct.nodes
     self.cells = local_domain_struct.cells
@@ -558,10 +573,20 @@ class LocalDomain:
     ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
-    # (
-    #   self.cell_volume,
-    #   self.cell_center
-    # ) = self._create_cell_info(self.cells, self.nodes)
+    print("Create cell volume and center")
+    (
+      self.cell_volume,
+      self.cell_center
+    ) = self._create_cell_info(self.cells, self.nodes)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("Face measure face center face normal")
+    (
+      self.face_measure,
+      self.face_center,
+      self.face_normal
+    ) = self._create_face_info(self.faces, self.nodes, self.face_cellid, self.cell_center)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
 
   def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int', g_node_cellid):
@@ -654,11 +679,25 @@ class LocalDomain:
     cell_volume = np.ones(shape=nb_cells, dtype=self.float_precision)
     cell_center = np.zeros(shape=(nb_cells, self.dim), dtype=self.float_precision)
     if self.dim == 2:
-      create_cell_info_2d(cells, nodes, cell_volume, cell_center)
+      compute_cell_center_volume_2d(cells, nodes, cell_volume, cell_center)
     else:
-      create_cell_info_3d(cells, nodes, cell_volume, cell_center)
+      compute_cell_center_volume_3d(cells, nodes, cell_volume, cell_center)
     return (
       cell_volume,
       cell_center
     )
 
+  def _create_face_info(self, faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]'):
+    nb_faces = len(faces)
+    face_measure = np.zeros(shape=nb_faces, dtype=self.float_precision)
+    face_center = np.zeros(shape=(nb_faces, self.dim), dtype=self.float_precision)
+    face_normal = np.zeros(shape=(nb_faces, self.dim), dtype=self.float_precision)
+    if self.dim == 2:
+      compute_face_info_2d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal)
+    else:
+      compute_face_info_3d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal)
+    return (
+      face_measure,
+      face_center,
+      face_normal
+    )
