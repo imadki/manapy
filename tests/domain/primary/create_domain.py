@@ -18,7 +18,9 @@ from create_domain_utils import (append,
                                   compute_cell_center_volume_2d,
                                   compute_face_info_2d,
                                   compute_face_info_3d,
-                                  create_cellfid
+                                  create_cellfid,
+                                  create_halo_cells,
+                                  create_ghost_cells
                                   )
 
 # TODO check indexing limit on int32
@@ -165,12 +167,16 @@ class LocalDomainStruct:
     self.cell_loctoglob = None # [cell global index]
     self.node_loctoglob = None # [node global index]
     self.halo_neighsub = None # [sub domain id]
-    self.node_halos = None # [node, global halo cell index, ...]
+    self.node_halos = None # [node1, number of halos, halocell index in halo_halosext, node2, number of halos, ....] shape=(2*nb_nodes + nb_halos)
+    self.halo_halosext = None # [global_index_if_halo_cell, ...] shape=(nb_halos)
     self.dim = None
     self.float_precision = None
     self.max_cell_nodeid = None
     self.max_cell_faceid = None
     self.max_face_nodeid = None
+    self.max_node_haloid = None
+    self.max_cell_halofid = None
+    self.max_cell_halonid = None
 
 
 
@@ -491,10 +497,13 @@ class Domain:
       return [local_domain]
 
     print("Start creating sub domains")
+    # print(self.cell_cellfid)
     res = manapy_domain.create_sub_domains(
       self.cell_cellfid,
       self.node_cellid,
       self.cells,
+      self.cell_cellfid,
+      self.cell_cellnid,
       self.cells_type,
       self.nodes,
       self.phy_faces,
@@ -514,11 +523,15 @@ class Domain:
       l_domain.node_loctoglob = item[6]
       l_domain.halo_neighsub = item[7]
       l_domain.node_halos = item[8]
+      l_domain.halo_halosext = item[9]
       l_domain.dim = self.dim
       l_domain.float_precision = self.float_precision
-      l_domain.max_cell_nodeid = item[9]
-      l_domain.max_cell_faceid = item[10]
-      l_domain.max_face_nodeid = item[11]
+      l_domain.max_cell_nodeid = item[10]
+      l_domain.max_cell_faceid = item[11]
+      l_domain.max_face_nodeid = item[12]
+      l_domain.max_node_haloid = item[13]
+      l_domain.max_cell_halofid = item[14]
+      l_domain.max_cell_halonid = item[15]
       l_domain.node_cellid = None
       l_domain.cell_cellnid = None
       local_domains.append(l_domain)
@@ -537,11 +550,15 @@ class LocalDomain:
     self.node_loctoglob = local_domain_struct.node_loctoglob
     self.halo_neighsub = local_domain_struct.halo_neighsub
     self.node_halos = local_domain_struct.node_halos
+    self.halo_halosext = local_domain_struct.halo_halosext
     self.dim = local_domain_struct.dim
     self.float_precision = local_domain_struct.float_precision
     self.max_cell_nodeid = local_domain_struct.max_cell_nodeid
     self.max_cell_faceid = local_domain_struct.max_cell_faceid
     self.max_face_nodeid = local_domain_struct.max_face_nodeid
+    self.max_node_haloid = local_domain_struct.max_node_haloid
+    self.max_cell_halofid = local_domain_struct.max_cell_halofid
+    self.max_cell_halonid = local_domain_struct.max_cell_halonid
     self.node_cellid = local_domain_struct.node_cellid
     self.cell_cellnid = local_domain_struct.cell_cellnid
     self.nb_nodes = np.uint32(len(self.nodes))
@@ -561,17 +578,11 @@ class LocalDomain:
       self.faces,
       self.cell_faceid,
       self.face_cellid,
-      self.cell_cellfid
-    ) = self._create_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
+      self.cell_cellfid,
+      self.boundary_info
+    ) = self._create_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid, len(self.phy_faces))
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
-    print("Create face and node names")
-    (
-      self.face_name,
-      self.node_name,
-      self.node_phyfaceid,
-    ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces)
-    print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("Create cell volume and center")
     (
@@ -587,6 +598,29 @@ class LocalDomain:
       self.face_normal
     ) = self._create_face_info(self.faces, self.nodes, self.face_cellid, self.cell_center)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("cell_halofid, cell_halonid, face_haloid, node_haloid")
+    (
+      self.cell_halofid,
+      self.cell_halonid,
+      self.face_haloid,
+      self.node_haloid
+    ) = self._create_halo_cells(self.cells, self.cell_faceid, self.faces, self.nodes, self.node_halos)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("Create face and node names")
+    (
+      self.face_oldname,
+      self.node_oldname,
+      self.face_name,
+      self.node_name
+    ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces, self.face_haloid, self.node_haloid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("Create ghost_cells")
+    self.ghost_cells = self._create_ghost_cells(self.cell_center, self.face_center, self.face_normal, self.boundary_info)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
 
 
   def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int', g_node_cellid):
@@ -606,6 +640,7 @@ class LocalDomain:
     cell_type: 'int[:]',
     max_cell_faceid: 'int',
     max_face_nodeid: 'int',
+    nb_phy_faces: 'int'
   ):
     # ? Create tables
     nb_cells = len(cells)
@@ -623,6 +658,7 @@ class LocalDomain:
     cell_cellfid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32) * -1
     cell_cellfid[:, -1] = 0
     faces_counter = np.zeros(shape=1, dtype=np.int32)
+    boundary_info = np.zeros(shape=(nb_phy_faces, 2), dtype=np.int32)
 
     create_info(
       cells,
@@ -635,7 +671,8 @@ class LocalDomain:
       cell_faceid,
       face_cellid,
       cell_cellfid,
-      faces_counter
+      faces_counter,
+      boundary_info
     )
 
     faces = faces[:faces_counter[0]]
@@ -645,32 +682,8 @@ class LocalDomain:
       faces,
       cell_faceid,
       face_cellid,
-      cell_cellfid
-    )
-
-  def _define_face_and_node_name(self,
-                                 phy_faces: 'int[:, :]',
-                                 phy_faces_name: 'int[:]',
-                                 faces: 'int[:, :]',
-                                 ):
-    nb_nodes = self.nb_nodes
-    face_name = np.zeros(shape=faces.shape[0], dtype=np.int32)
-    node_name = np.zeros(shape=nb_nodes, dtype=np.int32)
-
-    # count max_node_faceid
-    tmp = np.zeros(shape=nb_nodes, dtype=np.int32)
-    get_max_node_faceid(phy_faces, tmp)
-    max_node_faceid = np.max(tmp)
-
-    # create node_phyfaceid
-    node_phyfaceid = np.zeros(shape=(nb_nodes, max_node_faceid + 1), dtype=np.int32)
-    get_node_faceid(phy_faces, node_phyfaceid)
-
-    define_face_and_node_name(phy_faces, phy_faces_name, faces, node_phyfaceid, face_name, node_name)
-    return (
-      face_name,
-      node_name,
-      node_phyfaceid
+      cell_cellfid,
+      boundary_info
     )
 
 
@@ -701,3 +714,64 @@ class LocalDomain:
       face_center,
       face_normal
     )
+
+
+  def _create_halo_cells(self, cells, cell_faceid, faces, nodes, node_halos):
+    nb_cells = len(cells)
+    nb_faces = len(faces)
+    nb_nodes = len(nodes)
+
+    cell_halofid = np.zeros(shape=(nb_cells, self.max_cell_halofid + 1), dtype=np.int32)
+    cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=np.int32)
+    face_haloid = np.zeros(shape=nb_faces, dtype=np.int32)
+    node_haloid = np.zeros(shape=(nb_nodes, self.max_node_haloid + 1), dtype=np.int32)
+
+    create_halo_cells(cells, cell_faceid, faces, node_halos, node_haloid, cell_halofid, cell_halonid, face_haloid)
+
+    return (
+      cell_halofid,
+      cell_halonid,
+      face_haloid,
+      node_haloid
+    )
+
+  def _define_face_and_node_name(self,
+                                 phy_faces: 'int[:, :]',
+                                 phy_faces_name: 'int[:]',
+                                 faces: 'int[:, :]',
+                                 face_haloid: 'int[:]',
+                                 node_haloid: 'int[:, :]'
+                                 ):
+    nb_nodes = self.nb_nodes
+    face_name = np.zeros(shape=faces.shape[0], dtype=np.int32)
+    node_name = np.zeros(shape=nb_nodes, dtype=np.int32)
+    face_oldname = np.zeros(shape=faces.shape[0], dtype=np.int32)
+    node_oldname = np.zeros(shape=nb_nodes, dtype=np.int32)
+
+    # count max_node_faceid
+    tmp = np.zeros(shape=nb_nodes, dtype=np.int32)
+    get_max_node_faceid(phy_faces, tmp)
+    max_node_faceid = np.max(tmp)
+
+    # create node_phyfaceid
+    node_phyfaceid = np.zeros(shape=(nb_nodes, max_node_faceid + 1), dtype=np.int32)
+    get_node_faceid(phy_faces, node_phyfaceid)
+
+    define_face_and_node_name(phy_faces, phy_faces_name, faces, node_phyfaceid, face_haloid, node_haloid, face_oldname, node_oldname, face_name, node_name)
+    return (
+      face_oldname,
+      node_oldname,
+      face_name,
+      node_name
+    )
+
+  def _create_ghost_cells(self, cell_center, face_center, face_normal, boundary_info):
+    # ghost_info => [c_x, c_y, c_z, cell_id, face_id]
+    nb_boundary = len(boundary_info)
+
+    ghost_cells = np.zeros(shape=(nb_boundary, 5), dtype=self.float_precision)
+
+    create_ghost_cells(cell_center, face_center, face_normal, boundary_info, ghost_cells)
+
+    return ghost_cells
+

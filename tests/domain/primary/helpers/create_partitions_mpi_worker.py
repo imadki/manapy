@@ -82,7 +82,7 @@ if len(sys.argv) == 4:
     print("path", mesh_file_path, "precision", float_precision, "dim", dim, "rank", rank)
     create_partitions(mesh_file_path, float_precision, dim)
   else:
-    raise Exception("Invalid float_precision argument or Invalid dim argument")
+    raise Exception(f"Invalid float_precision argument or Invalid dim argument {dim} {float_precision}")
 else:
   raise Exception("Invalid mesh_file_path argument")
 
