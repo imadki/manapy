@@ -21,7 +21,150 @@ enum CELL_TYPE {
     Pyramid = 5
 };
 
-# define PRINT_DEBUG false
+struct LocalDomainStruct {
+    PyArrayObject *nodes = nullptr;
+    PyArrayObject *cells = nullptr;
+    PyArrayObject *cells_type = nullptr;
+    PyArrayObject *phy_faces = nullptr;
+    PyArrayObject *phy_faces_name = nullptr;
+    PyArrayObject *cell_loctoglob = nullptr;
+    PyArrayObject *node_loctoglob = nullptr;
+    PyArrayObject *halo_neighsub = nullptr;
+    PyArrayObject *node_halos = nullptr;
+    PyArrayObject *halo_halosext = nullptr;
+    PyObject *tuple_res = nullptr;
+    idx_t max_cell_nodeid = 0;
+    idx_t max_cell_faceid = 0;
+    idx_t max_face_nodeid = 0;
+    idx_t max_node_haloid = 0;
+    idx_t max_cell_halofid = 0;
+    idx_t max_cell_halonid = 0;
+
+    // Temporarily
+    idx_t max_phy_face_nodeid = 0;
+    std::map<idx_t, idx_t> map_cells;
+    std::map<idx_t, idx_t> map_phy_faces;
+    std::map<idx_t, idx_t> map_nodes;
+
+    LocalDomainStruct() {}
+
+    int create_tables(const idx_t nb_cells, const idx_t nb_nodes, const idx_t nb_phyfaces, const idx_t node_dim) {
+        const npy_intp l_cells_dim[2] = {nb_cells, this->max_cell_nodeid + 1};
+        PyArrayObject *l_cells = (PyArrayObject *)PyArray_SimpleNew(2, l_cells_dim, int_type);
+
+        const npy_intp l_cells_type_dim[1] = {nb_cells};
+        PyArrayObject *l_cells_type = (PyArrayObject *)PyArray_SimpleNew(1, l_cells_type_dim, int_type);
+
+        const npy_intp l_cell_loctoglob_dim[1] = {nb_cells};
+        PyArrayObject *l_cell_loctoglob = (PyArrayObject *)PyArray_SimpleNew(1, l_cell_loctoglob_dim, int_type);
+
+        const npy_intp l_nodes_dim[2] = {nb_nodes, node_dim};
+        PyArrayObject *l_nodes = (PyArrayObject *)PyArray_SimpleNew(2, l_nodes_dim, float_type);
+
+        const npy_intp l_node_loctoglob_dim[1] = {nb_nodes};
+        PyArrayObject *l_node_loctoglob = (PyArrayObject *)PyArray_SimpleNew(1, l_node_loctoglob_dim, int_type);
+
+        const npy_intp l_phy_faces_dim[2] = {nb_phyfaces, this->max_phy_face_nodeid + 1};
+        PyArrayObject *l_phy_faces = (PyArrayObject *)PyArray_SimpleNew(2, l_phy_faces_dim, int_type);
+
+        const npy_intp l_phy_faces_name_dim[1] = {nb_phyfaces};
+        PyArrayObject *l_phy_faces_name = (PyArrayObject *)PyArray_SimpleNew(1, l_phy_faces_name_dim, int_type);
+
+
+
+        if (!l_cells || !l_cells_type || !l_cell_loctoglob || !l_nodes || !l_node_loctoglob || !l_phy_faces || !l_phy_faces_name)
+            return -1;
+
+        this->cells = l_cells;
+        this->cells_type = l_cells_type;
+        this->cell_loctoglob = l_cell_loctoglob;
+        this->nodes = l_nodes;
+        this->node_loctoglob = l_node_loctoglob;
+        this->phy_faces = l_phy_faces;
+        this->phy_faces_name = l_phy_faces_name;
+
+        return 0;
+
+    }
+
+    int create_halo_tables(const idx_t halo_neighsub_size, const idx_t node_halos_size) {
+        const npy_intp l_halo_neighsub_dim[1] = {halo_neighsub_size};
+        PyArrayObject *l_halo_neighsub = (PyArrayObject *)PyArray_SimpleNew(1, l_halo_neighsub_dim, int_type);
+
+        const npy_intp l_node_halos_dim[1] = {node_halos_size};
+        PyArrayObject *l_node_halos = (PyArrayObject *)PyArray_SimpleNew(1, l_node_halos_dim, int_type);
+
+        if (!l_halo_neighsub || !l_node_halos)
+            return -1;
+
+        this->halo_neighsub = l_halo_neighsub;
+        this->node_halos = l_node_halos;
+
+        return 0;
+    }
+
+    int create_tuple() {
+        PyObject *tuple = Py_BuildValue("(OOOOOOOOOiiiiii)", this->nodes, this->cells, this->cells_type,
+            this->phy_faces, this->phy_faces_name, this->cell_loctoglob, this->node_loctoglob, this->halo_neighsub, this->node_halos,
+            this->max_cell_nodeid, this->max_cell_faceid, this->max_face_nodeid, this->max_node_haloid, this->max_cell_halofid, this->max_cell_halonid);
+        if (!tuple)
+            return -1;
+        // tuple holds references now
+        Py_DECREF(this->nodes);
+        Py_DECREF(this->cells);
+        Py_DECREF(this->cells_type);
+        Py_DECREF(this->phy_faces);
+        Py_DECREF(this->phy_faces_name);
+        Py_DECREF(this->cell_loctoglob);
+        Py_DECREF(this->node_loctoglob);
+        Py_DECREF(this->halo_neighsub);
+        Py_DECREF(this->node_halos);
+        this->nodes = nullptr;
+        this->cells = nullptr;
+        this->cells_type = nullptr;
+        this->phy_faces = nullptr;
+        this->phy_faces_name = nullptr;
+        this->cell_loctoglob = nullptr;
+        this->node_loctoglob = nullptr;
+        this->halo_neighsub = nullptr;
+        this->node_halos = nullptr;
+
+        this->tuple_res = tuple;
+        return 0;
+    }
+
+    ~LocalDomainStruct() {
+        Py_XDECREF(this->nodes);
+        Py_XDECREF(this->cells);
+        Py_XDECREF(this->cells_type);
+        Py_XDECREF(this->phy_faces);
+        Py_XDECREF(this->phy_faces_name);
+        Py_XDECREF(this->cell_loctoglob);
+        Py_XDECREF(this->node_loctoglob);
+        Py_XDECREF(this->halo_neighsub);
+        Py_XDECREF(this->node_halos);
+        Py_XDECREF(this->tuple_res);
+    }
+};
+
+std::vector<idx_t>    get_max_info(const idx_t cell_type) {
+    if (cell_type == CELL_TYPE::Triangle) {
+        return {3, 2, 3};
+    } else if (cell_type == CELL_TYPE::Quad) {
+        return {4, 2, 4};
+    } else if (cell_type == CELL_TYPE::Tetra) {
+        return {4, 3, 4};
+    } else if (cell_type == CELL_TYPE::Hexahedron) {
+        return {6, 4, 8};
+    } else if (cell_type == CELL_TYPE::Pyramid) {
+        return {5, 4, 5};
+    }
+    return {0, 0, 0};
+}
+
+
+
+// # define PRINT_DEBUG false
 void print_instant(const char *fmt, ...) {
 #ifdef PRINT_DEBUG
     char buffer[512];  // temp string buffer
@@ -48,167 +191,6 @@ void print_instant(const char *fmt, ...) {
     Py_DECREF(sys);
 #endif
 }
-
-
-struct LocalDomainStruct {
-    PyArrayObject *nodes = nullptr;
-    PyArrayObject *cells = nullptr;
-    PyArrayObject *cells_type = nullptr;
-    PyArrayObject *phy_faces = nullptr;
-    PyArrayObject *phy_faces_name = nullptr;
-    PyArrayObject *cell_loctoglob = nullptr;
-    PyArrayObject *node_loctoglob = nullptr;
-    PyArrayObject *halo_neighsub = nullptr;
-    PyArrayObject *node_halos = nullptr;
-    PyArrayObject *halo_halosext = nullptr;
-    PyObject *tuple_res = nullptr;
-    idx_t max_cell_nodeid = 0;
-    idx_t max_cell_faceid = 0;
-    idx_t max_face_nodeid = 0;
-    idx_t max_node_haloid = 0;
-    idx_t max_cell_halofid = 0;
-    idx_t max_cell_halonid = 0;
-
-    // Temporarily
-    idx_t max_phy_face_nodeid = 0;
-    idx_t nb_node_halos = 0;
-    std::map<idx_t, idx_t> map_cells;
-    std::map<idx_t, idx_t> map_phy_faces;
-    std::map<idx_t, idx_t> map_nodes;
-    std::map<idx_t, idx_t> map_halos; // halo_g_index -> local_index
-    std::set<idx_t> set_halo_neighsub;
-
-    LocalDomainStruct() {}
-
-    int create_tables(const idx_t nb_cells, const idx_t nb_nodes, const idx_t nb_phyfaces, const idx_t nb_halos, const idx_t nb_halo_neighsub, const idx_t node_dim) {
-
-
-        const npy_intp l_cells_dim[2] = {nb_cells, this->max_cell_nodeid + 1};
-        PyArrayObject *l_cells = (PyArrayObject *)PyArray_SimpleNew(2, l_cells_dim, int_type);
-
-        const npy_intp l_cells_type_dim[1] = {nb_cells};
-        PyArrayObject *l_cells_type = (PyArrayObject *)PyArray_SimpleNew(1, l_cells_type_dim, int_type);
-
-        const npy_intp l_cell_loctoglob_dim[1] = {nb_cells};
-        PyArrayObject *l_cell_loctoglob = (PyArrayObject *)PyArray_SimpleNew(1, l_cell_loctoglob_dim, int_type);
-
-        const npy_intp l_nodes_dim[2] = {nb_nodes, node_dim};
-        PyArrayObject *l_nodes = (PyArrayObject *)PyArray_SimpleNew(2, l_nodes_dim, float_type);
-
-        const npy_intp l_node_loctoglob_dim[1] = {nb_nodes};
-        PyArrayObject *l_node_loctoglob = (PyArrayObject *)PyArray_SimpleNew(1, l_node_loctoglob_dim, int_type);
-
-        const npy_intp l_phy_faces_dim[2] = {nb_phyfaces, this->max_phy_face_nodeid + 1};
-        PyArrayObject *l_phy_faces = (PyArrayObject *)PyArray_SimpleNew(2, l_phy_faces_dim, int_type);
-
-        const npy_intp l_phy_faces_name_dim[1] = {nb_phyfaces};
-        PyArrayObject *l_phy_faces_name = (PyArrayObject *)PyArray_SimpleNew(1, l_phy_faces_name_dim, int_type);
-
-        const npy_intp l_halo_neighsub_dim[1] = {nb_halo_neighsub};
-        PyArrayObject *l_halo_neighsub = (PyArrayObject *)PyArray_SimpleNew(1, l_halo_neighsub_dim, int_type);
-
-        const npy_intp l_node_halos_dim[1] = {this->nb_node_halos};
-        PyArrayObject *l_node_halos = (PyArrayObject *)PyArray_SimpleNew(1, l_node_halos_dim, int_type);
-
-        const npy_intp l_halo_halosext_dim[1] = {nb_halos};
-        PyArrayObject *l_halo_halosext = (PyArrayObject *)PyArray_SimpleNew(1, l_halo_halosext_dim, int_type);
-
-
-        if (!l_cells || !l_cells_type || !l_cell_loctoglob || !l_nodes || !l_node_loctoglob || !l_phy_faces || !l_phy_faces_name || !l_halo_neighsub || !l_node_halos || !l_halo_halosext)
-            return -1;
-
-        this->cells = l_cells;
-        this->cells_type = l_cells_type;
-        this->cell_loctoglob = l_cell_loctoglob;
-        this->nodes = l_nodes;
-        this->node_loctoglob = l_node_loctoglob;
-        this->phy_faces = l_phy_faces;
-        this->phy_faces_name = l_phy_faces_name;
-        this->halo_neighsub = l_halo_neighsub;
-        this->node_halos = l_node_halos;
-        this->halo_halosext = l_halo_halosext;
-
-
-        return 0;
-
-    }
-
-    int create_tuple() {
-        PyObject *tuple = Py_BuildValue("(OOOOOOOOOOiiiiii)", this->nodes, this->cells, this->cells_type,
-            this->phy_faces, this->phy_faces_name, this->cell_loctoglob, this->node_loctoglob, this->halo_neighsub, this->node_halos, this->halo_halosext,
-            this->max_cell_nodeid, this->max_cell_faceid, this->max_face_nodeid, this->max_node_haloid, this->max_cell_halofid, this->max_cell_halonid);
-        if (!tuple)
-            return -1;
-        // tuple holds references now
-        Py_DECREF(this->nodes);
-        Py_DECREF(this->cells);
-        Py_DECREF(this->cells_type);
-        Py_DECREF(this->phy_faces);
-        Py_DECREF(this->phy_faces_name);
-        Py_DECREF(this->cell_loctoglob);
-        Py_DECREF(this->node_loctoglob);
-        Py_DECREF(this->halo_neighsub);
-        Py_DECREF(this->node_halos);
-        Py_DECREF(this->halo_halosext);
-        this->nodes = nullptr;
-        this->cells = nullptr;
-        this->cells_type = nullptr;
-        this->phy_faces = nullptr;
-        this->phy_faces_name = nullptr;
-        this->cell_loctoglob = nullptr;
-        this->node_loctoglob = nullptr;
-        this->halo_neighsub = nullptr;
-        this->node_halos = nullptr;
-        this->halo_halosext = nullptr;
-
-        this->tuple_res = tuple;
-        return 0;
-    }
-
-    ~LocalDomainStruct() {
-        Py_XDECREF(this->nodes);
-        Py_XDECREF(this->cells);
-        Py_XDECREF(this->cells_type);
-        Py_XDECREF(this->phy_faces);
-        Py_XDECREF(this->phy_faces_name);
-        Py_XDECREF(this->cell_loctoglob);
-        Py_XDECREF(this->node_loctoglob);
-        Py_XDECREF(this->halo_neighsub);
-        Py_XDECREF(this->node_halos);
-        Py_XDECREF(this->halo_halosext);
-        Py_XDECREF(this->tuple_res);
-
-        this->nodes = nullptr;
-        this->cells = nullptr;
-        this->cells_type = nullptr;
-        this->phy_faces = nullptr;
-        this->phy_faces_name = nullptr;
-        this->cell_loctoglob = nullptr;
-        this->node_loctoglob = nullptr;
-        this->halo_neighsub = nullptr;
-        this->node_halos = nullptr;
-        this->halo_halosext = nullptr;
-        this->tuple_res = nullptr;
-    }
-};
-
-std::vector<idx_t>    get_max_info(const idx_t cell_type) {
-    if (cell_type == CELL_TYPE::Triangle) {
-        return {3, 2, 3};
-    } else if (cell_type == CELL_TYPE::Quad) {
-        return {4, 2, 4};
-    } else if (cell_type == CELL_TYPE::Tetra) {
-        return {4, 3, 4};
-    } else if (cell_type == CELL_TYPE::Hexahedron) {
-        return {6, 4, 8};
-    } else if (cell_type == CELL_TYPE::Pyramid) {
-        return {5, 4, 5};
-    }
-    return {0, 0, 0};
-}
-
-
-
 
 
 
@@ -439,21 +421,14 @@ static int  create_sub_domains(PyArrayObject *graph,
         }
         local_domains[p].max_cell_halofid = std::max(counterfid, local_domains[p].max_cell_halofid);
 
-        // Determine max_cell_halonid, Create HaloMap, Create HaloNeighDomain
+        // Determine max_cell_halonid
         const npy_intp *dimnid = PyArray_DIMS(cell_cellnid);
         const idx_t sizenid = *(idx_t *)PyArray_GETPTR2(cell_cellnid, i, dimnid[1] - 1);
         idx_t counternid = 0;
         for (idx_t j = 0; j < sizenid; j++) {
             const idx_t cellnid = *(idx_t *)PyArray_GETPTR2(cell_cellnid, i, j);
-            const idx_t part_cellnid = part_vert[cellnid];
-            if (p != part_cellnid) {
+            if (p != part_vert[cellnid])
                 counternid++;
-                if (local_domains[p].map_halos.find(cellnid) == local_domains[p].map_halos.end()) {
-                    local_domains[p].map_halos[cellnid] = local_domains[p].map_halos.size();
-                }
-                local_domains[p].set_halo_neighsub.insert(part_cellnid);
-            }
-
         }
         local_domains[p].max_cell_halonid = std::max(counternid, local_domains[p].max_cell_halonid);
 
@@ -490,43 +465,18 @@ static int  create_sub_domains(PyArrayObject *graph,
     // Create Local Domains
     print_instant("Create local domains struct\n");
     for (idx_t p = 0; p < nb_parts; p++) {
-        print_instant("Create local domains struct p=%d\n", p);
         auto &map_cells = local_domains[p].map_cells;
         auto &map_phy_faces = local_domains[p].map_phy_faces;
         auto &map_nodes = local_domains[p].map_nodes;
-        auto &map_halos = local_domains[p].map_halos;
-        auto &set_halo_neighsub = local_domains[p].set_halo_neighsub;
 
         const idx_t nb_cells = map_cells.size();
-        const idx_t nb_nodes = map_nodes.size();
         const idx_t nb_phyfaces = map_phy_faces.size();
-        const idx_t nb_halos = map_halos.size();
-        const idx_t nb_halo_neighsub = set_halo_neighsub.size();
+        const idx_t nb_nodes = map_nodes.size();
         const idx_t max_cell_nodeid = local_domains[p].max_cell_nodeid;
         const idx_t max_phy_face_nodeid = local_domains[p].max_phy_face_nodeid;
 
-        // Calculate local_domains[p].nb_node_halos
-        for (auto iter = map_nodes.begin(); iter != map_nodes.end(); ++iter) {
-            const idx_t k = iter->first;
-
-            const npy_intp *dims = PyArray_DIMS(node_cellid);
-            const idx_t size = *(idx_t *)PyArray_GETPTR2(node_cellid, k, dims[1] - 1);
-            bool has_halos = false;
-            for (idx_t j = 0; j < size; j++) {
-                const idx_t neighbor_cell = *(idx_t *)PyArray_GETPTR2(node_cellid, k, j);
-                const idx_t neighbor_part = part_vert[neighbor_cell];
-                if (p != neighbor_part) {
-                    local_domains[p].nb_node_halos++;
-                    has_halos = true;
-                }
-            }
-            if (has_halos) {
-                local_domains[p].nb_node_halos += 2; // the node and its counter
-            }
-        }
-
         const npy_intp *nodes_dim = PyArray_DIMS(nodes); // 3 or 2
-        ret = local_domains[p].create_tables(nb_cells, nb_nodes, nb_phyfaces, nb_halos, nb_halo_neighsub, nodes_dim[1]);
+        ret = local_domains[p].create_tables(nb_cells, nb_nodes, nb_phyfaces, nodes_dim[1]);
         if (ret == -1) {
             free(part_vert);
             PyErr_SetString(PyExc_MemoryError, "Failed to allocate NumPy array");
@@ -541,10 +491,8 @@ static int  create_sub_domains(PyArrayObject *graph,
         fdx_t *l_nodes_data = (fdx_t *)PyArray_DATA(local_domains[p].nodes);
         idx_t *l_phy_faces_data = (idx_t *)PyArray_DATA(local_domains[p].phy_faces);
         idx_t *l_phy_faces_name_data = (idx_t *)PyArray_DATA(local_domains[p].phy_faces_name);
-        idx_t *l_halo_neighsub_data = (idx_t *)PyArray_DATA(local_domains[p].halo_neighsub);
-        idx_t *l_node_halos_data = (idx_t *)PyArray_DATA(local_domains[p].node_halos);
-        idx_t *l_halo_halosext_data = (idx_t *)PyArray_DATA(local_domains[p].halo_halosext);
-
+        std::set<idx_t> halo_neighsub;
+        std::vector<idx_t> node_halos;
 
         // # Cells, CellsType, CellsLocToGlob
         print_instant("Cells, CellsType, CellsLocToGlob\n");
@@ -566,42 +514,40 @@ static int  create_sub_domains(PyArrayObject *graph,
             l_cells_data[local_index * (max_cell_nodeid + 1) + max_cell_nodeid] = size;
         }
 
-        // # Nodes, NodesLocToGlob, NodeHalos
-        idx_t halos_counter = 0;
+        // # Nodes, NodesLocToGlob, HaloNeighSub, NodeHalos
         for (auto iter = map_nodes.begin(); iter != map_nodes.end(); ++iter) {
             const idx_t k = iter->first;
             const idx_t local_index = iter->second;
 
-            // Create NodesLocToGlob
             l_node_loctoglob_data[local_index] = k;
 
-            // Create Local Nodes Vertices
+
             const idx_t v_size = nodes_dim[1];
             for (idx_t i = 0; i < v_size; i++) {
                 l_nodes_data[local_index * v_size + i] = *(fdx_t *)PyArray_GETPTR2(nodes, k, i);
             }
 
-            // # Calculate max_node_haloid, Create Node neighboring halos
+            // # Halos
             const npy_intp *dims = PyArray_DIMS(node_cellid);
             const idx_t size = *(idx_t *)PyArray_GETPTR2(node_cellid, k, dims[1] - 1);
-            idx_t *node_counter_pointer = nullptr;
+            idx_t node_halos_counter = 0;
             for (idx_t i = 0; i < size; i++) {
                 const idx_t neighbor_cell = *(idx_t *)PyArray_GETPTR2(node_cellid, k, i);
                 const idx_t neighbor_part = part_vert[neighbor_cell];
                 if (p != neighbor_part) {
-                    if (node_counter_pointer == nullptr) {
-                        l_node_halos_data[halos_counter] = local_index;
-                        l_node_halos_data[halos_counter + 1] = 0;
-                        node_counter_pointer = &l_node_halos_data[halos_counter + 1];
-                        halos_counter += 2;
+                    halo_neighsub.insert(neighbor_part);
+                    if (node_halos_counter == 0) {
+                        node_halos.push_back(local_index);
+                        node_halos.push_back(node_halos_counter);
                     }
-                    l_node_halos_data[halos_counter] = map_halos[neighbor_cell];
-                    halos_counter++;
-                    (*node_counter_pointer)++;
+                    node_halos.push_back(neighbor_cell);
+                    node_halos_counter++;
                 }
             }
-            if (node_counter_pointer) {
-                local_domains[p].max_node_haloid = std::max(local_domains[p].max_node_haloid, *node_counter_pointer);
+            // Set node_halos size
+            if (node_halos_counter != 0) {
+                node_halos[node_halos.size() - node_halos_counter - 1] = node_halos_counter;
+                local_domains[p].max_node_haloid = std::max(local_domains[p].max_node_haloid, node_halos_counter);
             }
         }
 
@@ -621,23 +567,31 @@ static int  create_sub_domains(PyArrayObject *graph,
             l_phy_faces_data[local_index * (max_phy_face_nodeid + 1) + max_phy_face_nodeid] = size;
         }
 
-        // # Halo neighsub, HalosExt
-        print_instant("Halo neighsub, Halos\n");
+        // # Halo neighsub, Node_halos_data
+        print_instant("Halo neighsub, Node_halos_data\n");
+        ret = local_domains[p].create_halo_tables((idx_t)halo_neighsub.size(), (idx_t)node_halos.size());
+        if (ret == -1) {
+            free(part_vert);
+            PyErr_SetString(PyExc_MemoryError, "Failed to allocate NumPy array");
+            return -1;
+        }
+
+
+        idx_t *l_halo_neighsub_data = (idx_t *)PyArray_DATA(local_domains[p].halo_neighsub);
+        idx_t *l_node_halos_data = (idx_t *)PyArray_DATA(local_domains[p].node_halos);
 
         idx_t counter = 0;
-        for (auto iter = set_halo_neighsub.begin(); iter != set_halo_neighsub.end(); ++iter) {
+        for (auto iter = halo_neighsub.begin(); iter != halo_neighsub.end(); ++iter) {
             l_halo_neighsub_data[counter] = *iter;
             counter++;
         }
 
-
-        for (auto iter = map_halos.begin(); iter != map_halos.end(); ++iter) {
-            const idx_t k = iter->first;
-            const idx_t local_index = iter->second;
-            l_halo_halosext_data[local_index] = k;
+        counter = 0;
+        for (auto iter = node_halos.begin(); iter != node_halos.end(); ++iter) {
+            l_node_halos_data[counter] = *iter;
+            counter++;
         }
 
-        print_instant("End Halo neighsub, Halos\n");
 
 
     }

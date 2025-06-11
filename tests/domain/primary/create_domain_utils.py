@@ -2,9 +2,7 @@ import numpy as np
 import numba
 
 
-def compile(func):
-  #return func
-  return numba.jit(nopython=True, fastmath=True, cache=True)(func)
+
 
 
 def _is_in_array(array: 'int[:]', item: 'int') -> 'int':
@@ -19,7 +17,6 @@ def _is_in_array(array: 'int[:]', item: 'int') -> 'int':
     if item == array[i]:
       return 1
   return 0
-_is_in_array = compile(_is_in_array)
 
 def _binary_search(array: 'int[:]', item: 'int') -> 'int':
   """
@@ -45,7 +42,6 @@ def _binary_search(array: 'int[:]', item: 'int') -> 'int':
       right = mid - 1
 
   return -1
-_binary_search = compile(_binary_search)
 
 def _append(cells: 'int[:, :]', cells_item: 'int[:, :]', counter: 'int'):
   for i in range(len(cells_item)):
@@ -187,7 +183,6 @@ def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:,
       index = index + 1
     if index >= 2:
       return
-_intersect_nodes = compile(_intersect_nodes)
 
 def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[:]', cell_type: 'int[:]'):
   """
@@ -345,7 +340,6 @@ def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[
     size_info[4] = 3
 
     size_info[-1] = 5
-_create_cell_faces = compile(_create_cell_faces)
 
 def _polygon_area_2d(points : 'float[:, :]'):
   n = len(points)
@@ -357,7 +351,6 @@ def _polygon_area_2d(points : 'float[:, :]'):
     y2 = points[(i + 1) % n, 1]
     area += (x1 * y2) - (x2 * y1)
   return abs(area) / 2.0
-_polygon_area_2d = compile(_polygon_area_2d)
 
 def _compute_cell_center_volume_2d(cells: 'int[:, :]', nodes: 'float[:, :]', cell_area: 'float[:]', cell_center: 'float[:, :]'):
   for i in range(len(cells)):
@@ -380,7 +373,6 @@ def _tetrahedron_volume(a : 'float[:]', b : 'float[:]', c: 'float[:]', d : 'floa
   det = (u[0] * cross_x + u[1] * cross_y + u[2] * cross_z)
   volume = det / 6
   return volume
-_tetrahedron_volume = compile(_tetrahedron_volume)
 
 def _compute_cell_center_volume_3d(cells: 'int[:, :]', nodes: 'float[:, :]', cell_area: 'float[:]', cell_center: 'float[:, :]'):
   for i in range(len(cells)):
@@ -415,6 +407,7 @@ def _compute_cell_center_volume_3d(cells: 'int[:, :]', nodes: 'float[:, :]', cel
       vol += _tetrahedron_volume(points[0], points[2], points[3], points[4])
     cell_area[i] = vol
 
+
 def _triangle_area_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
   u = b - a
   v = c - a
@@ -425,7 +418,7 @@ def _triangle_area_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
   cross_z = u[0] * v[1] - u[1] * v[0]
   area = np.sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z)
   return area * 0.5
-_triangle_area_3d = compile(_triangle_area_3d)
+
 
 def _triangle_normal_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
   u = b - a
@@ -437,7 +430,7 @@ def _triangle_normal_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
   cross[1] = u[2] * v[0] - u[0] * v[2]
   cross[2] = u[0] * v[1] - u[1] * v[0]
   return cross
-_triangle_normal_3d = compile(_triangle_normal_3d)
+
 
 def _compute_face_info_2d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]', face_measure : 'float[:]', face_center: 'float[:, :]', face_normal: 'float[:, :]'):
   for i in range(len(faces)):
@@ -500,7 +493,8 @@ def _create_info(
   cell_faceid: 'int[:, :]',
   face_cellid: 'int[:, :]',
   cell_cellfid: 'int[:, :]',
-  faces_counter: 'int[:]'
+  faces_counter: 'int[:]',
+  boundary_info: 'int[:, :]' # array of size (nb_phy_face, 2)
 ):
   """
     - Create faces
@@ -580,6 +574,32 @@ def _create_info(
     tmp[0:-1] = -1
     tmp[0:len(b)] = b
 
+    b_counter = 0
+    for j in range(tmp[-1]):
+      face_id = tmp[j]
+
+      # Create boundary if a face does not have a neighbor cell
+      if face_cellid[face_id, 1] == -1:
+        boundary_info[b_counter, 0] = i
+        boundary_info[b_counter, 1] = j
+        b_counter += 1
+
+def _create_ghost_cells(cell_center: 'float[:, :]', face_center: 'float[:, :]', face_normal: 'float[:, :]', boundary_info: 'int[:, :]', ghost_info: 'int[:, :]'):
+  # ghost_info => [c_x, c_y, c_z, cell_id, face_id]
+  for i in range(len(boundary_info)):
+    bc = boundary_info[i, 0] # boundary cell
+    bf = boundary_info[i, 1] # boundary face
+
+    f_center = face_center[bf]
+    c_center = cell_center[bc]
+    N = face_normal[bf]
+    n_hat = N / np.linalg.norm(N)
+    ghostcenter = c_center - 2 * np.dot(c_center - f_center, n_hat) * n_hat
+
+    ghost_info[i, 0:3] = ghostcenter[0:3]
+    ghost_info[i, 3] = bc
+    ghost_info[i, 4] = bf
+
 
 def _create_cellfid(
         cells: 'int[:, :]',
@@ -628,7 +648,6 @@ def _get_face_name(
     if np.all(mesh_face == sorted_face_node):
       return phy_faces_name[f_index]
   return -1
-_get_face_name = compile(_get_face_name)
 
 def get_max_node_faceid(faces: 'int[:, :]', arr: 'int[:]'):
   for i in range(len(faces)):
@@ -649,6 +668,10 @@ def define_face_and_node_name(
   phy_faces_name: 'int[:]',
   faces: 'int[:, :]',
   node_phyfaceid: 'int[:, :]',
+  face_haloid: 'int[:]',
+  node_haloid: 'int[:, :]',
+  face_oldname: 'int[:]',
+  node_oldname: 'int[:]',
   face_name: 'int[:]',
   node_name: 'int[:]'
 ):
@@ -656,20 +679,72 @@ def define_face_and_node_name(
     name = _get_face_name(phy_faces, phy_faces_name, faces[i], node_phyfaceid)
     if name == -1:
       continue
-    face_name[i] = name
+    face_oldname[i] = name
+    face_name[i] = name if face_haloid[i] == -1 else 10
     # Select the smallest name if it exists
     for j in range(faces[i, -1]):
       n = faces[i, j]
-      if node_name[n] == 0 or node_name[n] > name:
-        node_name[n] = name
+      if node_oldname[n] == 0 or node_oldname[n] > name:
+        node_oldname[n] = name
+        node_name[n] = name if node_haloid[n, -1] == 0 else 10
 
 
 
 
+# #############################################
+# Halos
+# #############################################
 
+def _create_halo_cells(cells, cell_faceid, faces, node_halos, node_haloid, cell_halofid, cell_halonid, face_haloid):
+  nb_cells = len(cells)
+  nb_faces = len(faces)
+  intersect_cell = np.zeros(shape=2, dtype=np.int32)
 
+  i = 0
+  while i < len(node_halos):
+    n = node_halos[i]
+    c = node_halos[i + 1]
+    for j in range(c):
+      node_haloid[n, j] = node_halos[i + j + 2]
+    node_haloid[n, -1] = c
+    i += c + 2
 
+  for i in range(nb_faces):
+    nb_nodes = faces[i, -1]
+    _intersect_nodes(faces[i, 0:nb_nodes], nb_nodes, node_haloid, intersect_cell)
+    face_haloid[i] = intersect_cell[0]
 
+  for i in range(nb_cells):
+    for j in range(cells[i, -1]):
+      n_halo = node_haloid[j]
+      for k in range(n_halo[-1]):
+        if _is_in_array(cell_halonid[i], n_halo[k]) == 0:
+          size = cell_halonid[i, -1]
+          cell_halonid[i, -1] += 1
+          cell_halonid[i, size] = n_halo[k]
+    for j in range(cell_faceid[i, -1]):
+      face_id = cell_faceid[i, j]
+      if face_haloid[face_id] != -1:
+        size = cell_halofid[i, -1]
+        cell_halofid[i, -1] += 1
+        cell_halofid[i, size] = face_haloid[face_id]
+
+def compile(func):
+  #return func
+  return numba.jit(nopython=True, fastmath=True, cache=True)(func)
+
+# private
+_is_in_array = compile(_is_in_array)
+_binary_search = compile(_binary_search)
+_intersect_nodes = compile(_intersect_nodes)
+_create_cell_faces = compile(_create_cell_faces)
+_polygon_area_2d = compile(_polygon_area_2d)
+_tetrahedron_volume = compile(_tetrahedron_volume)
+_triangle_area_3d = compile(_triangle_area_3d)
+_triangle_normal_3d = compile(_triangle_normal_3d)
+_get_face_name = compile(_get_face_name)
+
+# public
 append = compile(_append)
 count_max_node_cellid = compile(_count_max_node_cellid)
 create_node_cellid = compile(_create_node_cellid)
@@ -685,3 +760,5 @@ get_max_node_faceid = compile(get_max_node_faceid)
 get_node_faceid = compile(get_node_faceid)
 define_face_and_node_name = compile(define_face_and_node_name)
 append_1d = compile(_append_1d)
+create_halo_cells = compile(_create_halo_cells)
+create_ghost_cells = compile(_create_ghost_cells)
