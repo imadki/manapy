@@ -8,8 +8,11 @@ set(CMAKE_CXX_STANDARD 14)
 INCLUDE_DIRECTORIES(
         "/home/aben-ham/anaconda3/envs/work/include/python3.8",
         "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/pybind11/include",
-        "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/numpy/core/include"
+        "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/numpy/core/include",
+        "/home/aben-ham/local/include"
 )
+
+
 
 add_executable(manapy_domain
         manapy_part/create_local_domain.cpp

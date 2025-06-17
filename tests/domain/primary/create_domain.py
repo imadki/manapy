@@ -20,7 +20,8 @@ from create_domain_utils import (append,
                                   compute_face_info_3d,
                                   create_cellfid,
                                   create_halo_cells,
-                                  create_ghost_cells
+                                  create_ghost_cells,
+                                  create_ghost_tables
                                   )
 
 # TODO check indexing limit on int32
@@ -539,6 +540,9 @@ class Domain:
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
     return local_domains
 
+# TODO: zeos unstead of ones
+# TODO: face_haloid, node_haloid rename
+# TODO: haloext -> [[cellgid, cellnode1, cellnode2, .., size]] shape=(nb_haloext, max_cell_node + 2)
 class LocalDomain:
   def __init__(self, local_domain_struct: 'LocalDomainStruct'):
     self.nodes = local_domain_struct.nodes
@@ -561,8 +565,9 @@ class LocalDomain:
     self.max_cell_halonid = local_domain_struct.max_cell_halonid
     self.node_cellid = local_domain_struct.node_cellid
     self.cell_cellnid = local_domain_struct.cell_cellnid
-    self.nb_nodes = np.uint32(len(self.nodes))
-    self.nb_cells = np.uint32(len(self.cells))
+    self.nb_nodes = np.int32(len(self.nodes))
+    self.nb_cells = np.int32(len(self.cells))
+    self.nb_faces = np.int32(len(self.faces))
 
     self.start = time.time()
     print("node_cellid")
@@ -595,7 +600,9 @@ class LocalDomain:
     (
       self.face_measure,
       self.face_center,
-      self.face_normal
+      self.face_normal,
+      self.face_tangent, # only in 3D, shape is 0 in 2D
+      self.face_binormal # only in 3D, shape is 0 in 2D
     ) = self._create_face_info(self.faces, self.nodes, self.face_cellid, self.cell_center)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
@@ -705,14 +712,20 @@ class LocalDomain:
     face_measure = np.zeros(shape=nb_faces, dtype=self.float_precision)
     face_center = np.zeros(shape=(nb_faces, self.dim), dtype=self.float_precision)
     face_normal = np.zeros(shape=(nb_faces, self.dim), dtype=self.float_precision)
+    face_tangent = np.zeros(shape=0, dtype=self.float_precision)
+    face_binormal = np.zeros(shape=0, dtype=self.float_precision)
     if self.dim == 2:
       compute_face_info_2d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal)
     else:
-      compute_face_info_3d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal)
+      face_tangent = np.zeros(shape=(nb_faces, 3), dtype=self.float_precision)
+      face_binormal = np.zeros(shape=(nb_faces, 3), dtype=self.float_precision)
+      compute_face_info_3d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal, face_tangent, face_binormal)
     return (
       face_measure,
       face_center,
-      face_normal
+      face_normal,
+      face_tangent,
+      face_binormal
     )
 
 
@@ -775,3 +788,25 @@ class LocalDomain:
 
     return ghost_cells
 
+def _create_ghost_tables(self, ghost_info: 'int[:, :]', cell_center: 'float[:, :]', faces: 'int[:, :]', face_cellid: 'int[:, :]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]'):
+  node_ghostcenter_data_size = 6 # [ghost_center x.y.z, cell_id, face_old_name, face_id]
+  face_ghostcenter_data_size = 4 # [ghost_center x.y, gamma]
+  node_ghostfaceinfo_data_size = 6 # [face_center x.y.z, face_normal x.y.z]
+  max_node_ghost = 2 # ?? TODO
+  max_cell_ghost = 2 # ?? TODO
+
+  node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_ghost + 1), dtype=np.int32)
+  cell_ghostid = np.zeros(shape=(self.nb_cells, max_cell_ghost + 1), dtype=np.int32)
+  node_ghostcenter = np.zeros(shape(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precesion)
+  face_ghostcenter = np.zeros(shape(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precesion)
+  node_ghostfaceinfo = np.zeros(shape(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precesion)
+
+  create_ghost_tables(ghost_info, cell_center, faces, face_cellid, face_oldname, face_normal, face_center, face_measure, node_ghostid, cell_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo)
+
+  return (
+    node_ghostid,
+    cell_ghostid,
+    node_ghostcenter,
+    face_ghostcenter,
+    node_ghostfaceinfo
+  )

@@ -1098,13 +1098,9 @@ def variables_3d(centerc: 'float[:,:]', cellid: 'int32[:,:]', haloid: 'int32[:,:
       R_z[i] += Rz
       number[i] = number[i] + 1
 
-    D = I_xx[i] * I_yy[i] * I_zz[i] + 2 * I_xy[i] * I_xz[i] * I_yz[i] - I_xx[i] * I_yz[i] * I_yz[i] - I_yy[i] * I_xz[
-      i] * I_xz[i] - I_zz[i] * I_xy[i] * I_xy[i]
+    D = I_xx[i] * I_yy[i] * I_zz[i] + 2 * I_xy[i] * I_xz[i] * I_yz[i] - I_xx[i] * I_yz[i] * I_yz[i] - I_yy[i] * I_xz[i] * I_xz[i] - I_zz[i] * I_xy[i] * I_xy[i]
 
-    lambda_x[i] = ((I_yz[i] * I_yz[i] - I_yy[i] * I_zz[i]) * R_x[i] + (I_xy[i] * I_zz[i] - I_xz[i] * I_yz[i]) * R_y[
-      i] + (I_xz[i] * I_yy[i] - I_xy[i] * I_yz[i]) * R_z[i]) / D
-    lambda_y[i] = ((I_xy[i] * I_zz[i] - I_xz[i] * I_yz[i]) * R_x[i] + (I_xz[i] * I_xz[i] - I_xx[i] * I_zz[i]) * R_y[
-      i] + (I_yz[i] * I_xx[i] - I_xz[i] * I_xy[i]) * R_z[i]) / D
-    lambda_z[i] = ((I_xz[i] * I_yy[i] - I_xy[i] * I_yz[i]) * R_x[i] + (I_yz[i] * I_xx[i] - I_xz[i] * I_xy[i]) * R_y[
-      i] + (I_xy[i] * I_xy[i] - I_xx[i] * I_yy[i]) * R_z[i]) / D
+    lambda_x[i] = ((I_yz[i] * I_yz[i] - I_yy[i] * I_zz[i]) * R_x[i] + (I_xy[i] * I_zz[i] - I_xz[i] * I_yz[i]) * R_y[i] + (I_xz[i] * I_yy[i] - I_xy[i] * I_yz[i]) * R_z[i]) / D
+    lambda_y[i] = ((I_xy[i] * I_zz[i] - I_xz[i] * I_yz[i]) * R_x[i] + (I_xz[i] * I_xz[i] - I_xx[i] * I_zz[i]) * R_y[i] + (I_yz[i] * I_xx[i] - I_xz[i] * I_xy[i]) * R_z[i]) / D
+    lambda_z[i] = ((I_xz[i] * I_yy[i] - I_xy[i] * I_yz[i]) * R_x[i] + (I_yz[i] * I_xx[i] - I_xz[i] * I_xy[i]) * R_y[i] + (I_xy[i] * I_xy[i] - I_xx[i] * I_yy[i]) * R_z[i]) / D
 
