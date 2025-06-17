@@ -50,3 +50,5 @@ local_domain = LocalDomain(local_domains_data[0])
 # a = MeshPartition(mesh_path, dim=dim, conf=running_conf, periodic=[0,0,0])
 # print(f"Execution time: {time.time() - start:.6f} seconds")
 # print("====> End <=====")
+
+
