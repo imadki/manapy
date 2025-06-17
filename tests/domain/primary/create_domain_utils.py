@@ -2,6 +2,145 @@ import numpy as np
 import numba
 
 
+"""
+###########
+3D
+##########
+            
+DONE::create_3d_halo_structure ->
+  node_halonid renamed with node_haloid
+  face_halofid
+  node_name
+  face_name
+  face_oldname
+
+
+face_info_3d ->
+  cell_halonid [[halo_cells_by_node, ... size]] shape=(nb_cells, max_cell_cellnid + 1)
+  face_ghostcenter [ghost_center x.y.z, gamma] shape=(nb_face, 4) dtype=float
+  node_ghostcenter [[ghost_center x.y.z, cell_id, face_old_name, face_id]] shape=(nb_nodes, nb_node_ghost, 6) dtype=float
+  node_ghostfaceinfo [[face_center x.y.z, face_normal x.y.z]] shape=(nb_nodes, nb_node_ghost, 6) dtype=float
+
+update_pediodic_info_3d ?? It create 4 tables but it never return them
+oriente_3dfacenodeid ?? Not sure what is the use case of orienting the faces, it could be oriented in the creation once for all
+
+NOT_USED_ON_THE_PROJECTS::create_3doppNodeOfFaces
+
+face_gradient_info_3d ->
+  face_aitDiamond
+  face_param1
+  face_param2
+  face_param3
+  face_f_1
+  face_f_2
+
+
+create_info_3dfaces ->
+  face_normal
+  face_tangent
+  face_binormal
+  face_mesure
+  face_center
+  face_name
+  
+
+DONE::Compute_3dcentervolumeOfCell ->
+  cell_center
+  cell_volume
+  
+DONE::create_3dfaces ->
+  faces
+  cell_faceid
+
+variables_3d ->
+  nodes_R_x
+  nodes_R_y
+  nodes_R_z
+  nodes_lambda_x
+  nodes_lambda_y
+  nodes_lambda_z
+  nodes_number
+  
+######
+2D
+#####
+DONE::create_cellsOfFace -> 
+  face_cellid
+
+DONE::create_cell_faceid ->
+  cell_faceid
+
+DONE::create_NeighborCellByFace ->
+  cell_cellfid
+
+DONE::create_node_cellid ->
+  node_cellid 
+  cell_cellnid 
+
+
+
+create_node_ghostid -> ?
+  node_ghostid [[faceid that has this ghost cell (node_ghostcenter[-1])]] shape=(nb_nodes, max_nghost + 1) 
+  cell_ghostnid [[faceid that has this ghost cell (node_ghostcenter[-1])]] shape=(nb_cells, max_cell_nghost + 1)
+
+face_info_2d -> 
+  cell_halonid [[halo_cells_by_node, ... size]] shape=(nb_cells, max_cell_cellnid + 1)
+  face_ghostcenter [ghost_center x.y, gamma] shape=(nb_face, 3) dtype=float
+  node_ghostcenter [[ghost_center x.y, cell_id, face_old_name, face_id]] shape=(nb_nodes, nb_node_ghost, 5) dtype=float
+  node_ghostfaceinfo [[face_center x.y, face_normal x.y]] shape=(nb_nodes, nb_node_ghost, 4) dtype=float
+
+
+DONE::create_2d_halo_structure ->
+  node_halonid
+  face_halofid
+  node_name
+  face_name
+  face_oldname
+
+update_pediodic_info_2d -> the same thing it create tables and it does not return
+
+DONE::Compute_2dcentervolumeOfCell ->
+  cell_center
+  cell_volume
+
+DONE::create_2dfaces ->
+  faces
+  cell_faceid
+
+DONE::create_info_2dfaces ->
+  face_normal
+  face_mesure
+  face_center
+  face_name
+  
+face_gradient_info_2d ->
+  face.airDiamond
+  face_param1
+  face_param2
+  face_param3
+  face_param4
+  face_f_1
+  face_f_2
+  face_f_3
+  face_f_4
+  
+variables_2d ->
+  nodes_R_x
+  nodes_R_y
+  nodes_lambda_x
+  nodes_lambda_y
+  nodes_number
+
+create_NormalFacesOfCell ->
+  cell_nf # normal face (only on 2D)
+  
+dist_ortho_function ->
+  face_dist_ortho
+  
+
+
+"""
+
 
 
 
@@ -453,7 +592,7 @@ def _compute_face_info_2d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid:
       normal *= -1
     face_normal[i] = normal
 
-def _compute_face_info_3d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]', face_measure : 'float[:]', face_center: 'float[:, :]', face_normal: 'float[:, :]'):
+def _compute_face_info_3d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]', face_measure : 'float[:]', face_center: 'float[:, :]', face_normal: 'float[:, :]', face_tangent: 'float[:, :]', face_binormal:'float[:, :]'):
   for i in range(len(faces)):
     nb_vertex = faces[i, -1]
     points = nodes[faces[i, 0:nb_vertex]]
@@ -480,6 +619,10 @@ def _compute_face_info_3d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid:
       normal *= -1
     face_normal[i] = normal
 
+    # Calcul du binormal
+    u = nodes[faces[i][1]] - nodes[faces[i][0]]
+    face_tangent[i] = u
+    face_binormal[i] = 0.5 * np.cross(u, normal)
 
 
 def _create_info(
@@ -599,6 +742,48 @@ def _create_ghost_cells(cell_center: 'float[:, :]', face_center: 'float[:, :]', 
     ghost_info[i, 0:3] = ghostcenter[0:3]
     ghost_info[i, 3] = bc
     ghost_info[i, 4] = bf
+
+def _create_ghost_tables(ghost_info: 'int[:, :]', cell_center: 'float[:, :]', faces: 'int[:, :]', face_cellid: 'int[:, :]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', node_ghostid: 'int[:, :]', cell_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]'):
+
+  # ghost_info = [g_x, g_y, g_z, cid, fid]
+
+  for i in range(len(ghost_info)):
+    g_info = ghost_info[i]
+    cid = g_info[3]
+    fid = g_info[4]
+
+    c_center = cell_center[face_cellid[fid, 0]]
+    u = face_center[i] - c_center
+    n = face_normal[fid] / face_measure[i]
+    gamma = np.dot(u, n)
+
+    size = cell_ghostid[cid, -1]
+    cell_ghostid[cid, -1] += 1
+    cell_ghostid[cid, size] = fid # face_id
+
+    face_ghostcenter[fid, 0] = g_info[0] # g_x
+    face_ghostcenter[fid, 1] = g_info[1] # g_y
+    face_ghostcenter[fid, 2] = g_info[2] # g_z
+    face_ghostcenter[fid, 3] = gamma
+
+    for j in range(faces[fid, -1]):
+      nid = faces[fid, j]
+      size = node_ghostid[nid, -1]
+      node_ghostid[nid, -1] += 1
+      node_ghostid[nid, size] = fid # face_id
+
+      node_ghostcenter[nid, 0] = g_info[0] # g_x
+      node_ghostcenter[nid, 1] = g_info[1] # g_y
+      node_ghostcenter[nid, 2] = g_info[2] # g_z
+      node_ghostcenter[nid, 3] = face_oldname[fid] # face_old_name
+      node_ghostcenter[nid, 4] = fid # face_id
+
+      node_ghostfaceinfo[nid, 0] = face_center[fid, 0] # fc_x
+      node_ghostfaceinfo[nid, 1] = face_center[fid, 1] # fc_y
+      node_ghostfaceinfo[nid, 2] = face_center[fid, 2] # fc_z
+      node_ghostfaceinfo[nid, 3] = face_normal[fid, 0] # fn_x
+      node_ghostfaceinfo[nid, 4] = face_normal[fid, 1] # fn_y
+      node_ghostfaceinfo[nid, 5] = face_normal[fid, 2] # fn_z
 
 
 def _create_cellfid(
@@ -729,6 +914,422 @@ def _create_halo_cells(cells, cell_faceid, faces, node_halos, node_haloid, cell_
         cell_halofid[i, -1] += 1
         cell_halofid[i, size] = face_haloid[face_id]
 
+# The same as the original
+def face_gradient_info_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', face_ghostcenter: 'float[:,:]', face_name: 'uint32[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', face_haloid: 'int32[:]', nodes: 'float[:,:]', face_air_diamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]', face_param4: 'float[:]', face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]', cell_shift: 'float[:,:]'):
+
+  # TODO: 11 22 33 44 ??
+  nbface = len(face_cellid)
+
+  dim = 2
+  v_2 = np.zeros(dim)
+
+  for i in range(nbface):
+
+    c_left = face_cellid[i][0]
+    c_right = face_cellid[i][1]
+
+    i_1 = faces[i][0]
+    i_2 = faces[i][1]
+
+    xy_1 = nodes[i_1][0:dim]
+    xy_2 = nodes[i_2][0:dim]
+
+    v_1 = cell_center[c_left][0:dim]
+
+    if face_name[i] == 0:
+      v_2[:] = cell_center[c_right][0:dim]
+    elif face_name[i] == 11 or face_name[i] == 22:
+      v_2[0] = cell_center[c_right][0] + cell_shift[c_right][0]
+      v_2[1] = cell_center[c_right][1]
+    elif face_name[i] == 33 or face_name[i] == 44:
+      v_2[0] = cell_center[c_right][0]
+      v_2[1] = cell_center[c_right][1] + cell_shift[c_right][1]
+    elif face_name[i] == 10:
+      v_2[:] = halo_centvol[face_haloid[i]][0:dim]
+    else:
+      v_2[:] = face_ghostcenter[i][0:dim]
+
+    face_f1[i][:] = v_1[:] - xy_1[:]
+    face_f2[i][:] = xy_2[:] - v_1[:]
+    face_f3[i][:] = v_2[:] - xy_2[:]
+    face_f4[i][:] = xy_1[:] - v_2[:]
+
+    n1 = face_normal[i][0]
+    n2 = face_normal[i][1]
+
+    face_air_diamond[i] = 0.5 * ((xy_2[0] - xy_1[0]) * (v_2[1] - v_1[1]) + (v_1[0] - v_2[0]) * (xy_2[1] - xy_1[1]))
+
+    face_param1[i] = 1. / (2. * face_air_diamond[i]) * ((face_f1[i][1] + face_f2[i][1]) * n1 - (face_f1[i][0] + face_f2[i][0]) * n2)
+    face_param2[i] = 1. / (2. * face_air_diamond[i]) * ((face_f2[i][1] + face_f3[i][1]) * n1 - (face_f2[i][0] + face_f3[i][0]) * n2)
+    face_param3[i] = 1. / (2. * face_air_diamond[i]) * ((face_f3[i][1] + face_f4[i][1]) * n1 - (face_f3[i][0] + face_f4[i][0]) * n2)
+    face_param4[i] = 1. / (2. * face_air_diamond[i]) * ((face_f4[i][1] + face_f1[i][1]) * n1 - (face_f4[i][0] + face_f1[i][0]) * n2)
+
+# The same as the original
+def face_gradient_info_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', face_ghostcenter: 'float[:,:]', face_name: 'uint32[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', face_haloid: 'int32[:]', nodes: 'float[:,:]', face_air_diamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]', face_f1: 'float[:,:]', face_f2: 'float[:,:]', cell_shift: 'float[:,:]'):
+
+  nbfaces = len(face_cellid)
+
+  dim = 3
+  v_2 = np.zeros(dim)
+
+  for i in range(nbfaces):
+
+    c_left = face_cellid[i][0]
+    c_right = face_cellid[i][1]
+
+    i_1 = faces[i][0]
+    i_2 = faces[i][1]
+    i_3 = faces[i][2]
+    i_4 = i_3
+    if faces[i][-1] == 4:
+      i_4 = faces[i][3]
+
+    v_1 = cell_center[c_left][0:dim]
+
+    if face_name[i] == 0:
+      v_2[:] = cell_center[c_right][0:dim]
+
+    elif face_name[i] == 11 or face_name[i] == 22:
+      v_2[0] = cell_center[c_right][0] + cell_shift[c_right][0]
+      v_2[1] = cell_center[c_right][1]
+      v_2[2] = cell_center[c_right][2]
+    elif face_name[i] == 33 or face_name[i] == 44:
+      v_2[0] = cell_center[c_right][0]
+      v_2[1] = cell_center[c_right][1] + cell_shift[c_right][1]
+      v_2[2] = cell_center[c_right][2]
+    elif face_name[i] == 55 or face_name[i] == 66:
+      v_2[0] = cell_center[c_right][0]
+      v_2[1] = cell_center[c_right][1]
+      v_2[2] = cell_center[c_right][2] + cell_shift[c_right][2]
+
+    elif face_name[i] == 10:
+      v_2[:] = halo_centvol[face_haloid[i]][0:dim]
+    else:
+      v_2[:] = face_ghostcenter[i][0:dim]
+
+    s1 = v_2 - nodes[i_2][0:dim]
+    s2 = nodes[i_4][0:dim] - nodes[i_2][0:dim]
+    s3 = v_1 - nodes[i_2][0:dim]
+    face_f1[i][:] = (0.5 * np.cross(s1, s2)) + (0.5 * np.cross(s2, s3))
+
+    s4 = v_2 - nodes[i_3][0:dim]
+    s5 = nodes[i_1][0:dim] - nodes[i_3][0:dim]
+    s6 = v_1 - nodes[i_3][0:dim]
+    face_f2[i][:] = (0.5 * np.cross(s4, s5)) + (0.5 * np.cross(s5, s6))
+
+    s7 = v_2 - v_1
+    face_air_diamond[i] = np.dot(np.ascontiguousarray(face_normal[i].astype(np.float64)), np.ascontiguousarray(s7))
+
+    face_param1[i] = (np.dot(np.ascontiguousarray(face_f1[i]), np.ascontiguousarray(face_normal[i]))) / face_air_diamond[i]
+    face_param2[i] = (np.dot(np.ascontiguousarray(face_f2[i]), np.ascontiguousarray(face_normal[i]))) / face_air_diamond[i]
+    face_param3[i] = (np.dot(np.ascontiguousarray(face_normal[i]), np.ascontiguousarray(face_normal[i]))) / face_air_diamond[i]
+
+# tables are Modified
+def variables_2d(cell_center: 'float[:,:]', node_cellid: 'int32[:,:]', node_haloid: 'int32[:,:]', node_ghostid: 'int32[:,:]', node_haloghostid: 'int32[:,:]', node_periodicid: 'int32[:,:]', nodes: 'float[:,:]', face_ghostcenter: 'float[:,:]', cell_haloghostcenter: 'float[:,:]', halo_centvol: 'float[:,:]', node_R_x: 'float[:]', node_R_y: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'uint32[:]', cell_shift: 'float[:,:]'):
+
+  nbnode = len(node_R_x)
+
+  for i in range(nbnode):
+    I_xx = 0.0
+    I_yy = 0.0
+    I_xy = 0.0
+
+    for j in range(node_cellid[i][-1]):
+      center = cell_center[node_cellid[i][j]][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_xy += (Rx * Ry)
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_number[i] += 1
+
+    for j in range(node_ghostid[i][-1]):
+      center = face_ghostcenter[node_ghostid[i][j]][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_xy += (Rx * Ry)
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_number[i] += 1
+
+    # periodic boundary old vertex names)
+    if nodes[i][3] == 11 or nodes[i][3] == 22:
+      for j in range(node_periodicid[i][-1]):
+        cell = node_periodicid[i][j]
+        center_x = cell_center[cell][0] + cell_shift[cell][0]
+        center_y = cell_center[cell][1]
+
+        Rx = center_x - nodes[i][0]
+        Ry = center_y - nodes[i][1]
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_xy += (Rx * Ry)
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_number[i] += 1
+
+    elif nodes[i][3] == 33 or nodes[i][3] == 44:
+      for j in range(node_periodicid[i][-1]):
+        cell = node_periodicid[i][j]
+        center_x = cell_center[cell][0]
+        center_y = cell_center[cell][1] + cell_shift[cell][1]
+
+        Rx = center_x - nodes[i][0]
+        Ry = center_y - nodes[i][1]
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_xy += (Rx * Ry)
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_number[i] += 1
+
+    for j in range(node_haloghostid[i][-1]):
+      cell = node_haloghostid[i][j]
+
+      center = cell_haloghostcenter[cell]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_xy += (Rx * Ry)
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_number[i] = node_number[i] + 1
+
+      # if haloidn[i][-1] > 0:
+    for j in range(node_haloid[i][-1]):
+      cell = node_haloid[i][j]
+      center = halo_centvol[cell][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_xy += (Rx * Ry)
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_number[i] = node_number[i] + 1
+
+    D = I_xx * I_yy - I_xy * I_xy
+    node_lambda_x[i] = (I_xy * node_R_y[i] - I_yy * node_R_x[i]) / D
+    node_lambda_y[i] = (I_xy * node_R_x[i] - I_xx * node_R_y[i]) / D
+
+
+def variables_3d(cell_center: 'float[:,:]', node_cellid: 'int32[:,:]', node_haloid: 'int32[:,:]', node_ghostid: 'int32[:,:]', node_haloghostid: 'int32[:,:]', node_periodicid: 'int32[:,:]', nodes: 'float[:,:]', face_ghostcenter: 'float[:,:]', cell_haloghostcenter: 'float[:,:]', halo_centvol: 'float[:,:]', node_R_x: 'float[:]', node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'uint32[:]', cell_shift: 'float[:,:]'):
+
+  nbnode = len(node_R_x)
+
+  for i in range(nbnode):
+    I_xx = 0.0
+    I_yy = 0.0
+    I_zz = 0.0
+    I_xy = 0.0
+    I_xz = 0.0
+    I_yz = 0.0
+
+    for j in range(node_cellid[i][-1]):
+      center = cell_center[node_cellid[i][j]][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      Rz = center[2] - nodes[i][2]
+
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_zz += (Rz * Rz)
+      I_xy += (Rx * Ry)
+      I_xz += (Rx * Rz)
+      I_yz += (Ry * Rz)
+
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_R_z[i] += Rz
+
+      node_number[i] += 1
+
+    for j in range(node_ghostid[i][-1]):
+      center = face_ghostcenter[node_ghostid[i][j]][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      Rz = center[2] - nodes[i][2]
+
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_zz += (Rz * Rz)
+      I_xy += (Rx * Ry)
+      I_xz += (Rx * Rz)
+      I_yz += (Ry * Rz)
+
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_R_z[i] += Rz
+
+      node_number[i] += 1
+
+    # periodic boundary old vertex names)
+    if nodes[i][3] == 11 or nodes[i][3] == 22:
+      for j in range(node_periodicid[i][-1]):
+        cell = node_periodicid[i][j]
+        center_x = cell_center[cell][0] + cell_shift[cell][0]
+        center_y = cell_center[cell][1]
+        center_z = cell_center[cell][2]
+
+        Rx = center_x - nodes[i][0]
+        Ry = center_y - nodes[i][1]
+        Rz = center_z - nodes[i][2]
+
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_zz += (Rz * Rz)
+        I_xy += (Rx * Ry)
+        I_xz += (Rx * Rz)
+        I_yz += (Ry * Rz)
+
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_R_z[i] += Rz
+        node_number[i] = node_number[i] + 1
+
+    elif nodes[i][3] == 33 or nodes[i][3] == 44:
+      for j in range(node_periodicid[i][-1]):
+        cell = node_periodicid[i][j]
+        center_x = cell_center[cell][0]
+        center_y = cell_center[cell][1] + cell_shift[cell][1]
+        center_z = cell_center[cell][2]
+
+        Rx = center_x - nodes[i][0]
+        Ry = center_y - nodes[i][1]
+        Rz = center_z - nodes[i][2]
+
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_zz += (Rz * Rz)
+        I_xy += (Rx * Ry)
+        I_xz += (Rx * Rz)
+        I_yz += (Ry * Rz)
+
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_R_z[i] += Rz
+        node_number[i] = node_number[i] + 1
+
+    elif nodes[i][3] == 55 or nodes[i][3] == 66:
+      for j in range(node_periodicid[i][-1]):
+        cell = node_periodicid[i][j]
+        center_x = cell_center[cell][0]
+        center_y = cell_center[cell][1]
+        center_z = cell_center[cell][2] + cell_shift[cell][2]
+
+        Rx = center_x - nodes[i][0]
+        Ry = center_y - nodes[i][1]
+        Rz = center_z - nodes[i][2]
+
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_zz += (Rz * Rz)
+        I_xy += (Rx * Ry)
+        I_xz += (Rx * Rz)
+        I_yz += (Ry * Rz)
+
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_R_z[i] += Rz
+        node_number[i] = node_number[i] + 1
+
+    for j in range(node_haloid[i][-1]):
+      cell = node_haloid[i][j]
+      center = halo_centvol[cell][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      Rz = center[2] - nodes[i][2]
+
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_zz += (Rz * Rz)
+      I_xy += (Rx * Ry)
+      I_xz += (Rx * Rz)
+      I_yz += (Ry * Rz)
+
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_R_z[i] += Rz
+      node_number[i] = node_number[i] + 1
+
+    for j in range(node_haloghostid[i][-1]):
+      cell = node_haloghostid[i][j]
+      center = cell_haloghostcenter[cell]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      Rz = center[2] - nodes[i][2]
+
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_zz += (Rz * Rz)
+      I_xy += (Rx * Ry)
+      I_xz += (Rx * Rz)
+      I_yz += (Ry * Rz)
+
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_R_z[i] += Rz
+      node_number[i] = node_number[i] + 1
+
+    D = I_xx * I_yy * I_zz + 2 * I_xy * I_xz * I_yz - I_xx * I_yz * I_yz - I_yy * I_xz * I_xz - I_zz * I_xy * I_xy
+
+    lambda_x[i] = ((I_yz * I_yz - I_yy * I_zz) * R_x[i] + (I_xy * I_zz - I_xz * I_yz) * R_y[i] + (I_xz * I_yy - I_xy * I_yz) * R_z[i]) / D
+    lambda_y[i] = ((I_xy * I_zz - I_xz * I_yz) * R_x[i] + (I_xz * I_xz - I_xx * I_zz) * R_y[i] + (I_yz * I_xx - I_xz * I_xy) * R_z[i]) / D
+    lambda_z[i] = ((I_xz * I_yy - I_xy * I_yz) * R_x[i] + (I_yz * I_xx - I_xz * I_xy) * R_y[i] + (I_xy * I_xy - I_xx * I_yy) * R_z[i]) / D
+
+def create_normal_face_of_cell_2d(cell_center: 'float[:,:]', face_center: 'float[:,:]', cell_faceid: 'int32[:,:]', face_normal: 'float[:,:]', cell_nf: 'float[:,:,:]', maxcellfid: 'int32'):
+
+  # compute the outgoing normal faces for each cell
+
+  for i in range(len(cell_faceid)):
+    c_center = cell_center[i]
+
+    for j in range(cell_faceid[i, -1]):
+      fid = cell_faceid[i, j]
+      f_center = face_center[fid]
+      f_normal = face_normal[fid]
+
+      snormal = c_center - f_center
+      if (snormal[0] * f_normal[0] + snormal[1] * f_normal[1] + snormal[2] * f_normal[2]) > 0.0:
+        snormal *= -1
+
+      cell_nf[i, j] = snormal
+
+def distance_2d(x: 'float64[:]', y: 'float64[:]'):
+  return np.sqrt((x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2)
+
+def dist_ortho_function_2d(d_innerfaces: 'uint32[:]', d_boundaryfaces: 'uint32[:]', face_cellid: 'int32[:,:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_normal: 'float[:,:]', face_dist_ortho: 'float[:]'):
+
+
+  for i in range(d_boundaryfaces):
+    bf = d_boundaryfaces[i]
+    K = face_cellid[bf, 0]
+    v = cell_center[K] - face_center[bf]
+    u = face_normal[bf]  # /mesuref[i]
+    projection = cell_center[K] - (v[0] * u[0] + v[1] * u[1]) * u
+    face_dist_ortho[bf] = 2 * distance_2d(cell_center[K].astype('float64'),
+                                      projection.astype('float64'))  # +  distance_2d(ghostcenter[i], projection_bis)
+
+  for i in d_innerfaces:
+    bf = d_innerfaces[i]
+    K = face_cellid[bf, 0]
+    L = face_cellid[bf, 1]
+    u = face_normal[bf]  # /mesuref[i]
+
+    v = cell_center[K] - face_center[bf]
+    projection = cell_center[K] - (v[0] * u[0] + v[1] * u[1]) * u
+
+    v = cell_center[L] - face_center[bf]
+    projection_bis = cell_center[L] - (v[0] * u[0] + v[1] * u[1]) * u
+    face_dist_ortho[bf] = distance_2d(cell_center[K].astype('float64'), projection.astype('float64')) \
+                         + distance_2d(cell_center[L].astype('float64'), projection_bis.astype('float64'))
+
 def compile(func):
   #return func
   return numba.jit(nopython=True, fastmath=True, cache=True)(func)
@@ -762,3 +1363,4 @@ define_face_and_node_name = compile(define_face_and_node_name)
 append_1d = compile(_append_1d)
 create_halo_cells = compile(_create_halo_cells)
 create_ghost_cells = compile(_create_ghost_cells)
+create_ghost_tables = compile(_create_ghost_tables)
