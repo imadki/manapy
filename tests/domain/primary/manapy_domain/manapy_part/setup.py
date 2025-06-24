@@ -21,16 +21,18 @@ home_folder = os.path.expanduser("~")
 # Allow users to point to non‑standard METIS paths via env‑vars
 METIS_INCLUDE = os.getenv("METIS_INCLUDE_DIR", f"{home_folder}/local/include")
 METIS_LIB_DIR = os.getenv("METIS_LIB_DIR", f"{home_folder}/local/lib")
+SOURCE = ["src/py_manapy_part.cpp", "src/utils.cpp"]
 
 ext_modules = [
     Extension(
         name="manapy_domain",
-        sources=["create_local_domain.cpp"],
-        include_dirs=[np.get_include(), METIS_INCLUDE],
+        sources=SOURCE,
+        include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
         # extra_compile_args=["-O3"],
         # extra_compile_args=["-O0", "-g", "-fsanitize=address"],
+        extra_compile_args=["-O0", "-g"],
         # extra_link_args=["-fsanitize=address"],
         language="c++"
     )

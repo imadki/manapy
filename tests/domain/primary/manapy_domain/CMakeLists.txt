@@ -9,12 +9,15 @@ INCLUDE_DIRECTORIES(
         "/home/aben-ham/anaconda3/envs/work/include/python3.8",
         "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/pybind11/include",
         "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/numpy/core/include",
-        "/home/aben-ham/local/include"
+        "/home/aben-ham/local/include",
+        "manapy_part/includes"
 )
 
 
 
 add_executable(manapy_domain
-        manapy_part/create_local_domain.cpp
-        manapy_part/manapy_domain.c
-        metis/main.c)
+        manapy_part/src/py_manapy_part.cpp
+        metis/main.c
+        manapy_part/src/utils.cpp
+        manapy_part/includes/manapy_part.h
+)

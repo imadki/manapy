@@ -29,8 +29,22 @@ print(domain.cells.shape[0])
 local_domains_data = domain.c_create_sub_domains(4) # Number of partitions
 print("====> End <=====")
 
-print(local_domains_data[0].max_cell_faceid)
-local_domain = LocalDomain(local_domains_data[0])
+
+print(local_domains_data[0].phy_faces_loctoglob)
+print(local_domains_data[1].bf_recv_part_size)
+print(local_domains_data[2].bf_recv_part_size)
+print(local_domains_data[3].bf_recv_part_size)
+print(local_domains_data[0].shared_bf_recv)
+# print(local_domains_data[0].node_halobfid)
+print(local_domains_data[0].shared_bf_send)
+#print(local_domains_data[1].shared_bf_recv)
+print(local_domains_data[1].shared_bf_send)
+# print(local_domains_data[2].shared_bf_recv)
+print(local_domains_data[2].shared_bf_send)
+# print(local_domains_data[3].shared_bf_recv)
+print(local_domains_data[3].shared_bf_send)
+
+#local_domain = LocalDomain(local_domains_data[0])
 
 # # Release Memory
 # mesh = None
