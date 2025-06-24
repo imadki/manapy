@@ -165,10 +165,15 @@ class LocalDomainStruct:
     self.cells_type = None # [cell type]
     self.phy_faces = None # [[physical face nodes]]
     self.phy_faces_name = None # [physical face name]
+    self.phy_faces_loctoglob = None
     self.cell_loctoglob = None # [cell global index]
     self.node_loctoglob = None # [node global index]
     self.halo_neighsub = None # [sub domain id]
     self.node_halos = None # [node1, number of halos, halocell index in halo_halosext, node2, number of halos, ....] shape=(2*nb_nodes + nb_halos)
+    self.node_halobfid = None # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
+    self.shared_bf_recv = None # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"
+    self.bf_recv_part_size = None # [boundary faces part, size]
+    self.shared_bf_send = None # [recv_part_index, size, index point to a sub array in shared_bf_recv, ...] description="used when this part need to send its boundary faces to recv_part"
     self.halo_halosext = None # [global_index_if_halo_cell, ...] shape=(nb_halos)
     self.dim = None
     self.float_precision = None
@@ -216,6 +221,10 @@ class Domain:
     self.node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
+    print("node_bfid") # node_boundary_face_id
+    self.node_bfid = self.create_node_bfid(self.phy_faces, self.nb_nodes)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
     print("cell_cellnid")
     self.cell_cellnid = self.create_cell_cellnid(self.cells, self.node_cellid)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
@@ -238,6 +247,14 @@ class Domain:
     node_cellid = np.zeros(shape=(nb_nodes, max_node_cellid + 1), dtype=np.int32)
     create_node_cellid(cells, node_cellid)
     return node_cellid
+
+  @staticmethod
+  def create_node_bfid(phy_faces: 'int[:, :]', nb_nodes: 'int'):
+    # Count max node boundary faces
+    # Create node boundary faceid
+    return Domain.create_node_cellid(phy_faces, nb_nodes)
+
+
 
   @staticmethod
   def create_cell_cellnid(cells: 'int[:, :]', node_cellid: 'int[:, :]'):
@@ -277,7 +294,7 @@ class Domain:
 
     return cell_cellfid
 
-  # Deprecated
+  # @Deprecated
   def create_sub_domains(self, nb_parts: 'int'):
     if nb_parts == 1:
       local_domain = LocalDomainStruct()
@@ -333,9 +350,6 @@ class Domain:
 
     graph = self.cell_cellfid
     part_vert = manapy_domain.make_n_part(graph, nb_parts)
-    print(part_vert)
-    print(np.unique(np.array(part_vert)))
-    # nb_parts = len(np.unique(part_vert))
     print(f"Number of parts: {nb_parts}")
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
@@ -502,6 +516,7 @@ class Domain:
     res = manapy_domain.create_sub_domains(
       self.cell_cellfid,
       self.node_cellid,
+      self.node_bfid,
       self.cells,
       self.cell_cellfid,
       self.cell_cellnid,
@@ -520,19 +535,24 @@ class Domain:
       l_domain.cells_type = item[2]
       l_domain.phy_faces = item[3]
       l_domain.phy_faces_name = item[4]
-      l_domain.cell_loctoglob = item[5]
-      l_domain.node_loctoglob = item[6]
-      l_domain.halo_neighsub = item[7]
-      l_domain.node_halos = item[8]
-      l_domain.halo_halosext = item[9]
+      l_domain.phy_faces_loctoglob = item[5]
+      l_domain.cell_loctoglob = item[6]
+      l_domain.node_loctoglob = item[7]
+      l_domain.halo_neighsub = item[8]
+      l_domain.node_halos = item[9]
+      l_domain.node_halobfid = item[10]
+      l_domain.shared_bf_recv = item[11]
+      l_domain.bf_recv_part_size = item[12]
+      l_domain.shared_bf_send = item[13]
+      l_domain.halo_halosext = item[14]
       l_domain.dim = self.dim
       l_domain.float_precision = self.float_precision
-      l_domain.max_cell_nodeid = item[10]
-      l_domain.max_cell_faceid = item[11]
-      l_domain.max_face_nodeid = item[12]
-      l_domain.max_node_haloid = item[13]
-      l_domain.max_cell_halofid = item[14]
-      l_domain.max_cell_halonid = item[15]
+      l_domain.max_cell_nodeid = item[15]
+      l_domain.max_cell_faceid = item[16]
+      l_domain.max_face_nodeid = item[17]
+      l_domain.max_node_haloid = item[18]
+      l_domain.max_cell_halofid = item[19]
+      l_domain.max_cell_halonid = item[20]
       l_domain.node_cellid = None
       l_domain.cell_cellnid = None
       local_domains.append(l_domain)
@@ -544,16 +564,22 @@ class Domain:
 # TODO: face_haloid, node_haloid rename
 # TODO: haloext -> [[cellgid, cellnode1, cellnode2, .., size]] shape=(nb_haloext, max_cell_node + 2)
 class LocalDomain:
-  def __init__(self, local_domain_struct: 'LocalDomainStruct'):
+  def __init__(self, local_domain_struct: 'LocalDomainStruct', rank: 'int'):
+    self.rank = rank
     self.nodes = local_domain_struct.nodes
     self.cells = local_domain_struct.cells
     self.cells_type = local_domain_struct.cells_type
     self.phy_faces = local_domain_struct.phy_faces
     self.phy_faces_name = local_domain_struct.phy_faces_name
+    self.phy_faces_loctoglob = local_domain_struct.phy_faces_loctoglob
     self.cell_loctoglob = local_domain_struct.cell_loctoglob
     self.node_loctoglob = local_domain_struct.node_loctoglob
     self.halo_neighsub = local_domain_struct.halo_neighsub
     self.node_halos = local_domain_struct.node_halos
+    self.node_halobfid = local_domain_struct.node_halobfid
+    self.shared_bf_recv = local_domain_struct.shared_bf_recv
+    self.bf_recv_part_size = local_domain_struct.bf_recv_part_size
+    self.shared_bf_send = local_domain_struct.shared_bf_send
     self.halo_halosext = local_domain_struct.halo_halosext
     self.dim = local_domain_struct.dim
     self.float_precision = local_domain_struct.float_precision
@@ -567,11 +593,14 @@ class LocalDomain:
     self.cell_cellnid = local_domain_struct.cell_cellnid
     self.nb_nodes = np.int32(len(self.nodes))
     self.nb_cells = np.int32(len(self.cells))
-    self.nb_faces = np.int32(len(self.faces))
 
     self.start = time.time()
     print("node_cellid")
     self.node_cellid = self._create_node_cellid(self.cells, self.nb_nodes, local_domain_struct.node_cellid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("node_bfid") # node_boundary_face_id
+    self.node_bfid = self.create_node_bfid(self.phy_faces, self.nb_nodes)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("cell_cellnid")
@@ -634,6 +663,17 @@ class LocalDomain:
     if g_node_cellid is not None:
       return g_node_cellid
     return Domain.create_node_cellid(cells, nb_nodes)
+
+  def create_node_bfid(self, phy_faces: 'int[:, :]', phy_faces_loctoglob: 'int[:]', shared_bf_recv: 'int[:]', bf_recv_part_size: 'int[:]'):
+    nb_nodes = self.nb_nodes
+    rank = self.rank
+    # Count max node boundary faces
+    # Create node boundary faceid
+    node_bfid = Domain.create_node_cellid(phy_faces, nb_nodes)
+
+    # Remap
+    remap_node_bfid_to_bf_recv(node_bfid, self.phy_faces_loctoglob, self.shared_bf_recv, self.bf_recv_part_size)
+    return node_bfid
 
   def _create_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]', g_cell_cellnid):
     if g_cell_cellnid is not None:
@@ -788,25 +828,25 @@ class LocalDomain:
 
     return ghost_cells
 
-def _create_ghost_tables(self, ghost_info: 'int[:, :]', cell_center: 'float[:, :]', faces: 'int[:, :]', face_cellid: 'int[:, :]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]'):
-  node_ghostcenter_data_size = 6 # [ghost_center x.y.z, cell_id, face_old_name, face_id]
-  face_ghostcenter_data_size = 4 # [ghost_center x.y, gamma]
-  node_ghostfaceinfo_data_size = 6 # [face_center x.y.z, face_normal x.y.z]
-  max_node_ghost = 2 # ?? TODO
-  max_cell_ghost = 2 # ?? TODO
+  def _create_ghost_tables(self, ghost_info: 'int[:, :]', cell_center: 'float[:, :]', faces: 'int[:, :]', face_cellid: 'int[:, :]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]'):
+    node_ghostcenter_data_size = 6 # [ghost_center x.y.z, cell_id, face_old_name, face_id]
+    face_ghostcenter_data_size = 4 # [ghost_center x.y, gamma]
+    node_ghostfaceinfo_data_size = 6 # [face_center x.y.z, face_normal x.y.z]
+    max_node_ghost = 2 # ?? TODO
+    max_cell_ghost = 2 # ?? TODO
 
-  node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_ghost + 1), dtype=np.int32)
-  cell_ghostid = np.zeros(shape=(self.nb_cells, max_cell_ghost + 1), dtype=np.int32)
-  node_ghostcenter = np.zeros(shape(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precesion)
-  face_ghostcenter = np.zeros(shape(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precesion)
-  node_ghostfaceinfo = np.zeros(shape(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precesion)
+    node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_ghost + 1), dtype=np.int32)
+    cell_ghostid = np.zeros(shape=(self.nb_cells, max_cell_ghost + 1), dtype=np.int32)
+    node_ghostcenter = np.zeros(shape(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precesion)
+    face_ghostcenter = np.zeros(shape(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precesion)
+    node_ghostfaceinfo = np.zeros(shape(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precesion)
 
-  create_ghost_tables(ghost_info, cell_center, faces, face_cellid, face_oldname, face_normal, face_center, face_measure, node_ghostid, cell_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo)
+    create_ghost_tables(ghost_info, cell_center, faces, face_cellid, face_oldname, face_normal, face_center, face_measure, node_ghostid, cell_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo)
 
-  return (
-    node_ghostid,
-    cell_ghostid,
-    node_ghostcenter,
-    face_ghostcenter,
-    node_ghostfaceinfo
-  )
+    return (
+      node_ghostid,
+      cell_ghostid,
+      node_ghostcenter,
+      face_ghostcenter,
+      node_ghostfaceinfo
+    )

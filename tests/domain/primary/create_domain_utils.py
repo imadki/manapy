@@ -1,6 +1,7 @@
 import numpy as np
 import numba
-
+from numba.typed import Dict
+from numba import types
 
 """
 ###########
@@ -209,8 +210,8 @@ def _create_node_cellid(cells: 'int[:, :]', node_cellid: 'int[:, :]'):
     Create neighboring cells for each node
   """
   for i in range(cells.shape[0]):
-    for j in range(cells[i][-1]):
-      node = node_cellid[cells[i][j]]
+    for j in range(cells[i, -1]):
+      node = node_cellid[cells[i, j]]
       size = node[-1]
       node[-1] += 1
       node[size] = i
@@ -283,6 +284,8 @@ def _create_cell_cellnid(
   #         size = cell_cellnid[i][-1]
   #         cell_cellnid[i][-1] += 1
   #         cell_cellnid[i][size] = node_n[k]
+
+
 
 # #################
 # Create Info
@@ -1329,6 +1332,51 @@ def dist_ortho_function_2d(d_innerfaces: 'uint32[:]', d_boundaryfaces: 'uint32[:
     projection_bis = cell_center[L] - (v[0] * u[0] + v[1] * u[1]) * u
     face_dist_ortho[bf] = distance_2d(cell_center[K].astype('float64'), projection.astype('float64')) \
                          + distance_2d(cell_center[L].astype('float64'), projection_bis.astype('float64'))
+
+
+def define_halobf_comm(halo_bf: 'int[:]', halo_bf_neigh: 'int[:]', halo_bf_csr: 'int[:]'):
+  pass
+
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
+
+def remap_node_bfid_to_bf_recv(node_bfid, phy_faces_loctoglob, shared_bf_recv, bf_recv_part_size, rank):
+  start = 0
+  size = -1
+  for i in range(0, len(bf_recv_part_size), 2):
+    if bf_recv_part_size[i] == rank:
+      size = bf_recv_part_size[i + 1]
+      break
+    start += bf_recv_part_size[i + 1]
+  if size == -1:
+    raise RuntimeError("Partition not found")
+
+  map = Dict.empty(
+    key_type=types.int32,
+    value_type=types.int32
+  )
+  for i in range(start, start + size):
+    g_index = shared_bf_recv[i]
+    map[g_index] = i
+
+  for i in range(len(node_bfid)):
+    for j in range(node_bfid[i, -1]):
+      bfid = node_bfid[i, j]
+      glob_bfid = phy_faces_loctoglob[bfid]
+      index_to_shared_bf_recv = map[glob_bfid]
+      node_bfid[i, j] = index_to_shared_bf_recv
+
+
+
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
 
 def compile(func):
   #return func
