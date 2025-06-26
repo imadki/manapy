@@ -30,21 +30,32 @@ local_domains_data = domain.c_create_sub_domains(4) # Number of partitions
 print("====> End <=====")
 
 
-print(local_domains_data[0].phy_faces_loctoglob)
-print(local_domains_data[1].bf_recv_part_size)
-print(local_domains_data[2].bf_recv_part_size)
-print(local_domains_data[3].bf_recv_part_size)
-print(local_domains_data[0].shared_bf_recv)
-# print(local_domains_data[0].node_halobfid)
+# print(local_domains_data[0].bf_cellid)
+# print(local_domains_data[1].bf_recv_part_size)
+# print(local_domains_data[2].bf_recv_part_size)
+# print(local_domains_data[3].bf_recv_part_size)
+# print(local_domains_data[0].shared_bf_recv)
+# # print(local_domains_data[0].node_halobfid)
 print(local_domains_data[0].shared_bf_send)
-#print(local_domains_data[1].shared_bf_recv)
-print(local_domains_data[1].shared_bf_send)
-# print(local_domains_data[2].shared_bf_recv)
-print(local_domains_data[2].shared_bf_send)
-# print(local_domains_data[3].shared_bf_recv)
-print(local_domains_data[3].shared_bf_send)
+# #print(local_domains_data[1].shared_bf_recv)
+# print(local_domains_data[1].shared_bf_send)
+# # print(local_domains_data[2].shared_bf_recv)
+# print(local_domains_data[2].shared_bf_send)
+# # print(local_domains_data[3].shared_bf_recv)
+# print(local_domains_data[3].shared_bf_send)
 
-#local_domain = LocalDomain(local_domains_data[0])
+rank = 3
+local_domain = LocalDomain(local_domains_data[rank], rank)
+print(local_domain.shared_ghost_info)
+i = 0
+while i < len(local_domain.shared_bf_send):
+  dest_part = local_domain.shared_bf_send[i]
+  start = i + 2
+  end = start + local_domain.shared_bf_send[i + 1]
+  data_indices = local_domain.shared_bf_send[start:end]
+  print(f"=> {local_domain.shared_ghost_info.shape}", data_indices)
+  data = local_domain.shared_ghost_info[data_indices]
+  i = end
 
 # # Release Memory
 # mesh = None
