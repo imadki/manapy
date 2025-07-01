@@ -93,8 +93,8 @@ struct LocalDomainStruct {
         const npy_intp l_bf_recv_part_size_dim[1] = {(idx_t)this->set_halo_bf_neighsub.size() * 2+2};
         PyArrayObject *l_bf_recv_part_size = (PyArrayObject *)PyArray_SimpleNew(1, l_bf_recv_part_size_dim, int_type);
 
-        const npy_intp l_halo_halosext_dim[1] = {nb_halos};
-        PyArrayObject *l_halo_halosext = (PyArrayObject *)PyArray_SimpleNew(1, l_halo_halosext_dim, int_type);
+        const npy_intp l_halo_halosext_dim[2] = {nb_halos, this->max_cell_nodeid + 2};
+        PyArrayObject *l_halo_halosext = (PyArrayObject *)PyArray_SimpleNew(2, l_halo_halosext_dim, int_type);
 
 
         if (!l_cells || !l_cells_type || !l_cell_loctoglob || !l_nodes || !l_node_loctoglob || !l_phy_faces || !l_phy_faces_name || !l_phy_faces_loctoglob || !l_bf_cellid || !l_halo_neighsub || !l_node_halos || !l_node_halobfid || !l_shared_bf_recv || !l_bf_recv_part_size || !l_halo_halosext)
@@ -722,7 +722,18 @@ int  create_sub_domains(PyArrayObject *graph,
         for (auto & map_halo : map_halos) {
             const idx_t k = map_halo.first;
             const idx_t local_index = map_halo.second;
-            l_halo_halosext_data[local_index] = k;
+
+
+            const idx_t size = *(idx_t *)PyArray_GETPTR2(cells, k, cells_dim[1] - 1);
+            const idx_t data_size = (max_cell_nodeid + 2);
+            const idx_t index = local_index * data_size;
+
+            l_halo_halosext_data[index] = k;
+            for (idx_t i = 0; i < size; i++) {
+                const idx_t g_node = *(idx_t *)PyArray_GETPTR2(cells, k, i);
+                l_halo_halosext_data[index + i + 1] = g_node;
+            }
+            l_halo_halosext_data[index + data_size - 1] = size;
         }
 
         print_instant("End Halo neighsub, Halos\n");

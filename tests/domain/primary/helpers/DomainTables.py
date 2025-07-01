@@ -31,6 +31,7 @@ class DomainTables:
     "d_cell_ghostnid",
     "d_cell_haloghostnid",
     "d_cell_haloghostcenter",
+    "d_cell_tc",
     "d_node_loctoglob",
     "d_node_cellid",
     "d_node_name",
