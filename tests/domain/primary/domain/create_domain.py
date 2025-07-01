@@ -1,9 +1,12 @@
 import numpy as np
 import meshio
 import time
-import warnings
+import h5py
+import os
+import shutil
 import manapy_domain
 from mpi4py import MPI
+from manapy.ddm.geometry   import Face, Cell, Node, Halo
 from create_domain_utils import (append,
                                  append_1d,
                                  count_max_node_cellid,
@@ -41,7 +44,6 @@ from create_domain_utils import (append,
                                  dist_ortho_function_2d
                                  )
 
-# TODO check indexing limit on int32
 
 class Mesh:
   def __init__(self, mesh_path, dim):
@@ -192,7 +194,8 @@ class LocalDomainStruct:
     self.shared_bf_recv = None # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"
     self.bf_recv_part_size = None # [boundary faces part, size]
     self.shared_bf_send = None # [recv_part_index, size, size indices point to shared_bf_recv, ...] description="used when this part need to send its boundary faces to recv_part"
-    self.halo_halosext = None # [global_index_if_halo_cell, ...] shape=(nb_halos)
+    self.halo_halosext = None # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
+    self.halo_centvol = None # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
     self.dim = None
     self.float_precision = None
     self.max_cell_nodeid = None
@@ -204,17 +207,69 @@ class LocalDomainStruct:
 
 
 
-    # To be copied if one partition is specified (recalculated on subdomains)
-    self.node_cellid = None
-    self.cell_cellnid = None
 
-    ## Temporarily
-    self.max_phy_face_nodeid = None
-    self.map_cells = {}
-    self.map_nodes = {}
-    self.map_phy_faces = {}
+  def save_hdf5(self, path):
+    with h5py.File(path, 'w') as f:
+      f.create_dataset('nodes', data=self.nodes)
+      f.create_dataset('cells', data=self.cells)
+      f.create_dataset('cells_type', data=self.cells_type)
+      f.create_dataset('phy_faces', data=self.phy_faces)
+      f.create_dataset('phy_faces_name', data=self.phy_faces_name)
+      f.create_dataset('phy_faces_loctoglob', data=self.phy_faces_loctoglob)
+      f.create_dataset('bf_cellid', data=self.bf_cellid)
+      f.create_dataset('cell_loctoglob', data=self.cell_loctoglob)
+      f.create_dataset('node_loctoglob', data=self.node_loctoglob)
+      f.create_dataset('halo_neighsub', data=self.halo_neighsub)
+      f.create_dataset('node_halos', data=self.node_halos)
+      f.create_dataset('node_halobfid', data=self.node_halobfid)
+      f.create_dataset('shared_bf_recv', data=self.shared_bf_recv)
+      f.create_dataset('bf_recv_part_size', data=self.bf_recv_part_size)
+      f.create_dataset('shared_bf_send', data=self.shared_bf_send)
+      f.create_dataset('halo_halosext', data=self.halo_halosext)
+      f.create_dataset('halo_centvol', data=self.halo_centvol)
+      f.create_dataset('dim', data=self.dim)
+      f.create_dataset('float_precision', data=self.float_precision)
+      f.create_dataset('max_cell_nodeid', data=self.max_cell_nodeid)
+      f.create_dataset('max_cell_faceid', data=self.max_cell_faceid)
+      f.create_dataset('max_face_nodeid', data=self.max_face_nodeid)
+      f.create_dataset('max_node_haloid', data=self.max_node_haloid)
+      f.create_dataset('max_cell_halofid', data=self.max_cell_halofid)
+      f.create_dataset('max_cell_halonid', data=self.max_cell_halonid)
 
-class Domain:
+  @staticmethod
+  def load_hd5(path: 'str'):
+    local_domain = LocalDomainStruct()
+
+    with h5py.File(path, 'r') as f:
+      local_domain.nodes = f['nodes'][...]
+      local_domain.cells = f['cells'][...]
+      local_domain.cells_type = f['cells_type'][...]
+      local_domain.phy_faces = f['phy_faces'][...]
+      local_domain.phy_faces_name = f['phy_faces_name'][...]
+      local_domain.phy_faces_loctoglob = f['phy_faces_loctoglob'][...]
+      local_domain.bf_cellid = f['bf_cellid'][...]
+      local_domain.cell_loctoglob = f['cell_loctoglob'][...]
+      local_domain.node_loctoglob = f['node_loctoglob'][...]
+      local_domain.halo_neighsub = f['halo_neighsub'][...]
+      local_domain.node_halos = f['node_halos'][...]
+      local_domain.node_halobfid = f['node_halobfid'][...]
+      local_domain.shared_bf_recv = f['shared_bf_recv'][...]
+      local_domain.bf_recv_part_size = f['bf_recv_part_size'][...]
+      local_domain.shared_bf_send = f['shared_bf_send'][...]
+      local_domain.halo_halosext = f['halo_halosext'][...]
+      local_domain.halo_centvol = f['halo_centvol'][...]
+      local_domain.dim = f['dim'][()]
+      local_domain.float_precision = f['float_precision'][()].decode()
+      local_domain.max_cell_nodeid = f['max_cell_nodeid'][()]
+      local_domain.max_cell_faceid = f['max_cell_faceid'][()]
+      local_domain.max_face_nodeid = f['max_face_nodeid'][()]
+      local_domain.max_node_haloid = f['max_node_haloid'][()]
+      local_domain.max_cell_halofid = f['max_cell_halofid'][()]
+      local_domain.max_cell_halonid = f['max_cell_halonid'][()]
+
+    return local_domain
+
+class GlobalDomain:
 
   def __init__(self, mesh: 'Mesh', float_precision: 'str'):
     if float_precision != 'float32' and float_precision != 'float64':
@@ -234,27 +289,8 @@ class Domain:
     self.nb_cells = np.int32(len(self.cells))
     self.nb_phy_faces = np.int32(len(self.phy_faces))
 
+    self.start = time.time() # For timing only
 
-    self.start = time.time()
-    print("node_cellid")
-    self.node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
-    print(f"Execution time: {time.time() - self.start:.6f} seconds")
-
-    print("cell_cellnid")
-    self.cell_cellnid = self.create_cell_cellnid(self.cells, self.node_cellid)
-    print(f"Execution time: {time.time() - self.start:.6f} seconds")
-
-    print("cell_cellfid and boundary_faces")
-    (
-      self.cell_cellfid,
-      self.bf_cellid,
-      self.bf_nodes
-    ) = self._create_cellfid_bf_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid, self.nb_phy_faces)
-    print(f"Execution time: {time.time() - self.start:.6f} seconds")
-
-    print("node_bfid") # node_boundary_face_id
-    self.node_bfid = self.create_node_bfid(self.bf_nodes, self.nb_nodes)
-    print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
   # ###############################
   # ###############################
@@ -275,7 +311,7 @@ class Domain:
   def create_node_bfid(bf_nodes: 'int[:, :]', nb_nodes: 'int'):
     # Count max node boundary faces
     # Create node boundary faceid
-    return Domain.create_node_cellid(bf_nodes, nb_nodes)
+    return GlobalDomain.create_node_cellid(bf_nodes, nb_nodes)
 
 
 
@@ -321,39 +357,69 @@ class Domain:
 
     return (cell_cellfid, bf_cellid, bf_nodes)
 
-  def c_create_sub_domains(self, nb_parts: 'int'):
-    if nb_parts == 1:
-      local_domain = LocalDomainStruct()
+  def _create_one_partition(self):
+    local_domain = LocalDomainStruct()
 
-      local_domain.nodes = self.nodes
-      local_domain.cells = self.cells
-      local_domain.cells_type = self.cells_type
-      local_domain.phy_faces = self.phy_faces
-      local_domain.phy_faces_name = self.phy_faces_name
-      local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.uint32)
-      local_domain.node_loctoglob = np.zeros(shape=0, dtype=np.uint32)
-      local_domain.halo_neighsub = []
-      local_domain.node_halos = []
-      local_domain.dim = self.dim
-      local_domain.float_precision = self.float_precision
-      local_domain.max_cell_nodeid = self.max_cell_nodeid
-      local_domain.max_cell_faceid = self.max_cell_faceid
-      local_domain.max_face_nodeid = self.max_face_nodeid
-      local_domain.node_cellid = self.node_cellid
-      local_domain.cell_cellnid = self.cell_cellnid
+    local_domain.nodes = self.nodes
+    local_domain.cells = self.cells
+    local_domain.cells_type = self.cells_type
+    local_domain.phy_faces = self.phy_faces
+    local_domain.phy_faces_name = self.phy_faces_name
+    local_domain.dim = self.dim
+    local_domain.float_precision = self.float_precision
+    local_domain.max_cell_nodeid = self.max_cell_nodeid
+    local_domain.max_cell_faceid = self.max_cell_faceid
+    local_domain.max_face_nodeid = self.max_face_nodeid
 
-      return [local_domain]
+    ## Halo related tables
+    local_domain.halo_neighsub = np.zeros(shape=0, dtype=np.int32)
+    local_domain.node_halos = np.zeros(shape=(1, 1), dtype=np.int32)
+    local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.int32)
+    local_domain.node_loctoglob = np.zeros(shape=0, dtype=np.int32)
+    local_domain.bf_cellid = None # It will be created on LocalDomain Class
+    local_domain.shared_bf_recv = np.arange(self.nb_phy_faces, dtype=np.int32)
+    local_domain.bf_recv_part_size = np.array([0, self.nb_phy_faces], dtype=np.int32)
+    local_domain.node_halobfid = np.zeros(shape=(1, 1), dtype=np.int32)
+    local_domain.shared_bf_send = np.zeros(shape=0, dtype=np.int32)
+    local_domain.halo_halosext = np.zeros(shape=(1, 1), dtype=np.int32)
+    local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=np.float32)
+    local_domain.max_node_haloid = None
+    local_domain.max_cell_halofid = None
+    local_domain.max_cell_halonid = None
+
+    return local_domain
+
+  def _create_multiple_partitions(self, nb_parts: 'int'):
+    print("node_cellid")
+    node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("cell_cellnid")
+    cell_cellnid = self.create_cell_cellnid(self.cells, node_cellid)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("cell_cellfid and boundary_faces")
+    (
+      cell_cellfid,
+      bf_cellid,
+      bf_nodes
+    ) = self._create_cellfid_bf_info(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
+                                     self.max_face_nodeid, self.nb_phy_faces)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
+    print("node_bfid")  # node_boundary_face_id
+    node_bfid = self.create_node_bfid(bf_nodes, self.nb_nodes)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("Start creating sub domains")
-    # print(self.cell_cellfid)
     res = manapy_domain.create_sub_domains(
-      self.cell_cellfid,
-      self.node_cellid,
-      self.node_bfid,
-      self.bf_cellid,
+      cell_cellfid,
+      node_cellid,
+      node_bfid,
+      bf_cellid,
       self.cells,
-      self.cell_cellfid,
-      self.cell_cellnid,
+      cell_cellfid,
+      cell_cellnid,
       self.cells_type,
       self.nodes,
       self.phy_faces,
@@ -380,6 +446,7 @@ class Domain:
       l_domain.bf_recv_part_size = item[13]
       l_domain.shared_bf_send = item[14]
       l_domain.halo_halosext = item[15]
+      l_domain.halo_centvol = self._create_halocentvol(l_domain.halo_halosext, self.nodes)
       l_domain.dim = self.dim
       l_domain.float_precision = self.float_precision
       l_domain.max_cell_nodeid = item[16]
@@ -388,16 +455,66 @@ class Domain:
       l_domain.max_node_haloid = item[19]
       l_domain.max_cell_halofid = item[20]
       l_domain.max_cell_halonid = item[21]
-      l_domain.node_cellid = None
-      l_domain.cell_cellnid = None
       local_domains.append(l_domain)
 
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
     return local_domains
 
-# TODO: zeos unstead of ones
+  def c_create_sub_domains(self, nb_parts: 'int'):
+    if nb_parts == 1:
+      return [self._create_one_partition()]
+    else:
+      return self._create_multiple_partitions(nb_parts)
+
+
+
+
+  def _create_halocentvol(self, halo_halosext, nodes):
+    halo_cells = halo_halosext[:, 1:] # exclude cellid and keep nodeids and size
+
+    nb_halo_cells = len(halo_cells)
+    cell_volume = np.zeros(shape=nb_halo_cells, dtype=self.float_precision)
+    cell_center = np.zeros(shape=(nb_halo_cells, self.dim), dtype=self.float_precision)
+    halo_centvol = np.zeros(shape=(nb_halo_cells, 4), dtype=self.float_precision)
+    if self.dim == 2:
+      compute_cell_center_volume_2d(halo_cells, nodes, cell_volume, cell_center)
+      halo_centvol[:, 0:2] = cell_center
+      halo_centvol[:, 3] = cell_volume
+    else:
+      compute_cell_center_volume_3d(halo_cells, nodes, cell_volume, cell_center)
+      halo_centvol[:, 0:3] = cell_center
+      halo_centvol[:, 3] = cell_volume
+
+
+    return halo_centvol
+
+  def create_and_save_local_domains(self, size: 'int'):
+    local_domains_data = self.c_create_sub_domains(size)  # Number of partitions
+
+    folder_name = f"local_domain_{size}"
+    if not os.path.exists(folder_name):
+      os.makedirs(folder_name, exist_ok=True)
+    for rank in range(size):
+      file_name = f"mesh{rank}.hdf5"
+      path = os.path.join(folder_name, file_name)
+      local_domains_data[rank].save_hdf5(path)
+
+  @staticmethod
+  def all_local_mesh_files_exist(size: int):
+    folder_name = f"local_domain_{size}"
+    for rank in range(size):
+      file_path = os.path.join(folder_name, f"mesh{rank}.hdf5")
+      if not os.path.isfile(file_path):
+        return False
+    return True
+
+  @staticmethod
+  def delete_local_domain_folder(size: int):
+    folder_name = f"local_domain_{size}"
+    if os.path.exists(folder_name) and os.path.isdir(folder_name):
+      shutil.rmtree(folder_name)
+
 # TODO: face_haloid, node_haloid rename
-# TODO: haloext -> [[cellgid, cellnode1, cellnode2, .., size]] shape=(nb_haloext, max_cell_node + 2)
 class LocalDomain:
   def __init__(self, local_domain_struct: 'LocalDomainStruct', rank: 'int', size: 'int'):
     self.rank = rank
@@ -407,8 +524,7 @@ class LocalDomain:
     self.cells_type = local_domain_struct.cells_type
     self.phy_faces = local_domain_struct.phy_faces
     self.phy_faces_name = local_domain_struct.phy_faces_name
-    self.phy_faces_loctoglob = local_domain_struct.phy_faces_loctoglob
-    self.bf_cellid = local_domain_struct.bf_cellid
+    self.bf_cellid = local_domain_struct.bf_cellid # reassign In case size = 1
     self.cell_loctoglob = local_domain_struct.cell_loctoglob
     self.node_loctoglob = local_domain_struct.node_loctoglob
     self.halo_neighsub = local_domain_struct.halo_neighsub
@@ -418,6 +534,7 @@ class LocalDomain:
     self.bf_recv_part_size = local_domain_struct.bf_recv_part_size
     self.shared_bf_send = local_domain_struct.shared_bf_send
     self.halo_halosext = local_domain_struct.halo_halosext
+    self.halo_centvol = local_domain_struct.halo_centvol
     self.dim = local_domain_struct.dim
     self.float_precision = local_domain_struct.float_precision
     self.max_cell_nodeid = local_domain_struct.max_cell_nodeid
@@ -426,10 +543,9 @@ class LocalDomain:
     self.max_node_haloid = local_domain_struct.max_node_haloid
     self.max_cell_halofid = local_domain_struct.max_cell_halofid
     self.max_cell_halonid = local_domain_struct.max_cell_halonid
-    self.node_cellid = local_domain_struct.node_cellid
-    self.cell_cellnid = local_domain_struct.cell_cellnid
     self.nb_nodes = np.int32(len(self.nodes))
     self.nb_cells = np.int32(len(self.cells))
+    self.nb_phy_faces = np.int32(len(self.phy_faces))
 
     self.start = time.time()
 
@@ -438,11 +554,11 @@ class LocalDomain:
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("node_cellid")
-    self.node_cellid = self._create_node_cellid(self.cells, self.nb_nodes, local_domain_struct.node_cellid)
+    self.node_cellid = self._create_node_cellid(self.cells, self.nb_nodes)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("cell_cellnid")
-    self.cell_cellnid = self._create_cell_cellnid(self.cells, self.node_cellid, local_domain_struct.cell_cellnid)
+    self.cell_cellnid = self._create_cell_cellnid(self.cells, self.node_cellid)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("_create_info")
@@ -450,8 +566,9 @@ class LocalDomain:
       self.faces,
       self.cell_faceid,
       self.face_cellid,
-      self.cell_cellfid
-    ) = self._create_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
+      self.cell_cellfid,
+      self.bf_cellid
+    ) = self._create_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid, self.bf_cellid)
     self.nb_faces = len(self.faces)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
@@ -495,7 +612,7 @@ class LocalDomain:
     (
       self.shared_ghost_info,
       self.ghost_part_size
-    ) = self._create_shared_ghost_info(self.bf_cellid, self.bf_recv_part_size, self.cell_center, self.cell_faceid, self.face_oldname, self.face_normal, self.face_center, self.face_measure, self.rank, len(self.shared_bf_recv))
+    ) = self._create_shared_ghost_info(self.bf_cellid, self.bf_recv_part_size, self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, self.rank, len(self.shared_bf_recv))
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("Create shared_ghost_info")
@@ -520,7 +637,7 @@ class LocalDomain:
       self.node_haloghostid,
       self.node_haloghostcenter,
       self.node_haloghostfaceinfo
-    ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.bf_cellid, self.node_halobfid, self.cell_faceid, self.faces, self.ghost_part_size)
+    ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.bf_cellid, self.node_halobfid, self.node_haloid, self.halo_halosext, self.cell_faceid, self.faces, self.ghost_part_size)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     ## TODO the use of this tables !?
@@ -552,7 +669,7 @@ class LocalDomain:
       self.node_lambda_y,
       self.node_lambda_z, #TODO 2D
       self.node_number,
-    ) = self._variables(self.cell_center, self.node_cellid, self.node_haloid, self.node_ghostid, self.node_haloghostid, self.node_periodicid, self.nodes, self.face_ghostcenter, self.cell_haloghostcenter, self.halo_centvol, self.cell_shift)
+    ) = self._variables(self.cell_center, self.node_cellid, self.node_haloid, self.node_ghostid, self.node_haloghostid, self.node_periodicid, self.nodes, self.node_oldname, self.face_ghostcenter, self.cell_haloghostcenter, self.halo_centvol, self.cell_shift)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     print("_update_boundaries")
@@ -592,6 +709,10 @@ class LocalDomain:
     ) = self._update_boundaries(self.face_name, self.node_name)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
+    print("_define_BCs")
+    self.BCs = self._define_BCs(self.periodicinfaces, self.periodicupperfaces, self.periodicfrontfaces)
+    print(f"Execution time: {time.time() - self.start:.6f} seconds")
+
     print("_create_normal_face_of_cell_2d")
     # only in 2D, shape is 0 in 3D
     self.cell_nf = self._create_normal_face_of_cell_2d(self.cell_center, self.face_center, self.cell_faceid, self.face_normal)
@@ -604,24 +725,21 @@ class LocalDomain:
 
 
 
-  def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int', g_node_cellid):
-    if g_node_cellid is not None:
-      return g_node_cellid
-    return Domain.create_node_cellid(cells, nb_nodes)
+  def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int'):
+    return GlobalDomain.create_node_cellid(cells, nb_nodes)
 
 
-  def _create_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]', g_cell_cellnid):
-    if g_cell_cellnid is not None:
-      return g_cell_cellnid
-    return Domain.create_cell_cellnid(cells, node_cellid)
+  def _create_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]'):
+    return GlobalDomain.create_cell_cellnid(cells, node_cellid)
 
-  @staticmethod
-  def _create_info(
-          cells: 'int[:, :]',
+
+  def _create_info(self,
+    cells: 'int[:, :]',
     node_cellid: 'int[:, :]',
     cell_type: 'int[:]',
     max_cell_faceid: 'int',
-    max_face_nodeid: 'int'
+    max_face_nodeid: 'int',
+    origin_bf_cellid: 'int[:, :]',
   ):
     # ? Create tables
     nb_cells = len(cells)
@@ -635,6 +753,7 @@ class LocalDomain:
     cell_faceid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
     face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=np.int32) * -1
     cell_cellfid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
+    bf_cellid = np.zeros(shape=(self.nb_phy_faces, 2), dtype=np.int8) # int8
     faces_counter = np.zeros(shape=1, dtype=np.int32)
 
     create_info(
@@ -648,17 +767,23 @@ class LocalDomain:
       cell_faceid,
       face_cellid,
       cell_cellfid,
-      faces_counter
+      faces_counter,
+      bf_cellid,
+      self.size
     )
 
     faces = faces[:faces_counter[0]]
     face_cellid = face_cellid[:faces_counter[0]]
 
+    if self.size != 1:
+      bf_cellid = origin_bf_cellid
+
     return (
       faces,
       cell_faceid,
       face_cellid,
-      cell_cellfid
+      cell_cellfid,
+      bf_cellid
     )
 
 
@@ -701,12 +826,18 @@ class LocalDomain:
     nb_faces = len(faces)
     nb_nodes = len(nodes)
 
-    cell_halofid = np.zeros(shape=(nb_cells, self.max_cell_halofid + 1), dtype=np.int32)
-    cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=np.int32)
-    face_haloid = np.zeros(shape=nb_faces, dtype=np.int32)
-    node_haloid = np.zeros(shape=(nb_nodes, self.max_node_haloid + 1), dtype=np.int32)
+    if self.size == 1:
+      cell_halofid = np.zeros(shape=0, dtype=np.int32)
+      cell_halonid = np.zeros(shape=0, dtype=np.int32)
+      face_haloid = np.zeros(shape=0, dtype=np.int32)
+      node_haloid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
+    else:
+      cell_halofid = np.zeros(shape=(nb_cells, self.max_cell_halofid + 1), dtype=np.int32)
+      cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=np.int32)
+      face_haloid = np.zeros(shape=nb_faces, dtype=np.int32)
+      node_haloid = np.zeros(shape=(nb_nodes, self.max_node_haloid + 1), dtype=np.int32)
 
-    create_halo_cells(cells, cell_faceid, faces, node_halos, node_haloid, cell_halofid, cell_halonid, face_haloid)
+      create_halo_cells(cells, cell_faceid, faces, node_halos, node_haloid, cell_halofid, cell_halonid, face_haloid)
 
     return (
       cell_halofid,
@@ -745,22 +876,21 @@ class LocalDomain:
       node_name
     )
 
-  def _create_shared_ghost_info(self, bf_cellid: 'int[:, :]', bf_recv_part_size: 'int[:]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', rank: 'int', shared_bf_recv_size: 'int'):
-    
+  def _create_shared_ghost_info(self, bf_cellid: 'int[:, :]', bf_recv_part_size: 'int[:]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', rank: 'int', shared_bf_recv_size: 'int'):
     ghost_part_size = np.zeros(shape=2, dtype=np.int32)
     get_ghost_part_size(bf_recv_part_size, rank, ghost_part_size)
 
     if self.dim == 2:
-      shared_ghost_info_data_size = 10
+      shared_ghost_info_data_size = 11
       shared_ghost_info = np.zeros(shape=(shared_bf_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
-      create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
+      create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
     else:
-      shared_ghost_info_data_size = 13
+      shared_ghost_info_data_size = 14
       shared_ghost_info = np.zeros(shape=(shared_bf_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
-      create_ghost_info_3d(bf_cellid, cell_center, cell_faceid, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
-    
+      create_ghost_info_3d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
+
     return (shared_ghost_info, ghost_part_size)
 
   def _create_ghost_tables(self, shared_ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', ghost_part_size: 'int[:]'):
@@ -810,9 +940,12 @@ class LocalDomain:
     )
 
   def _share_ghost_info(self, rank: 'int', bf_recv_part_size: 'int[:]', shared_ghost_info: 'float[:, :]', shared_bf_send: 'int[:]'):
+    if self.size == 1:
+      return
+
     comm = MPI.COMM_WORLD
 
-    shared_ghost_info_data_size = shared_ghost_info.shape[1] # 13 on 3D 10 on 2D
+    shared_ghost_info_data_size = shared_ghost_info.shape[1] # 14 on 3D 11 on 2D
     recv_data = []
     reqs = []
 
@@ -871,65 +1004,73 @@ class LocalDomain:
       end = start + len(data)
       shared_ghost_info[start:end] = data
 
-  def _create_halo_ghost_tables(self, shared_ghost_info: 'float[:, :]', cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', cell_faceid, faces, ghost_part_size):
+  def _create_halo_ghost_tables(self, shared_ghost_info: 'float[:, :]', cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', cell_faceid, faces, ghost_part_size):
     nb_nodes = self.nb_nodes
     nb_cells = self.nb_cells
-    shared_ghost_info_size = shared_ghost_info.shape[0]
 
-    # ------------------------------------------------------------------
-    # create_bcell_halobfid
-    # ------------------------------------------------------------------
-    visited = np.zeros(shape=shared_ghost_info_size, dtype=np.int32)
-    max_bcell_halobfid = count_max_bcell_halobfid(cells, bf_cellid, node_halobfid, visited)
-
-    bcell_halobfid = np.zeros(shape=(bf_cellid.shape[0], max_bcell_halobfid + 1), dtype=np.int32)
-    visited.fill(0)
-    create_bcell_halobfid(cells, bf_cellid, node_halobfid, visited, bcell_halobfid)
-
-    # ------------------------------------------------------------------
-    # create_bf_nodeid
-    # ------------------------------------------------------------------
-    visited = np.zeros(shape=nb_nodes, dtype=np.int8)
-    max_bf_nodeid = count_max_bf_nodeid(bf_cellid, cell_faceid, faces, visited)
-
-    bf_nodeid = np.zeros(shape=max_bf_nodeid, dtype=np.int32)
-    visited.fill(0)
-    create_bf_nodeid(bf_cellid, cell_faceid, faces, visited, bf_nodeid)
-
-    # ------------------------------------------------------------------
-    # ghost_new_index
-    # ------------------------------------------------------------------
-    ghost_new_index = np.zeros(shape=shared_ghost_info_size, dtype=np.int32)
-    nb_haloghost = create_ghost_new_index(ghost_part_size, ghost_new_index)
-
-    # ------------------------------------------------------------------
-    # create_halo_ghost_tables
-    # ------------------------------------------------------------------
-    cell_haloghostnid = np.zeros(shape=(nb_cells, max_bcell_halobfid + 1), dtype=np.int32)
-
-    if self.dim == 2:
-      cell_haloghostcenter_data_size = 2
-      node_haloghostcenter_data_size = 5
-      node_haloghostfaceinfo_data_size = 4
-      cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
-      node_haloghostid = np.zeros(shape=(nb_nodes, node_halobfid.shape[1]), dtype=np.int32)
-      node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostcenter_data_size), dtype=self.float_precision)
-      node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size), dtype=self.float_precision)
-
-      create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, bf_nodeid, node_halobfid, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
-
+    if self.size == 1:
+      cell_haloghostnid = np.zeros(shape=(1, 1), dtype=np.int32)
+      cell_haloghostcenter = np.zeros(shape=(1, 1), dtype=self.float_precision)
+      node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
+      node_haloghostcenter = np.zeros(shape=(1, 1, 1), dtype=self.float_precision)
+      node_haloghostfaceinfo = np.zeros(shape=(1, 1, 1), dtype=self.float_precision)
     else:
-      cell_haloghostcenter_data_size = 3
-      node_haloghostcenter_data_size = 6
-      node_haloghostfaceinfo_data_size = 6
-      cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
-      node_haloghostid = np.zeros(shape=(nb_nodes, node_halobfid.shape[1]), dtype=np.int32)
-      node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostcenter_data_size),
-                                      dtype=self.float_precision)
-      node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size),
-                                        dtype=self.float_precision)
+      shared_ghost_info_size = shared_ghost_info.shape[0]
 
-      create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, bf_nodeid, node_halobfid, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
+      # ------------------------------------------------------------------
+      # create_bcell_halobfid
+      # ------------------------------------------------------------------
+      visited = np.zeros(shape=shared_ghost_info_size, dtype=np.int32)
+      max_bcell_halobfid = count_max_bcell_halobfid(cells, bf_cellid, node_halobfid, visited)
+
+      bcell_halobfid = np.zeros(shape=(bf_cellid.shape[0], max_bcell_halobfid + 1), dtype=np.int32)
+      visited.fill(0)
+      create_bcell_halobfid(cells, bf_cellid, node_halobfid, visited, bcell_halobfid)
+
+      # ------------------------------------------------------------------
+      # create_bf_nodeid
+      # ------------------------------------------------------------------
+      visited = np.zeros(shape=nb_nodes, dtype=np.int8)
+      max_bf_nodeid = count_max_bf_nodeid(bf_cellid, cell_faceid, faces, visited)
+
+      bf_nodeid = np.zeros(shape=max_bf_nodeid, dtype=np.int32)
+      visited.fill(0)
+      create_bf_nodeid(bf_cellid, cell_faceid, faces, visited, bf_nodeid)
+
+      # ------------------------------------------------------------------
+      # ghost_new_index
+      # ------------------------------------------------------------------
+      ghost_new_index = np.zeros(shape=shared_ghost_info_size, dtype=np.int32)
+      nb_haloghost = create_ghost_new_index(ghost_part_size, ghost_new_index)
+
+      # ------------------------------------------------------------------
+      # create_halo_ghost_tables
+      # ------------------------------------------------------------------
+      cell_haloghostnid = np.zeros(shape=(nb_cells, max_bcell_halobfid + 1), dtype=np.int32)
+
+      if self.dim == 2:
+        cell_haloghostcenter_data_size = 2
+        node_haloghostcenter_data_size = 5
+        node_haloghostfaceinfo_data_size = 4
+        cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
+        node_haloghostid = np.zeros(shape=(nb_nodes, node_halobfid.shape[1]), dtype=np.int32)
+        node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostcenter_data_size), dtype=self.float_precision)
+        node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size), dtype=self.float_precision)
+
+        create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, bf_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
+
+      else:
+        cell_haloghostcenter_data_size = 3
+        node_haloghostcenter_data_size = 6
+        node_haloghostfaceinfo_data_size = 6
+        cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
+        node_haloghostid = np.zeros(shape=(nb_nodes, node_halobfid.shape[1]), dtype=np.int32)
+        node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostcenter_data_size),
+                                        dtype=self.float_precision)
+        node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size),
+                                          dtype=self.float_precision)
+
+        create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, bf_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
 
     return (
       cell_haloghostnid,
@@ -968,7 +1109,7 @@ class LocalDomain:
       face_f4
     )
 
-  def _variables(self, cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, face_ghostcenter, cell_haloghostcenter, halo_centvol, cell_shift):
+  def _variables(self, cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, node_oldname, face_ghostcenter, cell_haloghostcenter, halo_centvol, cell_shift):
 
     node_R_x = np.zeros(self.nb_nodes, dtype=self.float_precision)
     node_R_y = np.zeros(self.nb_nodes, dtype=self.float_precision)
@@ -979,9 +1120,9 @@ class LocalDomain:
     node_number = np.zeros(self.nb_nodes, dtype=np.int32)
 
     if self.dim == 2:
-      variables_2d(cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, face_ghostcenter, cell_haloghostcenter, halo_centvol, node_R_x, node_R_y, node_lambda_x, node_lambda_y, node_number, cell_shift)
+      variables_2d(cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, node_oldname, face_ghostcenter, cell_haloghostcenter, halo_centvol, node_R_x, node_R_y, node_lambda_x, node_lambda_y, node_number, cell_shift)
     else:
-      variables_3d(cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, face_ghostcenter, cell_haloghostcenter, halo_centvol, node_R_x, node_R_y, node_R_z, node_lambda_x, node_lambda_y, node_lambda_z, node_number, cell_shift)
+      variables_3d(cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, node_oldname, face_ghostcenter, cell_haloghostcenter, halo_centvol, node_R_x, node_R_y, node_R_z, node_lambda_x, node_lambda_y, node_lambda_z, node_number, cell_shift)
 
     return (
       node_R_x,
@@ -993,19 +1134,19 @@ class LocalDomain:
       node_number
     )
 
-  def _create_normal_face_of_cell_2d(self, cell_center: 'float[:,:]', face_center: 'float[:,:]', cell_faceid: 'int32[:,:]', face_normal: 'float[:,:]'):
+  def _create_normal_face_of_cell_2d(self, cell_center: 'float[:,:]', face_center: 'float[:,:]', cell_faceid: 'int[:,:]', face_normal: 'float[:,:]'):
 
     cell_nf = np.zeros(shape=0, dtype=self.float_precision)
     if self.dim == 2:
       cell_nf = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, 2), dtype=self.float_precision)
-      create_normal_face_of_cell_2d(cell_center, face_center, cell_faceid, face_normal)
+      create_normal_face_of_cell_2d(cell_center, face_center, cell_faceid, face_normal, cell_nf)
     return cell_nf
 
-  def _dist_ortho_function_2d(self, d_innerfaces: 'uint32[:]', d_boundaryfaces: 'uint32[:]', face_cellid: 'int32[:,:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_normal: 'float[:,:]'):
+  def _dist_ortho_function_2d(self, d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', face_cellid: 'int[:,:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_normal: 'float[:,:]'):
 
     face_dist_ortho = np.zeros(shape=0, dtype=self.float_precision)
     if self.dim == 2:
-      face_dist_ortho = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, 2), dtype=self.float_precision)
+      face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
       dist_ortho_function_2d(d_innerfaces, d_boundaryfaces, face_cellid, cell_center, face_center, face_normal, face_dist_ortho)
     return face_dist_ortho
 
@@ -1110,6 +1251,28 @@ class LocalDomain:
       periodicbacknodes,
     )
 
+  def _define_BCs(self, periodicinfaces, periodicupperfaces, periodicfrontfaces):
+
+    BCs = {"in": ["neumann", 1], "out": ["neumann", 2], "upper": ["neumann", 3], "bottom": ["neumann", 4]}
+
+    if len(periodicinfaces) != 0:
+      BCs["in"] = ["periodic", 11]
+      BCs["out"] = ["periodic", 22]
+
+    if len(periodicupperfaces) != 0:
+      BCs["bottom"] = ["periodic", 44]
+      BCs["upper"] = ["periodic", 33]
+
+    if self.dim == 3:
+      BCs["front"] = ["neumann", 5]
+      BCs["back"] = ["neumann", 6]
+
+      if len(periodicfrontfaces) != 0:
+        BCs["front"] = ["periodic", 55]
+        BCs["back"] = ["periodic", 66]
+
+    return BCs
+
   def _define_bounds(self, nodes):
     """
     define the boudaries of the geometry
@@ -1129,5 +1292,296 @@ class LocalDomain:
 
     return bounds
 
+  @staticmethod
+  def load_and_create(rank: 'int', size: 'int'):
+    folder_name = f"local_domain_{size}"
+    file_name = f"mesh{rank}.hdf5"
+    path = os.path.join(folder_name, file_name)
+    local_domain_struct = LocalDomainStruct.load_hd5(path)
+    return LocalDomain(local_domain_struct, rank, size)
 
 
+class DomainTables:
+  __slots__ = [
+    "d_cells",
+    "d_faces",
+    "d_nodes",
+    "d_cell_nodeid",
+    "d_cell_faces",
+    "d_cell_center",
+    "d_cell_volume",
+    "d_cell_halonid",
+    "d_cell_loctoglob",
+    "d_cell_cellfid",
+    "d_cell_cellnid",
+    "d_cell_nf",
+    "d_cell_ghostnid",
+    "d_cell_haloghostnid",
+    "d_cell_haloghostcenter",
+    # "d_cell_tc",
+    "d_node_loctoglob",
+    "d_node_cellid",
+    "d_node_name",
+    "d_node_oldname",
+    "d_node_ghostid",
+    "d_node_haloghostid",
+    "d_node_ghostcenter",
+    "d_node_haloghostcenter",
+    "d_node_ghostfaceinfo",
+    "d_node_haloghostfaceinfo",
+    "d_node_halonid",
+    "d_halo_halosext",
+    "d_halo_halosint",
+    "d_halo_neigh",
+    "d_halo_centvol",
+    "d_halo_sizehaloghost",
+    # "d_halo_indsend",
+    "d_face_halofid",
+    "d_face_name",
+    "d_face_normal",
+    "d_face_center",
+    "d_face_measure",
+    "d_face_ghostcenter",
+    "d_face_oldname",
+    "d_face_cellid",
+    "nb_partitions",
+    "float_precision"
+  ]
+
+  def __init__(self, nb_partitions, mesh_name, float_precision, dim, create_par_fun):
+    if create_par_fun:
+      create_par_fun(nb_partitions, mesh_name, float_precision=float_precision, dim=dim)
+
+    self.nb_partitions = nb_partitions
+    self.float_precision = float_precision
+
+    for i in range(nb_partitions):
+      mesh_dir = "domain_meshes" + str(nb_partitions) + "PROC"
+      filename = os.path.join(mesh_dir, f"mesh{i}.hdf5")
+      with h5py.File(filename, "r") as f:
+        for key in f.keys():
+          arr = self.add_attribute_if_not_exists(key, nb_partitions)
+          arr[i] = f[key][...]
+
+  def add_attribute_if_not_exists(self, attr_name, nb_partitions):
+    if not hasattr(self, attr_name):
+      setattr(self, attr_name, [i for i in range(nb_partitions)])
+    return getattr(self, attr_name)
+
+class Domain:
+  def __init__(self, local_domain: 'LocalDomain'):
+
+    # Init
+    self.float_precision = local_domain.float_precision
+    self.rank = local_domain.rank
+    self.size = local_domain.size
+    self.dim = local_domain.dim
+    self.nbnodes = local_domain.nb_nodes
+    self.nbcells = local_domain.nb_cells
+    self.nbfaces = local_domain.nb_faces
+    self.nbhalos = local_domain.halo_halosext.shape[0]
+    self._maxcellfid = local_domain.max_cell_faceid
+    self._maxcellnodeid = local_domain.max_cell_nodeid
+    self._maxfacenid = local_domain.max_face_nodeid
+
+    # TODO Latter
+    self.backend = None
+    self.conf = None
+    self.int_precision = None
+    self.mpi_precision = None
+    self.comm = None
+    self.forcedbackend = None
+    self.signature = None
+    self.vtkprecision = None
+    self._parameters = None
+    self._vtkpath = None
+
+    self.cells = Cell()
+    self.nodes = Node()
+    self.faces = Face()
+    self.halos = Halo()
+
+    # Cells
+    self.cells._nbcells = local_domain.nb_cells
+    self.cells._nodeid = local_domain.cells
+    self.cells._faceid = local_domain.cell_faceid
+    self.cells._cellfid = local_domain.cell_cellfid
+    self.cells._cellnid = local_domain.cell_cellnid
+    self.cells._halonid = local_domain.cell_halonid
+    self.cells._ghostnid = local_domain.cell_ghostid
+    self.cells._haloghostnid = local_domain.cell_haloghostnid
+    self.cells._haloghostcenter = local_domain.cell_haloghostcenter
+    self.cells._center = local_domain.cell_center
+    self.cells._volume = local_domain.cell_volume
+    self.cells._nf = local_domain.cell_nf
+    self.cells._globtoloc = None
+    self.cells._loctoglob = local_domain.cell_loctoglob
+    self.cells._tc = None
+    self.cells._periodicfid = local_domain.cell_periodicfid
+    self.cells._shift = local_domain.cell_shift
+
+    # Nodes
+    self.nodes._nbnodes = local_domain.nb_nodes
+    self.nodes._vertex = local_domain.nodes
+    self.nodes._name = local_domain.node_name
+    self.nodes._oldname = local_domain.node_oldname
+    self.nodes._cellid = local_domain.node_cellid
+    self.nodes._ghostid = local_domain.node_ghostid
+    self.nodes._haloghostid = local_domain.node_haloghostid
+    self.nodes._ghostcenter = local_domain.node_ghostcenter
+    self.nodes._haloghostcenter = local_domain.node_haloghostcenter
+    self.nodes._ghostfaceinfo = local_domain.node_ghostfaceinfo
+    self.nodes._haloghostfaceinfo = local_domain.node_haloghostfaceinfo
+    self.nodes._loctoglob = local_domain.node_loctoglob
+    self.nodes._halonid = local_domain.node_haloid
+    self.nodes._nparts = None
+    self.nodes._periodicid = local_domain.node_periodicid
+    self.nodes._R_x = local_domain.node_R_x
+    self.nodes._R_y = local_domain.node_R_y
+    self.nodes._R_z = local_domain.node_R_z
+    self.nodes._number = local_domain.node_number
+    self.nodes._lambda_x = local_domain.node_lambda_x
+    self.nodes._lambda_y = local_domain.node_lambda_y
+    self.nodes._lambda_z = local_domain.node_lambda_z
+
+    # Faces
+    self.faces._nbfaces = local_domain.nb_faces
+    self.faces._nodeid = local_domain.faces
+    self.faces._cellid = local_domain.face_cellid
+    self.faces._name = local_domain.face_name
+    self.faces._oldname = local_domain.face_oldname
+    self.faces._normal = local_domain.face_normal
+    self.faces._mesure = local_domain.face_measure
+    self.faces._center = local_domain.face_center
+    self.faces._dist_ortho = local_domain.face_dist_ortho
+    self.faces._ghostcenter = local_domain.face_ghostcenter
+    self.faces._oppnodeid = None
+    self.faces._halofid = local_domain.face_haloid
+    self.faces._param1 = local_domain.face_param1
+    self.faces._param2 = local_domain.face_param2
+    self.faces._param3 = local_domain.face_param3
+    self.faces._param4 = local_domain.face_param4
+    self.faces._f_1 = local_domain.face_f1
+    self.faces._f_2 = local_domain.face_f2
+    self.faces._f_3 = local_domain.face_f3
+    self.faces._f_4 = local_domain.face_f4
+    self.faces._airDiamond = local_domain.face_air_diamond
+    self.faces._tangent = local_domain.face_tangent
+    self.faces._binormal = local_domain.face_binormal
+
+    # Halos
+    self.halos._halosint = np.zeros(shape=10) # TODO
+    self.halos._halosext = local_domain.halo_halosext
+    self.halos._neigh = local_domain.halo_neighsub
+    self.halos._centvol = local_domain.halo_centvol
+    self.halos._sizehaloghost = local_domain.cell_haloghostcenter.shape[0]
+    # TODO
+    self.halos._scount = None
+    self.halos._rcount = None
+    self.halos._indsend = None
+    self.halos._comm_ptr = None
+    self.halos._faces = None
+    self.halos._nodes = None
+    self.halos._requests = None
+
+    # Domain
+    self._bounds = local_domain.bounds
+    self._BCs = local_domain.BCs
+    self._innerfaces = local_domain.innerfaces
+    self._infaces = local_domain.infaces
+    self._outfaces = local_domain.outfaces
+    self._upperfaces = local_domain.upperfaces
+    self._bottomfaces = local_domain.bottomfaces
+    self._halofaces = local_domain.halofaces
+    self._periodicinfaces = local_domain.periodicinfaces
+    self._periodicoutfaces = local_domain.periodicoutfaces
+    self._periodicupperfaces = local_domain.periodicupperfaces
+    self._periodicbottomfaces = local_domain.periodicbottomfaces
+    self._boundaryfaces = local_domain.boundaryfaces
+    self._periodicboundaryfaces = local_domain.periodicboundaryfaces
+    self._innernodes = local_domain.innernodes
+    self._innodes = local_domain.innodes
+    self._outnodes = local_domain.outnodes
+    self._uppernodes = local_domain.uppernodes
+    self._bottomnodes = local_domain.bottomnodes
+    self._halonodes = local_domain.halonodes
+    self._periodicinnodes = local_domain.periodicinnodes
+    self._periodicoutnodes = local_domain.periodicoutnodes
+    self._periodicuppernodes = local_domain.periodicuppernodes
+    self._periodicbottomnodes = local_domain.periodicbottomnodes
+    self._boundarynodes = local_domain.boundarynodes
+    self._periodicboundarynodes = local_domain.periodicboundarynodes
+    self._frontfaces = local_domain.frontfaces
+    self._backfaces = local_domain.backfaces
+    self._periodicfrontfaces = local_domain.periodicfrontfaces
+    self._periodicbackfaces = local_domain.periodicbackfaces
+    self._frontnodes = local_domain.frontnodes
+    self._backnodes = local_domain.backnodes
+    self._periodicfrontnodes = local_domain.periodicfrontnodes
+    self._periodicbacknodes = local_domain.periodicbacknodes
+
+    self.innerfaces = self._innerfaces
+    self.infaces = self._infaces
+    self.outfaces = self._outfaces
+    self.bottomfaces = self._bottomfaces
+    self.upperfaces = self._upperfaces
+    self.halofaces = self._halofaces
+    self.innernodes = self._innernodes
+    self.innodes = self._innodes
+    self.outnodes = self._outnodes
+    self.bottomnodes = self._bottomnodes
+    self.uppernodes = self._uppernodes
+    self.halonodes = self._halonodes
+    self.boundaryfaces = self._boundaryfaces
+    self.boundarynodes = self._boundarynodes
+    self.periodicboundaryfaces = self._periodicboundaryfaces
+    self.periodicboundarynodes = self._periodicboundarynodes
+    self.typeOfCells = None
+    self.bounds = self._bounds
+
+  @staticmethod
+  def create_domain(mesh_path, dim, float_precision, recreate=True):
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+
+    if size == 1:
+      # try:
+      mesh = Mesh(mesh_path, dim)
+      domain = GlobalDomain(mesh, float_precision)
+      local_domain_data = domain.c_create_sub_domains(1)
+      local_domain = LocalDomain(local_domain_data[0], rank, size)
+      return Domain(local_domain)
+      # except Exception as e:
+      #   print(f"Failed: {e}")
+      #   exit(1)
+    else:
+      status = 0
+
+      if rank == 0:
+        print("====> Start <=====")
+        try:
+          if not (recreate == False and GlobalDomain.all_local_mesh_files_exist(size)):
+            print("====> Creating Mesh <=====")
+            GlobalDomain.delete_local_domain_folder(size)
+            mesh = Mesh(mesh_path, dim)
+            domain = GlobalDomain(mesh, float_precision)
+            domain.create_and_save_local_domains(size)
+            print("====> End <=====")
+        except Exception as e:
+          print(f"[Rank 0] failed: {e}")
+          status = 1
+
+      # Broadcast rank 0's status to all
+      status = comm.bcast(status, root=0)
+
+      # Now all ranks wait and check status
+      if status != 0:
+        comm.Abort(1)
+
+
+      local_domain = LocalDomain.load_and_create(rank, size)
+
+      # TODO ckeck if local_domain failed and abort
+      return Domain(local_domain)

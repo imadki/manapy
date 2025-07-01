@@ -1,5 +1,6 @@
 *.vtu
 *.pvtu
+*.hdf5
 .env
 build
 __pycache__
