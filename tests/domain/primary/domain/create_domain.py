@@ -372,20 +372,23 @@ class GlobalDomain:
     local_domain.max_face_nodeid = self.max_face_nodeid
 
     ## Halo related tables
+    local_domain.phy_faces_loctoglob = np.zeros(shape=0, dtype=np.int32)
     local_domain.halo_neighsub = np.zeros(shape=0, dtype=np.int32)
     local_domain.node_halos = np.zeros(shape=(1, 1), dtype=np.int32)
     local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.int32)
     local_domain.node_loctoglob = np.zeros(shape=0, dtype=np.int32)
-    local_domain.bf_cellid = None # It will be created on LocalDomain Class
+    local_domain.bf_cellid = np.zeros(shape=(1, 1), dtype=np.int32) # It will be created on LocalDomain Class
     local_domain.shared_bf_recv = np.arange(self.nb_phy_faces, dtype=np.int32)
     local_domain.bf_recv_part_size = np.array([0, self.nb_phy_faces], dtype=np.int32)
     local_domain.node_halobfid = np.zeros(shape=(1, 1), dtype=np.int32)
     local_domain.shared_bf_send = np.zeros(shape=0, dtype=np.int32)
     local_domain.halo_halosext = np.zeros(shape=(1, 1), dtype=np.int32)
     local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=np.float32)
-    local_domain.max_node_haloid = None
-    local_domain.max_cell_halofid = None
-    local_domain.max_cell_halonid = None
+    local_domain.max_node_haloid = 0 # NONE
+    local_domain.max_cell_halofid = 0 # NONE
+    local_domain.max_cell_halonid = 0 # NONE
+
+
 
     return local_domain
 
@@ -1538,6 +1541,13 @@ class Domain:
     self.periodicboundarynodes = self._periodicboundarynodes
     self.typeOfCells = None
     self.bounds = self._bounds
+
+  @staticmethod
+  def partitioning(mesh_path, dim, float_precision, size: 'int'):
+    GlobalDomain.delete_local_domain_folder(size)
+    mesh = Mesh(mesh_path, dim)
+    domain = GlobalDomain(mesh, float_precision)
+    domain.create_and_save_local_domains(size)
 
   @staticmethod
   def create_domain(mesh_path, dim, float_precision, recreate=True):
