@@ -34,7 +34,7 @@ import time
 if rank == 0:
   start = time.time()
 
-domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=False)
+domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
 # domain = create_original_domain(recreate=False)
 
 MPI.COMM_WORLD.Barrier()
