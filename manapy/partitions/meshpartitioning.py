@@ -18,7 +18,7 @@ import numpy as np
 
 def unique_func(array):
     uniq, index = np.unique(array, return_index=True)
-    return uniq[index.argsort()]
+    return np.array(uniq[index.argsort()], dtype=np.int64)
 
 
 class MeshPartition():
@@ -73,7 +73,7 @@ class MeshPartition():
     name = 'gmsh'
     extn = ['.msh']
 
-    def __init__(self, filename = None, dim = None, comm = None, conf=None,  periodic=[0,0,0], **kwargs):
+    def __init__(self, filename = None, dim = None, comm = None, conf=None,  periodic=[0,0,0], forced_size=None, **kwargs):
         
         if conf is None:
             conf = Struct()
@@ -115,12 +115,14 @@ class MeshPartition():
         if self._comm is None:
             from mpi4py import MPI
             self._comm = MPI.COMM_WORLD
-        
-        self._size = self._comm.Get_size()
-        self._rank = self._comm.Get_rank()
-        # self._size = 3000
-        # self._rank = 0
-        
+
+        if forced_size is not None:
+            self._size = forced_size
+            self._rank = 0
+        else:
+            self._size = self._comm.Get_size()
+            self._rank = self._comm.Get_rank()
+
         if self._dim == 2:
             from manapy.partitions.partitions_utils import convert_2d_cons_to_array
             self._convert_cons_to_array = backend.compile(convert_2d_cons_to_array, signature=self.signature)
@@ -140,12 +142,13 @@ class MeshPartition():
             self._make_partition()
 
         #save mesh files
-        if self._rank == 0:
-            print("Saving partition files ...")
-            self._savemesh()
-
-            print("Number of Cells:", self._nbcells)
-            print("Number of Vertices:", self._nbnodes)
+        # TODO for testing
+        # if self._rank == 0:
+        #     print("Saving partition files ...")
+        #     self._savemesh()
+        #
+        #     print("Number of Cells:", self._nbcells)
+        #     print("Number of Vertices:", self._nbnodes)
 
         self._comm.Barrier()
         
@@ -233,7 +236,7 @@ class MeshPartition():
             self._neighsub[i]      = self._neighsub[i][self._neighsub[i]!=i]
             self._halo_cellid[i]   = np.unique(self._halo_cellid[i])
             self._locnodetoglob[i] = unique_func(self._locnodetoglob[i])
-            
+
         self._centvol, \
         self._haloextloc, \
         self._halointloc, \

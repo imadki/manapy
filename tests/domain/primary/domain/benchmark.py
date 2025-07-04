@@ -7,15 +7,16 @@ import sys
 
 #  gmsh ../mesh/tetra_test_2.geo -3 -setnumber Nx 20 -setnumber Ny 20 -setnumber Nz 20  -o tetra_test.msh
 
-if len(sys.argv) != 3:
+if len(sys.argv) != 4:
   print("Usage: python benchmark.py <size> <is_alt=0/1")
   sys.exit(1)
 
 size = int(sys.argv[1])
 is_alt = int(sys.argv[2])
+mesh_name = sys.argv[3]
 
 mesh_list = [
-  (3, 'tetra_test.msh'),
+  (3, mesh_name),
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
