@@ -1,10 +1,16 @@
+// gmsh tetra_test_2.geo -3 -setnumber Nx 10 -setnumber Ny 10 -setnumber Nz 10  -o tetrahedron.msh
+
 Lx = 10;  // Length of the rectangle in the x-direction
 Ly = 5;   // Length of the rectangle in the y-direction
 Lz = 15;
 
-Nx = 100;  // Number of divisions in the x-direction
-Ny = 100;  // Number of divisions in the y-direction
-Nz = 100;
+DefineConstant[
+  Nx = 10,
+  Ny = 10,
+  Nz = 10
+];
+
+
 
 // Create the rectangle geometry
 Point(1) = {0,   0,   0,  1.0};

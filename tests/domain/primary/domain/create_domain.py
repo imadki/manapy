@@ -1547,7 +1547,8 @@ class Domain:
     GlobalDomain.delete_local_domain_folder(size)
     mesh = Mesh(mesh_path, dim)
     domain = GlobalDomain(mesh, float_precision)
-    domain.create_and_save_local_domains(size)
+    domain.c_create_sub_domains(size)
+    # domain.create_and_save_local_domains(size)
 
   @staticmethod
   def create_domain(mesh_path, dim, float_precision, recreate=True):
