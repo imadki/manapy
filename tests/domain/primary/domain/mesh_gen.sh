@@ -6,7 +6,7 @@ result_file="tetra_test"
 
 
 
-mkdirp -p meshes
+mkdir -p meshes
 for ((m=10; m<=300; m+=10)); do
 
   echo $m

@@ -142,13 +142,12 @@ class MeshPartition():
             self._make_partition()
 
         #save mesh files
-        # TODO for testing
-        # if self._rank == 0:
-        #     print("Saving partition files ...")
-        #     self._savemesh()
-        #
-        #     print("Number of Cells:", self._nbcells)
-        #     print("Number of Vertices:", self._nbnodes)
+        if self._rank == 0:
+            print("Saving partition files ...")
+            self._savemesh()
+
+            print("Number of Cells:", self._nbcells)
+            print("Number of Vertices:", self._nbnodes)
 
         self._comm.Barrier()
         

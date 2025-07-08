@@ -60,7 +60,7 @@ Transfinite Line {5, 7, 1, 3} = Ny + 1;
 Transfinite Line {8, 6, 2, 4} = Nz + 1;
 
 Transfinite Surface "*";
-// Recombine Surface {1, 2, 3, 4, 5, 6};
+Recombine Surface {1, 2, 3, 4, 5, 6};
 Transfinite Volume {1};
 
 

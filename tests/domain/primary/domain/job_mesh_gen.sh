@@ -15,4 +15,5 @@ module load gmsh
 
 # Your command here
 echo "Starting job on $(hostname)"
+bash ./node_info.sh > node_info.txt
 bash ./mesh_gen.sh
