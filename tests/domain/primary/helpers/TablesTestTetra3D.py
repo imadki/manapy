@@ -1005,18 +1005,18 @@ class TablesTestTetra3D:
 
     cmp = 0
     for x in np.arange(0.0, Width, StepX):
-      for z in np.arange(0.0, Depth, StepZ):
-        for y in np.arange(Height, 0.0, -StepY):
+      for y in np.arange(0.0, Height, StepY):
+        for z in np.arange(0.0, Depth, StepZ):
           points = np.array([
             [x, y, z],
             [x + StepX, y, z],
-            [x + StepX, y, z + StepZ],
-            [x, y, z + StepZ],
+            [x + StepX, y + StepY, z],
+            [x, y + StepY, z],
 
-            [x, y - StepY, z],
-            [x + StepX, y - StepY, z],
-            [x + StepX, y - StepY, z + StepZ],
-            [x, y - StepY, z + StepZ],
+            [x, y, z + StepZ],
+            [x + StepX, y, z + StepZ],
+            [x + StepX, y + StepY, z + StepZ],
+            [x, y + StepY, z + StepZ],
           ], dtype=self.cell_vertices.dtype)
 
           tetrahedrons = np.array([

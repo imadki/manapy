@@ -865,18 +865,22 @@ def _create_ghost_info_3d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', ce
       ghost_info[cmp, 13] = cell_loctoglob[cid] # global_id of local cell
     cmp += 1
 
-def _get_ghost_tables_size(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_nb_ghostid: 'int[:]', cell_nb_ghostid: 'int[:]', start: 'int', end: 'int'):
+def _get_ghost_tables_size(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_nb_ghostid: 'int[:]', start: 'int', end: 'int'):
 
   for i in range(start, end):
     bc = int(ghost_info[i, 0])
     bf = int(ghost_info[i, 1])
     fid = cell_faceid[bc, bf]
-    cell_nb_ghostid[bc] += 1
     for j in range(faces[fid, -1]):
       nid = faces[fid, j]
       node_nb_ghostid[nid] += 1
 
-def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', cell_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
+
+def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
+  # node_ghostid
+  # node_ghostcenter
+  # face_ghostcenter
+  # node_ghostfaceinfo
 
   for i in range(start, end):
     bc = int(ghost_info[i, 0])
@@ -891,11 +895,6 @@ def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
     face_normal_y = ghost_info[i, 9]
 
     fid = cell_faceid[bc, bf]
-
-    # cell_ghostid
-    size = cell_ghostid[bc, -1]
-    cell_ghostid[bc, -1] += 1
-    cell_ghostid[bc, size] = fid # face_id
 
     # face_ghostcenter
     face_ghostcenter[fid, 0] = ghostcenter_x
@@ -920,7 +919,7 @@ def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
       node_ghostfaceinfo[nid, size, 2] = face_normal_x
       node_ghostfaceinfo[nid, size, 3] = face_normal_y
 
-def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', cell_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
+def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
 
   for i in range(start, end):
     bc = int(ghost_info[i, 0])
@@ -939,10 +938,6 @@ def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
 
     fid = cell_faceid[bc, bf]
 
-    # cell_ghostid
-    size = cell_ghostid[bc, -1]
-    cell_ghostid[bc, -1] += 1
-    cell_ghostid[bc, size] = fid # face_id
 
     # face_ghostcenter
     face_ghostcenter[fid, 0] = ghostcenter_x
@@ -970,6 +965,37 @@ def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
       node_ghostfaceinfo[nid, size, 3] = face_normal_x
       node_ghostfaceinfo[nid, size, 4] = face_normal_y
       node_ghostfaceinfo[nid, size, 5] = face_normal_z
+
+
+def _get_cell_ghostnid_size(cells: 'int[:, :]', node_ghostid: 'int[:, :]',
+                            bc_visited: 'int[:]', ghost_visited: 'int[:]', cell_ghostnid_size: 'int[:]'):
+  for i in range(len(cells)):
+    if bc_visited[i] == 1:
+      continue
+    bc_visited[i] = 1
+    for j in range(cells[i, -1]):
+      nid = cells[i, j]
+      for k in range(node_ghostid[nid, -1]):
+        g_id = node_ghostid[nid, k]
+        if ghost_visited[g_id] != i:
+          ghost_visited[g_id] = i
+          cell_ghostnid_size[i] += 1
+
+
+def _create_cell_ghostnid(cells: 'int[:, :]', node_ghostid: 'int[:, :]', bc_visited: 'int[:]', ghost_visited: 'int[:]', cell_ghostnid: 'int[:, :]'):
+  for i in range(len(cells)):
+    if bc_visited[i] == 1:
+      continue
+    bc_visited[i] = 1
+    for j in range(cells[i, -1]):
+      nid = cells[i, j]
+      for k in range(node_ghostid[nid, -1]):
+        g_id = node_ghostid[nid, k]
+        if ghost_visited[g_id] != i:
+          ghost_visited[g_id] = i
+          size = cell_ghostnid[i, -1]
+          cell_ghostnid[i, -1] += 1
+          cell_ghostnid[i, size] = g_id
 
 def _count_max_bcell_halobfid(cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', visited: 'int[:]'):
 
@@ -1274,7 +1300,8 @@ def _create_halo_cells(cells, cell_faceid, faces, node_halos, node_haloid, cell_
 
   for i in range(nb_cells):
     for j in range(cells[i, -1]):
-      n_halo = node_haloid[j]
+      node = cells[i, j]
+      n_halo = node_haloid[node]
       for k in range(n_halo[-1]):
         if _is_in_array(cell_halonid[i], n_halo[k]) == 0:
           size = cell_halonid[i, -1]
@@ -1770,6 +1797,8 @@ create_ghost_info_3d = compile(_create_ghost_info_3d)
 get_ghost_part_size = compile(_get_bf_recv_part_info)
 create_ghost_tables_2d = compile(_create_ghost_tables_2d)
 create_ghost_tables_3d = compile(_create_ghost_tables_3d)
+get_cell_ghostnid_size = compile(_get_cell_ghostnid_size)
+create_cell_ghostnid = compile(_create_cell_ghostnid)
 get_ghost_tables_size = compile(_get_ghost_tables_size)
 
 count_max_bcell_halobfid = compile(_count_max_bcell_halobfid)
