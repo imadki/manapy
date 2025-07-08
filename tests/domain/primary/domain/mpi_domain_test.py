@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from create_domain import Domain
+from create_domain import Domain, Mesh, GlobalDomain, LocalDomain
 
 from mpi4py import MPI
 
@@ -15,7 +15,7 @@ mesh_list = [
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
-dim, mesh_path = mesh_list[2] # also modify dim variable accordingly
+dim, mesh_path = mesh_list[1] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
 
@@ -34,7 +34,13 @@ import time
 if rank == 0:
   start = time.time()
 
-domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
+# domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
+
+mesh = Mesh(mesh_path, dim)
+domain = GlobalDomain(mesh, float_precision)
+local_domain_data = domain.c_create_sub_domains(4)
+local_domain = LocalDomain(local_domain_data[0], 0, 4)
+
 # domain = create_original_domain(recreate=False)
 
 MPI.COMM_WORLD.Barrier()

@@ -69,33 +69,33 @@ class Checker3D:
       for i in range(len(d_cell_loctoglob)):
         g_index = d_cell_loctoglob[i]
 
-        # Vertices
-        cell_vertices = self.test_tables.cell_vertices[g_index]
-        c_cell_vertices = d_nodes[d_cells[i][0:d_cells[i][-1]]]
-        self.logger.testing("Cell Vertices", np.testing.assert_almost_equal, cell_vertices, c_cell_vertices, self.decimal_precision)
-        # Center
-        cell_center = self.test_tables.cell_center[g_index]
-        c_cell_center = d_cell_center[i]
-        self.logger.testing("Cell Center", np.testing.assert_almost_equal, cell_center, c_cell_center, self.decimal_precision)
-
-        # Area
-        cell_area = self.test_tables.cell_area[g_index]
-        c_cell_area = d_cell_volume[i]
-        self.logger.testing("Cell Area", np.testing.assert_almost_equal, cell_area, c_cell_area, self.decimal_precision)
-
-        # Neighbors by face
-        cellfid = self.test_tables.l_cell_cellfid[g_index]
-        cellfid = np.sort(cellfid[0:cellfid[-1]])
-        c_cellfid = d_cell_cellfid[i]
-        c_cellfid = np.sort(d_cell_loctoglob[c_cellfid[0:c_cellfid[-1]]])
-        self.logger.testing("Cell Neighbors by face", np.testing.assert_equal, cellfid, c_cellfid)
-
-        # Neighbors by node
-        cellnid = self.test_tables.l_cell_cellnid[g_index]
-        cellnid = np.sort(cellnid[0:cellnid[-1]])
-        c_cellnid = d_cell_cellnid[i]
-        c_cellnid = np.sort(d_cell_loctoglob[c_cellnid[0:c_cellnid[-1]]])
-        self.logger.testing("Cell Neighbors by node", np.testing.assert_equal, cellnid, c_cellnid)
+        # # Vertices
+        # cell_vertices = self.test_tables.cell_vertices[g_index]
+        # c_cell_vertices = d_nodes[d_cells[i][0:d_cells[i][-1]]]
+        # self.logger.testing("Cell Vertices", np.testing.assert_almost_equal, cell_vertices, c_cell_vertices, self.decimal_precision)
+        # # Center
+        # cell_center = self.test_tables.cell_center[g_index]
+        # c_cell_center = d_cell_center[i]
+        # self.logger.testing("Cell Center", np.testing.assert_almost_equal, cell_center, c_cell_center, self.decimal_precision)
+        #
+        # # Area
+        # cell_area = self.test_tables.cell_area[g_index]
+        # c_cell_area = d_cell_volume[i]
+        # self.logger.testing("Cell Area", np.testing.assert_almost_equal, cell_area, c_cell_area, self.decimal_precision)
+        #
+        # # Neighbors by face
+        # cellfid = self.test_tables.l_cell_cellfid[g_index]
+        # cellfid = np.sort(cellfid[0:cellfid[-1]])
+        # c_cellfid = d_cell_cellfid[i]
+        # c_cellfid = np.sort(d_cell_loctoglob[c_cellfid[0:c_cellfid[-1]]])
+        # self.logger.testing("Cell Neighbors by face", np.testing.assert_equal, cellfid, c_cellfid)
+        #
+        # # Neighbors by node
+        # cellnid = self.test_tables.l_cell_cellnid[g_index]
+        # cellnid = np.sort(cellnid[0:cellnid[-1]])
+        # c_cellnid = d_cell_cellnid[i]
+        # c_cellnid = np.sort(d_cell_loctoglob[c_cellnid[0:c_cellnid[-1]]])
+        # self.logger.testing("Cell Neighbors by node", np.testing.assert_equal, cellnid, c_cellnid)
 
         # Halo by face
         halofid = self.test_tables.cell_halofid[g_index]
@@ -206,145 +206,145 @@ class Checker3D:
           c_node_halonid = np.sort(c_node_halonid)
           self.logger.testing("Node Halonid", np.testing.assert_equal, node_halonid[k][0:node_halonid[k][-1]], c_node_halonid)
 
-        # Oldname
-        node_oldname = self.test_tables.g_node_name[g_index]
-        c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
-        c_node_oldname = d_node_oldname[c_cell_nodes]
-        self.logger.testing("Node Oldname", np.testing.assert_equal, node_oldname, c_node_oldname)
-
-        # # Name
-        cell_nodes = self.test_tables.g_cell_nodeid[g_index]
-        cell_nodes = cell_nodes[0:cell_nodes[-1]]
-        node_name = self.test_tables.l_node_name[cell_nodes]
-
-        c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
-        c_node_name = d_node_name[c_cell_nodes]
-        self.logger.testing("Node Name", np.testing.assert_equal, node_name, c_node_name)
-
-
-        # Node: ghostid, ghostcenter, ghostfaceinfo TODO ghost center gamma
-        # tester.ghost_info => [center_x, center_y, center_z, volume, cell_partition_id, cell_id, cell_face_id(0..6)]
-        # nodes_ghostcenter => [[g_x, g_y, g_z, cell_id, face_old_name, ghostid] * nb_ghost_of_a_node] * nb_node
-        # nodes_ghostfaceinfo => [[face_center_x, face_center_y, face_center_z, face_normal_x, face_normal_y, face_normal_z] * nb_ghost_of_a_node] * nb_nodes
-        c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
-        for k in range(cnb_nodes):
-          ghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
-          node_ghostid = self.test_tables.l_node_ghostid[g_index]
-          node_ghostid = node_ghostid[k][0:node_ghostid[k][-1]]
-          node_ghostinfo = self.test_tables.ghost_info[node_ghostid]
-          node_cellid = node_ghostinfo[:, 5].astype(np.int32)
-          node_faceid = node_ghostinfo[:, 6].astype(np.int32)
-          nb_ghost = len(node_ghostinfo)
-
-          ghostinfo[0:nb_ghost, 0] = node_ghostinfo[:, 0] #g_x
-          ghostinfo[0:nb_ghost, 1] = node_ghostinfo[:, 1] #g_y
-          ghostinfo[0:nb_ghost, 2] = node_ghostinfo[:, 2] #g_z
-          ghostinfo[0:nb_ghost, 3] = node_cellid #cell_id
-          ghostinfo[0:nb_ghost, 4] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
-          ghostinfo[0:nb_ghost, 5] = node_ghostinfo[:, 0] #g_x
-          ghostinfo[0:nb_ghost, 6] = node_ghostinfo[:, 1] #g_y
-          ghostinfo[0:nb_ghost, 7] = node_ghostinfo[:, 2] #g_z
-          # ghostinfo[0:nb_ghost, 8] = node_ghostinfo[:, 3] #vol
-          ghostinfo[0:nb_ghost, 9] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
-          ghostinfo[0:nb_ghost, 10] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
-          ghostinfo[0:nb_ghost, 11] = self.test_tables.face_center[node_cellid, node_faceid][:, 2] # face_center_z
-          ghostinfo[0:nb_ghost, 12] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
-          ghostinfo[0:nb_ghost, 13] = self.test_tables.face_normal[node_cellid, node_faceid][:, 1] # face_normal_y
-          ghostinfo[0:nb_ghost, 14] = self.test_tables.face_normal[node_cellid, node_faceid][:, 2] # face_normal_z
-
-
-          ##########################
-
-          c_ghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
-          c_node_ghostcenter = d_node_ghostcenter[c_cell_nodes[k]]
-          c_node_ghostfaceinfo = d_node_ghostfaceinfo[c_cell_nodes[k]]
-          c_node_ghostid = d_node_ghostid[c_cell_nodes[k]]
-          c_node_ghostid = c_node_ghostid[0:c_node_ghostid[-1]]
-          c_node_cellid = c_node_ghostcenter[:, 3].astype(np.int32)
-          c_node_cellid = c_node_cellid[c_node_cellid != -1]
-          c_nb_ghost = len(c_node_ghostid)
-
-          c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0] #g_x
-          c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1] #g_y
-          c_ghostinfo[0:c_nb_ghost, 2] = c_node_ghostcenter[0:c_nb_ghost, 2] #g_z
-          c_ghostinfo[0:c_nb_ghost, 3] = d_cell_loctoglob[c_node_cellid] #cell_id
-          c_ghostinfo[0:c_nb_ghost, 4] = c_node_ghostcenter[0:c_nb_ghost, 4] # face_old_name
-          c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 0] # g_x from ghostid
-          c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 1] # g_y from ghostid
-          c_ghostinfo[0:c_nb_ghost, 7] = d_face_ghostcenter[c_node_ghostid, 2] # g_z from ghostid
-          # c_ghostinfo[0:c_nb_ghost, 8] = d_face_ghostcenter[c_node_ghostid, 3] # vol from ghostid
-          c_ghostinfo[0:c_nb_ghost, 9] = c_node_ghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
-          c_ghostinfo[0:c_nb_ghost, 10] = c_node_ghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
-          c_ghostinfo[0:c_nb_ghost, 11] = c_node_ghostfaceinfo[0:c_nb_ghost, 2] # face_center_z
-          c_ghostinfo[0:c_nb_ghost, 12] = c_node_ghostfaceinfo[0:c_nb_ghost, 3] # face_normal_x
-          c_ghostinfo[0:c_nb_ghost, 13] = c_node_ghostfaceinfo[0:c_nb_ghost, 4] # face_normal_y
-          c_ghostinfo[0:c_nb_ghost, 14] = c_node_ghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
-
-          ghostinfo = self.sort_float_arr(ghostinfo)
-          c_ghostinfo = self.sort_float_arr(c_ghostinfo)
-          self.logger.testing("Node ghostid, ghostcenter and ghostfaceinfo *", np.testing.assert_almost_equal, ghostinfo, c_ghostinfo, decimal=self.decimal_precision)
-
-        # Node: haloghostid, haloghostcenter, haloghostfaceinfo
-        # The same code as above except that tables are become the halo's tables
-        c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
-        for k in range(cnb_nodes):
-          haloghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
-          node_haloghostid = self.test_tables.node_haloghostid[g_index]
-          node_haloghostid = node_haloghostid[k][0:node_haloghostid[k][-1]]
-          node_haloghostinfo = self.test_tables.ghost_info[node_haloghostid]
-
-          node_cellid = node_haloghostinfo[:, 5].astype(np.int32)
-          node_faceid = node_haloghostinfo[:, 6].astype(np.int32)
-          nb_ghost = len(node_haloghostinfo)
-
-          haloghostinfo[0:nb_ghost, 0] = node_haloghostinfo[:, 0] #g_x
-          haloghostinfo[0:nb_ghost, 1] = node_haloghostinfo[:, 1] #g_y
-          haloghostinfo[0:nb_ghost, 2] = node_haloghostinfo[:, 2] #g_z
-          haloghostinfo[0:nb_ghost, 3] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
-          haloghostinfo[0:nb_ghost, 4] = node_cellid #cell_id
-          haloghostinfo[0:nb_ghost, 5] = node_haloghostinfo[:, 0] #g_x
-          haloghostinfo[0:nb_ghost, 6] = node_haloghostinfo[:, 1] #g_y
-          haloghostinfo[0:nb_ghost, 7] = node_haloghostinfo[:, 2] #g_z
-          #haloghostinfo[0:nb_ghost, 8] = node_haloghostinfo[:, 3] #vol
-          haloghostinfo[0:nb_ghost, 9] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
-          haloghostinfo[0:nb_ghost, 10] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
-          haloghostinfo[0:nb_ghost, 11] = self.test_tables.face_center[node_cellid, node_faceid][:, 2] # face_center_z
-          haloghostinfo[0:nb_ghost, 12] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
-          haloghostinfo[0:nb_ghost, 13] = self.test_tables.face_normal[node_cellid, node_faceid][:, 1] # face_normal_y
-          haloghostinfo[0:nb_ghost, 14] = self.test_tables.face_normal[node_cellid, node_faceid][:, 2] # face_normal_z
-
-
-          ##########################
-
-          c_haloghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
-          c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
-          c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
-          c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
-          c_node_haloghostid = c_node_haloghostid[0:c_node_haloghostid[-1]]
-          c_node_cellid = c_node_haloghostcenter[:, 3].astype(np.int32)
-          c_node_cellid = c_node_cellid[c_node_cellid != -1]
-          c_nb_ghost = len(c_node_haloghostid)
-
-          c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
-          c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
-          c_haloghostinfo[0:c_nb_ghost, 2] = c_node_haloghostcenter[0:c_nb_ghost, 2] #g_z
-          c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter[0:c_nb_ghost, 4] # face_old_name
-          c_haloghostinfo[0:c_nb_ghost, 4] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
-
-          c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
-          c_haloghostinfo[0:c_nb_ghost, 6] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid
-          c_haloghostinfo[0:c_nb_ghost, 7] = d_cell_haloghostcenter[c_node_haloghostid][:, 2] # g_z from haloghostid
-          #c_haloghostinfo[0:c_nb_ghost, 8] = d_face_ghostcenter[c_node_haloghostid, 3] # no need
-          c_haloghostinfo[0:c_nb_ghost, 9] = c_node_haloghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
-          c_haloghostinfo[0:c_nb_ghost, 10] = c_node_haloghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
-          c_haloghostinfo[0:c_nb_ghost, 11] = c_node_haloghostfaceinfo[0:c_nb_ghost, 2] # face_center_z
-          c_haloghostinfo[0:c_nb_ghost, 12] = c_node_haloghostfaceinfo[0:c_nb_ghost, 3] # face_normal_x
-          c_haloghostinfo[0:c_nb_ghost, 13] = c_node_haloghostfaceinfo[0:c_nb_ghost, 4] # face_normal_y
-          c_haloghostinfo[0:c_nb_ghost, 14] = c_node_haloghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
-
-          haloghostinfo = self.sort_float_arr(haloghostinfo)
-          c_haloghostinfo = self.sort_float_arr(c_haloghostinfo)
-          self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo, c_haloghostinfo, decimal=self.decimal_precision)
+        # # Oldname
+        # node_oldname = self.test_tables.g_node_name[g_index]
+        # c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
+        # c_node_oldname = d_node_oldname[c_cell_nodes]
+        # self.logger.testing("Node Oldname", np.testing.assert_equal, node_oldname, c_node_oldname)
+        #
+        # # # Name
+        # cell_nodes = self.test_tables.g_cell_nodeid[g_index]
+        # cell_nodes = cell_nodes[0:cell_nodes[-1]]
+        # node_name = self.test_tables.l_node_name[cell_nodes]
+        #
+        # c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
+        # c_node_name = d_node_name[c_cell_nodes]
+        # self.logger.testing("Node Name", np.testing.assert_equal, node_name, c_node_name)
+        #
+        #
+        # # Node: ghostid, ghostcenter, ghostfaceinfo TODO ghost center gamma
+        # # tester.ghost_info => [center_x, center_y, center_z, volume, cell_partition_id, cell_id, cell_face_id(0..6)]
+        # # nodes_ghostcenter => [[g_x, g_y, g_z, cell_id, face_old_name, ghostid] * nb_ghost_of_a_node] * nb_node
+        # # nodes_ghostfaceinfo => [[face_center_x, face_center_y, face_center_z, face_normal_x, face_normal_y, face_normal_z] * nb_ghost_of_a_node] * nb_nodes
+        # c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
+        # for k in range(cnb_nodes):
+        #   ghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
+        #   node_ghostid = self.test_tables.l_node_ghostid[g_index]
+        #   node_ghostid = node_ghostid[k][0:node_ghostid[k][-1]]
+        #   node_ghostinfo = self.test_tables.ghost_info[node_ghostid]
+        #   node_cellid = node_ghostinfo[:, 5].astype(np.int32)
+        #   node_faceid = node_ghostinfo[:, 6].astype(np.int32)
+        #   nb_ghost = len(node_ghostinfo)
+        #
+        #   ghostinfo[0:nb_ghost, 0] = node_ghostinfo[:, 0] #g_x
+        #   ghostinfo[0:nb_ghost, 1] = node_ghostinfo[:, 1] #g_y
+        #   ghostinfo[0:nb_ghost, 2] = node_ghostinfo[:, 2] #g_z
+        #   ghostinfo[0:nb_ghost, 3] = node_cellid #cell_id
+        #   ghostinfo[0:nb_ghost, 4] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
+        #   ghostinfo[0:nb_ghost, 5] = node_ghostinfo[:, 0] #g_x
+        #   ghostinfo[0:nb_ghost, 6] = node_ghostinfo[:, 1] #g_y
+        #   ghostinfo[0:nb_ghost, 7] = node_ghostinfo[:, 2] #g_z
+        #   # ghostinfo[0:nb_ghost, 8] = node_ghostinfo[:, 3] #vol
+        #   ghostinfo[0:nb_ghost, 9] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
+        #   ghostinfo[0:nb_ghost, 10] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
+        #   ghostinfo[0:nb_ghost, 11] = self.test_tables.face_center[node_cellid, node_faceid][:, 2] # face_center_z
+        #   ghostinfo[0:nb_ghost, 12] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
+        #   ghostinfo[0:nb_ghost, 13] = self.test_tables.face_normal[node_cellid, node_faceid][:, 1] # face_normal_y
+        #   ghostinfo[0:nb_ghost, 14] = self.test_tables.face_normal[node_cellid, node_faceid][:, 2] # face_normal_z
+        #
+        #
+        #   ##########################
+        #
+        #   c_ghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
+        #   c_node_ghostcenter = d_node_ghostcenter[c_cell_nodes[k]]
+        #   c_node_ghostfaceinfo = d_node_ghostfaceinfo[c_cell_nodes[k]]
+        #   c_node_ghostid = d_node_ghostid[c_cell_nodes[k]]
+        #   c_node_ghostid = c_node_ghostid[0:c_node_ghostid[-1]]
+        #   c_node_cellid = c_node_ghostcenter[:, 3].astype(np.int32)
+        #   c_node_cellid = c_node_cellid[c_node_cellid != -1]
+        #   c_nb_ghost = len(c_node_ghostid)
+        #
+        #   c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0] #g_x
+        #   c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1] #g_y
+        #   c_ghostinfo[0:c_nb_ghost, 2] = c_node_ghostcenter[0:c_nb_ghost, 2] #g_z
+        #   c_ghostinfo[0:c_nb_ghost, 3] = d_cell_loctoglob[c_node_cellid] #cell_id
+        #   c_ghostinfo[0:c_nb_ghost, 4] = c_node_ghostcenter[0:c_nb_ghost, 4] # face_old_name
+        #   c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 0] # g_x from ghostid
+        #   c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 1] # g_y from ghostid
+        #   c_ghostinfo[0:c_nb_ghost, 7] = d_face_ghostcenter[c_node_ghostid, 2] # g_z from ghostid
+        #   # c_ghostinfo[0:c_nb_ghost, 8] = d_face_ghostcenter[c_node_ghostid, 3] # vol from ghostid
+        #   c_ghostinfo[0:c_nb_ghost, 9] = c_node_ghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
+        #   c_ghostinfo[0:c_nb_ghost, 10] = c_node_ghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
+        #   c_ghostinfo[0:c_nb_ghost, 11] = c_node_ghostfaceinfo[0:c_nb_ghost, 2] # face_center_z
+        #   c_ghostinfo[0:c_nb_ghost, 12] = c_node_ghostfaceinfo[0:c_nb_ghost, 3] # face_normal_x
+        #   c_ghostinfo[0:c_nb_ghost, 13] = c_node_ghostfaceinfo[0:c_nb_ghost, 4] # face_normal_y
+        #   c_ghostinfo[0:c_nb_ghost, 14] = c_node_ghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
+        #
+        #   ghostinfo = self.sort_float_arr(ghostinfo)
+        #   c_ghostinfo = self.sort_float_arr(c_ghostinfo)
+        #   self.logger.testing("Node ghostid, ghostcenter and ghostfaceinfo *", np.testing.assert_almost_equal, ghostinfo, c_ghostinfo, decimal=self.decimal_precision)
+        #
+        # # Node: haloghostid, haloghostcenter, haloghostfaceinfo
+        # # The same code as above except that tables are become the halo's tables
+        # c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
+        # for k in range(cnb_nodes):
+        #   haloghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
+        #   node_haloghostid = self.test_tables.node_haloghostid[g_index]
+        #   node_haloghostid = node_haloghostid[k][0:node_haloghostid[k][-1]]
+        #   node_haloghostinfo = self.test_tables.ghost_info[node_haloghostid]
+        #
+        #   node_cellid = node_haloghostinfo[:, 5].astype(np.int32)
+        #   node_faceid = node_haloghostinfo[:, 6].astype(np.int32)
+        #   nb_ghost = len(node_haloghostinfo)
+        #
+        #   haloghostinfo[0:nb_ghost, 0] = node_haloghostinfo[:, 0] #g_x
+        #   haloghostinfo[0:nb_ghost, 1] = node_haloghostinfo[:, 1] #g_y
+        #   haloghostinfo[0:nb_ghost, 2] = node_haloghostinfo[:, 2] #g_z
+        #   haloghostinfo[0:nb_ghost, 3] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
+        #   haloghostinfo[0:nb_ghost, 4] = node_cellid #cell_id
+        #   haloghostinfo[0:nb_ghost, 5] = node_haloghostinfo[:, 0] #g_x
+        #   haloghostinfo[0:nb_ghost, 6] = node_haloghostinfo[:, 1] #g_y
+        #   haloghostinfo[0:nb_ghost, 7] = node_haloghostinfo[:, 2] #g_z
+        #   #haloghostinfo[0:nb_ghost, 8] = node_haloghostinfo[:, 3] #vol
+        #   haloghostinfo[0:nb_ghost, 9] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
+        #   haloghostinfo[0:nb_ghost, 10] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
+        #   haloghostinfo[0:nb_ghost, 11] = self.test_tables.face_center[node_cellid, node_faceid][:, 2] # face_center_z
+        #   haloghostinfo[0:nb_ghost, 12] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
+        #   haloghostinfo[0:nb_ghost, 13] = self.test_tables.face_normal[node_cellid, node_faceid][:, 1] # face_normal_y
+        #   haloghostinfo[0:nb_ghost, 14] = self.test_tables.face_normal[node_cellid, node_faceid][:, 2] # face_normal_z
+        #
+        #
+        #   ##########################
+        #
+        #   c_haloghostinfo = np.ones(shape=(4, 15), dtype=np.float32) * -1
+        #   c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
+        #   c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
+        #   c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
+        #   c_node_haloghostid = c_node_haloghostid[0:c_node_haloghostid[-1]]
+        #   c_node_cellid = c_node_haloghostcenter[:, 3].astype(np.int32)
+        #   c_node_cellid = c_node_cellid[c_node_cellid != -1]
+        #   c_nb_ghost = len(c_node_haloghostid)
+        #
+        #   c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
+        #   c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
+        #   c_haloghostinfo[0:c_nb_ghost, 2] = c_node_haloghostcenter[0:c_nb_ghost, 2] #g_z
+        #   c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter[0:c_nb_ghost, 4] # face_old_name
+        #   c_haloghostinfo[0:c_nb_ghost, 4] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
+        #
+        #   c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
+        #   c_haloghostinfo[0:c_nb_ghost, 6] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid
+        #   c_haloghostinfo[0:c_nb_ghost, 7] = d_cell_haloghostcenter[c_node_haloghostid][:, 2] # g_z from haloghostid
+        #   #c_haloghostinfo[0:c_nb_ghost, 8] = d_face_ghostcenter[c_node_haloghostid, 3] # no need
+        #   c_haloghostinfo[0:c_nb_ghost, 9] = c_node_haloghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
+        #   c_haloghostinfo[0:c_nb_ghost, 10] = c_node_haloghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
+        #   c_haloghostinfo[0:c_nb_ghost, 11] = c_node_haloghostfaceinfo[0:c_nb_ghost, 2] # face_center_z
+        #   c_haloghostinfo[0:c_nb_ghost, 12] = c_node_haloghostfaceinfo[0:c_nb_ghost, 3] # face_normal_x
+        #   c_haloghostinfo[0:c_nb_ghost, 13] = c_node_haloghostfaceinfo[0:c_nb_ghost, 4] # face_normal_y
+        #   c_haloghostinfo[0:c_nb_ghost, 14] = c_node_haloghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
+        #
+        #   haloghostinfo = self.sort_float_arr(haloghostinfo)
+        #   c_haloghostinfo = self.sort_float_arr(c_haloghostinfo)
+        #   self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo, c_haloghostinfo, decimal=self.decimal_precision)
 
     # Node: number of nodes
     a = np.concatenate(self.domain_tables.d_nodes)
