@@ -42,6 +42,8 @@ def save_tables(domain):
     f.create_dataset("d_cell_haloghostcenter", data=domain.cells.haloghostcenter)
     # f.create_dataset("d_cell_tc", data=domain.cells.tc)
     f.create_dataset("d_node_loctoglob", data=domain.nodes.loctoglob)
+    f.create_dataset("d_node_halobfid", data=domain.node_halobfid) # TODO remove
+    f.create_dataset("d_bcell_halobfid", data=domain.bcell_halobfid) # TODO remove
     f.create_dataset("d_node_cellid", data=domain.nodes.cellid)
     f.create_dataset("d_node_name", data=domain.nodes.name)
     f.create_dataset("d_node_oldname", data=domain.nodes.oldname)

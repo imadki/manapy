@@ -33,8 +33,8 @@ from create_domain_utils import (append,
                                  get_ghost_tables_size,
                                  count_max_bcell_halobfid,
                                  create_bcell_halobfid,
-                                 count_max_bf_nodeid,
-                                 create_bf_nodeid,
+                                 count_max_b_nodeid,
+                                 create_b_nodeid,
                                  create_ghost_new_index,
                                  create_halo_ghost_tables_2d,
                                  create_halo_ghost_tables_3d,
@@ -43,7 +43,9 @@ from create_domain_utils import (append,
                                  variables_2d,
                                  variables_3d,
                                  create_normal_face_of_cell_2d,
-                                 dist_ortho_function_2d
+                                 dist_ortho_function_2d,
+                                 get_max_b_ncellid,
+                                 create_b_ncellid
                                  )
 
 
@@ -642,7 +644,7 @@ class LocalDomain:
       self.node_haloghostid,
       self.node_haloghostcenter,
       self.node_haloghostfaceinfo
-    ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.bf_cellid, self.node_halobfid, self.node_haloid, self.halo_halosext, self.cell_faceid, self.faces, self.ghost_part_size)
+    ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.phy_faces, self.node_cellid, self.node_halobfid, self.node_haloid, self.halo_halosext,self.ghost_part_size)
     print(f"Execution time: {time.time() - self.start:.6f} seconds")
 
     ## TODO the use of this tables !?
@@ -1027,7 +1029,7 @@ class LocalDomain:
       end = start + len(data)
       shared_ghost_info[start:end] = data
 
-  def _create_halo_ghost_tables(self, shared_ghost_info: 'float[:, :]', cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', cell_faceid, faces, ghost_part_size):
+  def _create_halo_ghost_tables(self, shared_ghost_info: 'float[:, :]', cells: 'int[:, :]', phy_faces: 'int[:, :]', node_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_part_size):
     nb_nodes = self.nb_nodes
     nb_cells = self.nb_cells
 
@@ -1037,28 +1039,38 @@ class LocalDomain:
       node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
       node_haloghostcenter = np.zeros(shape=(1, 1, 1), dtype=self.float_precision)
       node_haloghostfaceinfo = np.zeros(shape=(1, 1, 1), dtype=self.float_precision)
+
+      self.bcell_halobfid = np.zeros(shape=(1, 1), dtype=np.int32) # TODO remove
     else:
       shared_ghost_info_size = shared_ghost_info.shape[0]
 
       # ------------------------------------------------------------------
-      # create_bcell_halobfid
-      # ------------------------------------------------------------------
-      visited = np.zeros(shape=shared_ghost_info_size, dtype=np.int32)
-      max_bcell_halobfid = count_max_bcell_halobfid(cells, bf_cellid, node_halobfid, visited)
-
-      bcell_halobfid = np.zeros(shape=(bf_cellid.shape[0], max_bcell_halobfid + 1), dtype=np.int32)
-      visited.fill(0)
-      create_bcell_halobfid(cells, bf_cellid, node_halobfid, visited, bcell_halobfid)
-
-      # ------------------------------------------------------------------
-      # create_bf_nodeid
+      # create_b_nodeid
       # ------------------------------------------------------------------
       visited = np.zeros(shape=nb_nodes, dtype=np.int8)
-      max_bf_nodeid = count_max_bf_nodeid(bf_cellid, cell_faceid, faces, visited)
-
-      bf_nodeid = np.zeros(shape=max_bf_nodeid, dtype=np.int32)
+      max_b_nodeid = count_max_b_nodeid(phy_faces, visited)
       visited.fill(0)
-      create_bf_nodeid(bf_cellid, cell_faceid, faces, visited, bf_nodeid)
+      b_nodeid = np.zeros(shape=max_b_nodeid, dtype=np.int32)
+      create_b_nodeid(phy_faces, visited, b_nodeid)
+
+
+      # ------------------------------------------------------------------
+      # create_b_ncellid
+      # ------------------------------------------------------------------
+      visited = np.zeros(shape=len(cells), dtype=np.int8)
+      max_b_ncellid = get_max_b_ncellid(b_nodeid, node_cellid, visited)
+      visited.fill(0)
+      b_ncellid = np.zeros(shape=max_b_ncellid, dtype=np.int32)
+      create_b_ncellid(b_nodeid, node_cellid, visited, b_ncellid)
+
+      # TODO check all visited for -1
+      visited = np.ones(shape=shared_ghost_info_size, dtype=np.int32) * -1
+      max_bcell_halobfid = count_max_bcell_halobfid(cells, b_ncellid, node_halobfid, visited)
+
+      bcell_halobfid = np.zeros(shape=(b_ncellid.shape[0], max_bcell_halobfid + 2), dtype=np.int32)
+      visited.fill(-1)
+      create_bcell_halobfid(cells, b_ncellid, node_halobfid, visited, bcell_halobfid)
+      self.bcell_halobfid = bcell_halobfid # TODO remove
 
       # ------------------------------------------------------------------
       # ghost_new_index
@@ -1080,7 +1092,7 @@ class LocalDomain:
         node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostcenter_data_size), dtype=self.float_precision)
         node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size), dtype=self.float_precision)
 
-        create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, bf_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
+        create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
 
       else:
         cell_haloghostcenter_data_size = 3
@@ -1093,8 +1105,7 @@ class LocalDomain:
         node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size),
                                           dtype=self.float_precision)
 
-        create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, bf_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
-
+        create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
     return (
       cell_haloghostnid,
       cell_haloghostcenter,
@@ -1341,6 +1352,8 @@ class DomainTables:
     "d_cell_ghostnid",
     "d_cell_haloghostnid",
     "d_cell_haloghostcenter",
+    "d_node_halobfid", # TODO remove
+    "d_bcell_halobfid", # TODO remove
     # "d_cell_tc",
     "d_node_loctoglob",
     "d_node_cellid",
@@ -1393,6 +1406,9 @@ class DomainTables:
 
 class Domain:
   def __init__(self, local_domain: 'LocalDomain'):
+
+    self.node_halobfid = local_domain.node_halobfid # TODO remove
+    self.bcell_halobfid = local_domain.bcell_halobfid # TODO remove
 
     # Init
     self.float_precision = local_domain.float_precision
