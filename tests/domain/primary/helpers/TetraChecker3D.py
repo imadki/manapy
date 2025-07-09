@@ -74,39 +74,39 @@ class TetraChecker3D:
         c_cell_vertices = d_nodes[d_cells[i][0:d_cells[i][-1]]]
         self.logger.testing("Cell Vertices", np.testing.assert_almost_equal, cell_vertices, c_cell_vertices, self.decimal_precision)
 
-        # # Center
-        # cell_center = self.test_tables.cell_center[g_index]
-        # c_cell_center = d_cell_center[i]
-        # self.logger.testing("Cell Center", np.testing.assert_almost_equal, cell_center, c_cell_center, self.decimal_precision)
-        #
-        # # Area
-        # cell_area = self.test_tables.cell_area[g_index]
-        # c_cell_area = d_cell_volume[i]
-        # self.logger.testing("Cell Area", np.testing.assert_almost_equal, cell_area, c_cell_area, self.decimal_precision)
-        #
-        # # Neighbors by face
-        # cellfid = self.test_tables.l_cell_cellfid[g_index]
-        # cellfid = np.sort(cellfid[0:cellfid[-1]])
-        # c_cellfid = d_cell_cellfid[i]
-        # c_cellfid = np.sort(d_cell_loctoglob[c_cellfid[0:c_cellfid[-1]]])
-        # self.logger.testing("Cell Neighbors by face", np.testing.assert_equal, cellfid, c_cellfid)
-        #
-        # # Neighbors by node
-        # cellnid = self.test_tables.l_cell_cellnid[g_index]
-        # cellnid = np.sort(cellnid[0:cellnid[-1]])
-        # c_cellnid = d_cell_cellnid[i]
-        # c_cellnid = np.sort(d_cell_loctoglob[c_cellnid[0:c_cellnid[-1]]])
-        # self.logger.testing("Cell Neighbors by node", np.testing.assert_equal, cellnid, c_cellnid)
+        # Center
+        cell_center = self.test_tables.cell_center[g_index]
+        c_cell_center = d_cell_center[i]
+        self.logger.testing("Cell Center", np.testing.assert_almost_equal, cell_center, c_cell_center, self.decimal_precision)
+
+        # Area
+        cell_area = self.test_tables.cell_area[g_index]
+        c_cell_area = d_cell_volume[i]
+        self.logger.testing("Cell Area", np.testing.assert_almost_equal, cell_area, c_cell_area, self.decimal_precision)
+
+        # Neighbors by face
+        cellfid = self.test_tables.l_cell_cellfid[g_index]
+        cellfid = np.sort(cellfid[0:cellfid[-1]])
+        c_cellfid = d_cell_cellfid[i]
+        c_cellfid = np.sort(d_cell_loctoglob[c_cellfid[0:c_cellfid[-1]]])
+        self.logger.testing("Cell Neighbors by face", np.testing.assert_equal, cellfid, c_cellfid)
+
+        # Neighbors by node
+        cellnid = self.test_tables.l_cell_cellnid[g_index]
+        cellnid = np.sort(cellnid[0:cellnid[-1]])
+        c_cellnid = d_cell_cellnid[i]
+        c_cellnid = np.sort(d_cell_loctoglob[c_cellnid[0:c_cellnid[-1]]])
+        self.logger.testing("Cell Neighbors by node", np.testing.assert_equal, cellnid, c_cellnid)
 
         # Halo by face
-        # halofid = self.test_tables.cell_halofid[g_index]
-        # halofid = np.sort(halofid[halofid != -1])
-        # cell_faces = d_cell_faces[i] # get cell faces
-        # c_halofid = d_face_halofid[cell_faces[0:cell_faces[-1]]] # get cell halo cells
-        # c_halofid = c_halofid[c_halofid != -1] # get cell halo cells
-        # c_halofid = d_halo_halosext[c_halofid][:, 0] # get halos global index
-        # c_halofid = np.sort(c_halofid)
-        # self.logger.testing("Cell Halo by face", np.testing.assert_equal, halofid, c_halofid)
+        halofid = self.test_tables.cell_halofid[g_index]
+        halofid = np.sort(halofid[halofid != -1])
+        cell_faces = d_cell_faces[i] # get cell faces
+        c_halofid = d_face_halofid[cell_faces[0:cell_faces[-1]]] # get cell halo cells
+        c_halofid = c_halofid[c_halofid != -1] # get cell halo cells
+        c_halofid = d_halo_halosext[c_halofid][:, 0] # get halos global index
+        c_halofid = np.sort(c_halofid)
+        self.logger.testing("Cell Halo by face", np.testing.assert_equal, halofid, c_halofid)
 
         # Halo by node
         halonid = self.test_tables.cell_halonid[g_index]
@@ -124,10 +124,7 @@ class TetraChecker3D:
         c_ghostnid = d_cell_ghostnid[i]
         c_ghostn_center = d_face_ghostcenter[c_ghostnid[0:c_ghostnid[-1]]]
         c_ghostn_center = self.sort_float_arr(c_ghostn_center)
-        a = self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center[:, 0:3], ghostn_center[:, 0:3], self.decimal_precision)
-        if not a:
-          print("Cell Ghostnid *", p, g_index, i)
-          return
+        self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center[:, 0:3], ghostn_center[:, 0:3], self.decimal_precision)
         # Haloghostnid and Haloghostcenter
         haloghostnid = self.test_tables.cell_haloghostnid[g_index]
         haloghostnid = haloghostnid[0:haloghostnid[-1]]
@@ -138,7 +135,6 @@ class TetraChecker3D:
         c_haloghostcenter = d_cell_haloghostcenter[c_haloghostnid][:, 0:3] # center (x, y, z)
         c_haloghostcenter = self.sort_float_arr(c_haloghostcenter)
         self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal, c_haloghostcenter, haloghostcenter, self.decimal_precision)
-
       # Number of cells
       nb_cells += d_cells.shape[0]
     self.logger.testing("Cell Number of cells", np.testing.assert_equal, self.test_tables.nb_cells, nb_cells)

@@ -997,11 +997,11 @@ def _create_cell_ghostnid(cells: 'int[:, :]', node_ghostid: 'int[:, :]', bc_visi
           cell_ghostnid[i, -1] += 1
           cell_ghostnid[i, size] = g_id
 
-def _count_max_bcell_halobfid(cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', visited: 'int[:]'):
+def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halobfid: 'int[:, :]', visited: 'int[:]'):
 
   max_counter = 0
-  for i in range(bf_cellid.shape[0]):
-    bc = bf_cellid[i, 0]
+  for i in range(b_ncellid.shape[0]):
+    bc = b_ncellid[i]
     cell = cells[bc]
     counter = 0
     for j in range(cell[-1]):
@@ -1014,12 +1014,14 @@ def _count_max_bcell_halobfid(cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_h
   return max_counter
 
 
-def _create_bcell_halobfid(cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halobfid: 'int[:, :]', visited: 'int[:]', bcell_halobfid: 'int[:, :]'):
+def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halobfid: 'int[:, :]', visited: 'int[:]', bcell_halobfid: 'int[:, :]'):
 
-  for i in range(bf_cellid.shape[0]):
-    bc = bf_cellid[i, 0]
+  for i in range(b_ncellid.shape[0]):
+    bc = b_ncellid[i]
     cell = cells[bc]
-    counter = 0
+
+    bcell_halobfid[i, 0] = bc
+    counter = 1
     for j in range(cell[-1]):
       node_nbf = node_halobfid[cell[j]]
       for k in range(node_nbf[-1]):
@@ -1029,35 +1031,52 @@ def _create_bcell_halobfid(cells: 'int[:, :]', bf_cellid: 'int[:, :]', node_halo
           counter += 1
     bcell_halobfid[i, -1] = counter
 
-def _count_max_bf_nodeid(bf_cellid: 'int[:, :]', cell_faceid: 'int[:, :]', faces: 'int[:, :]', visited: 'int[:]'):
+def _count_max_b_nodeid(phy_faces: 'int[:, :]', visited: 'int[:]'):
 
   counter = 0
-  for i in range(bf_cellid.shape[0]):
-    bc = bf_cellid[i, 0]
-    bf = bf_cellid[i, 1]
-    fid = cell_faceid[bc, bf]
-    bnodes = faces[fid]
-    for j in range(bnodes[-1]):
-      bn = bnodes[j]
+  for i in range(phy_faces.shape[0]):
+    for j in range(phy_faces[i, -1]):
+      bn = phy_faces[i, j]
       if visited[bn] == 0:
         visited[bn] = 1
         counter += 1
   return counter
 
-def _create_bf_nodeid(bf_cellid: 'int[:, :]', cell_faceid: 'int[:, :]', faces: 'int[:, :]', visited: 'int[:]', bf_nodeid: 'int[:]'):
+def _create_b_nodeid(phy_faces: 'int[:, :]', visited: 'int[:]', b_nodeid: 'int[:]'):
 
   counter = 0
-  for i in range(bf_cellid.shape[0]):
-    bc = bf_cellid[i, 0]
-    bf = bf_cellid[i, 1]
-    fid = cell_faceid[bc, bf]
-    bnodes = faces[fid]
-    for j in range(bnodes[-1]):
-      bn = bnodes[j]
+  for i in range(phy_faces.shape[0]):
+    for j in range(phy_faces[i, -1]):
+      bn = phy_faces[i, j]
       if visited[bn] == 0:
         visited[bn] = 1
-        bf_nodeid[counter] = bn
+        b_nodeid[counter] = bn
         counter += 1
+  return counter
+
+
+def _get_max_b_ncellid(b_nodeid, node_cellid, visited):
+  cmp = 0
+  for i in range(b_nodeid.shape[0]):
+    nodeid = b_nodeid[i]
+    for j in range(node_cellid[nodeid, -1]):
+      cell = node_cellid[nodeid, j]
+      if visited[cell] == 0:
+        visited[cell] = 1
+        cmp += 1
+  return cmp
+
+def _create_b_ncellid(b_nodeid, node_cellid, visited, b_ncellid):
+  cmp = 0
+  for i in range(b_nodeid.shape[0]):
+    nodeid = b_nodeid[i]
+    for j in range(node_cellid[nodeid, -1]):
+      cell = node_cellid[nodeid, j]
+      if visited[cell] == 0:
+        visited[cell] = 1
+        b_ncellid[cmp] = cell
+        cmp += 1
+
 
 def _create_ghost_new_index(ghost_part_size: 'int[:]', ghost_new_index: 'int[:]'):
   start = ghost_part_size[0]
@@ -1082,7 +1101,7 @@ def _search_halo_cell(node_halo_cells: 'int[:]', halo_haloext: 'int[:, :]', item
       return n_halo_cell
   raise RuntimeError(f"{item} must be in halo_haloext of node_halo_cells {node_halo_cells}")
 
-def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', bf_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
+def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
   """
   * cell_haloghostcenter [[g_x, g_y]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -1093,19 +1112,19 @@ def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
 
   """
   for i in range(len(bcell_halobfid)):
-    bc = bcell_halobfid[0]
+    bc = bcell_halobfid[i, 0]
     for j in range(1, bcell_halobfid[i, -1]):
       hg_id = bcell_halobfid[i, j]
 
       cell_haloghostcenter[ghost_new_index[hg_id], 0] = ghost_info[hg_id, 2] # g_x
       cell_haloghostcenter[ghost_new_index[hg_id], 1] = ghost_info[hg_id, 3] # g_y
 
-      cell_haloghostnid[bc, j] = ghost_new_index[hg_id]
-    cell_haloghostnid[bc, -1] = bcell_halobfid[i, -1]
+      cell_haloghostnid[bc, j - 1] = ghost_new_index[hg_id]
+    cell_haloghostnid[bc, -1] = bcell_halobfid[i, -1] - 1
 
 
-  for i in range(len(bf_nodeid)):
-    bn = bf_nodeid[i]
+  for i in range(len(b_nodeid)):
+    bn = b_nodeid[i]
     for j in range(node_halobfid[bn, -1]):
       hg_id = node_halobfid[bn, j] # halo_ghost_index
       node_haloghostid[bn, j] = ghost_new_index[hg_id]
@@ -1123,7 +1142,7 @@ def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       node_haloghostfaceinfo[bn, j, 3] = ghost_info[hg_id, 9]
     node_haloghostid[bn, -1] = node_halobfid[bn, -1]
 
-def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', bf_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
+def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
   """
   * cell_haloghostcenter [[g_x, g_y, g_z]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -1134,7 +1153,7 @@ def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
 
   """
   for i in range(len(bcell_halobfid)):
-    bc = bcell_halobfid[0]
+    bc = bcell_halobfid[i, 0]
     for j in range(1, bcell_halobfid[i, -1]):
       hg_id = bcell_halobfid[i, j]
 
@@ -1142,12 +1161,12 @@ def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       cell_haloghostcenter[ghost_new_index[hg_id], 1] = ghost_info[hg_id, 3] # g_y
       cell_haloghostcenter[ghost_new_index[hg_id], 2] = ghost_info[hg_id, 4] # g_z
 
-      cell_haloghostnid[bc, j] = ghost_new_index[hg_id]
-    cell_haloghostnid[bc, -1] = bcell_halobfid[i, -1]
+      cell_haloghostnid[bc, j - 1] = ghost_new_index[hg_id]
+    cell_haloghostnid[bc, -1] = bcell_halobfid[i, -1] - 1
 
 
-  for i in range(len(bf_nodeid)):
-    bn = bf_nodeid[i]
+  for i in range(len(b_nodeid)):
+    bn = b_nodeid[i]
     for j in range(node_halobfid[bn, -1]):
       hg_id = node_halobfid[bn, j] # halo_ghost_index
       node_haloghostid[bn, j] = ghost_new_index[hg_id]
@@ -1207,7 +1226,6 @@ def _create_cellfid_and_bf_info(
           bf_nodes[cmp, k] = tmp_cell_faces[j, k]
         bf_nodes[cmp, -1] = tmp_size_info[j]
         cmp += 1
-
 
 
 
@@ -1803,11 +1821,14 @@ get_ghost_tables_size = compile(_get_ghost_tables_size)
 
 count_max_bcell_halobfid = compile(_count_max_bcell_halobfid)
 create_bcell_halobfid = compile(_create_bcell_halobfid)
-count_max_bf_nodeid = compile(_count_max_bf_nodeid)
-create_bf_nodeid = compile(_create_bf_nodeid)
 create_ghost_new_index = compile(_create_ghost_new_index)
 create_halo_ghost_tables_2d = compile(_create_halo_ghost_tables_2d)
 create_halo_ghost_tables_3d = compile(_create_halo_ghost_tables_3d)
 
 create_normal_face_of_cell_2d = compile(_create_normal_face_of_cell_2d)
 dist_ortho_function_2d = compile(_dist_ortho_function_2d)
+
+count_max_b_nodeid = compile(_count_max_b_nodeid)
+create_b_nodeid = compile(_create_b_nodeid)
+get_max_b_ncellid = compile(_get_max_b_ncellid)
+create_b_ncellid = compile(_create_b_ncellid)
