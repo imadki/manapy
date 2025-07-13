@@ -679,7 +679,7 @@ def create_info_3dfaces(cellid:'int32[:,:]', nodeid:'int32[:,:]', namen:'uint32[
     
         # Calcul du binormal
         u[:] = vertex[nodeid[i][1]][0:3] - vertex[nodeid[i][0]][0:3]
-        tangentf[:]=u[:]
+        tangentf[i][:]=u[:]
         binormalf[i][:] = 0.5 * np.cross(u, normalf[i])
         
         
