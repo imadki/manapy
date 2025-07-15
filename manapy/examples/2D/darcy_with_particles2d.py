@@ -139,35 +139,21 @@ def tau_remplissage(I):
 # Simulation parametres
 ##############################################################################
 ##############################################################################
-test_para = 'test_2'
 
-if test_para == "test_1" :
-    fi    = 0.81
-    U_n  = 3.e-3
-    Pin = 1e5
-    perm0 = 6.83e-9
-    mu0 = 0.3
-    tfinal = 122
+C0 = 0.
+alpha0 = 1.
+sigma_u = 0.85
+a = 1.
+A = 0.68
+fi0    = 0.696
+U_n  = 3.e-3
+Pin = 2e5
+perm0 = 2.65e-10
+mu0 = 0.109
+tfinal = 100
 
-    test = "pression"
-    filename = "Geom_exp3.msh"
-
-
-if test_para == "test_2" :
-    C0 = 0.
-    alpha0 = 1.
-    sigma_u = 0.85
-    a = 1.
-    A = 0.68
-    Pin = 3e5
-    mu0  = 0.109
-    fi0 =  0.45
-    U_n  = 1e-1
-    tfinal = 10
-
-    test = "pression"
-    filename = "TMesh.msh"
-
+test = "pression"
+filename = "rectangle_RTM.msh"
 
 #File name
 filename = os.path.join(MESH_DIR, filename)
@@ -244,12 +230,12 @@ alpha.update_ghost_value()
 ## initialization of the permeability
 for i in range(nbcells):
     if cells.center[i][1] >= 0.0014:
-        perm_x_0.cell[i] =  2.e-11
-        perm_y_0.cell[i] =  2.e-11
+        perm_x_0.cell[i] =  2.65e-10
+        perm_y_0.cell[i] =  2.65e-10
 
     else:
-        perm_x_0.cell[i] =  2.e-11
-        perm_y_0.cell[i] =  2.e-11
+        perm_x_0.cell[i] =  2.65e-10
+        perm_y_0.cell[i] =  2.65e-10
 
 # Perm changes over time
 perm_x.cell[:] = perm_x_0.cell[:]
@@ -412,21 +398,13 @@ while time < tfinal:
     fi.update_ghost_value()
     fi.interpolate_celltoface()
 
-    #update_variables(alpha.cell, alpha0, np.ones(nbcells), perm0, visc.cell, mu0, A, a, sigma.cell, C.cell, u.cell, v.cell, sigma_u, d_t, fi.cell, fi0 )
-
     alpha.update_ghost_value()
     sigma.update_ghost_value()
     fi.update_ghost_value()
 
-    #src_C[:] =  - np.sqrt(u.cell[:]**2+v.cell[:]**2) * C.cell[:] * alpha.cell[:] * (1 - sigma.cell[:]/sigma_u)
-
     u.face[:] = constant * (perm_x.face[:]/visc.face[:]) * P.gradfacex[:]
     v.face[:] = constant * (perm_y.face[:]/visc.face[:]) * P.gradfacey[:]
-#
-#
-#    if test == "debit":
-#        update_ghost_values_U(u.ghost , v.ghost, U_n, faces.normal, faces.mesure, P.neumannNHfaces)
-#
+
     u.interpolate_facetocell()
     v.interpolate_facetocell()
 #
@@ -439,21 +417,6 @@ while time < tfinal:
     tot = int(tfinal/d_t/1000)+1
 
     time = time + d_t
-
-    # C.compute_cell_gradient()
-    # explicitscheme_convective_2d(C.Flux, C.cell, C.ghost, C.halo, u.face, v.face, w.face,
-    #                              C.gradcellx, C.gradcelly, C.gradcellz, C.gradhalocellx,
-    #                              C.gradhalocelly, C.gradhalocellz, C.psi, C.psihalo,
-    #                              cells.center, faces.center, halos.centvol, faces.ghostcenter,
-    #                              faces.cellid, faces.mesure, faces.normal, faces.halofid, faces.name,
-    #                              domain.innerfaces, domain.halofaces, domain.boundaryfaces,
-    #                              domain.periodicboundaryfaces, cells.shift, order=2)
-
-    # update_new_value(fiC.cell, u.cell, v.cell, P.cell, C.Flux,  dissip_I, src_C, d_t, cells.volume)
-
-    # fiC.update_ghost_value()
-
-    # C.cell[:] = fiC.cell[:]/fi.cell[:]
 
     ## Parameters (K, mu) updates
     perm_x.cell[:] = perm_x_0.cell[:] * ( (fi.cell[:]/fi0) * ((1-fi.cell[:])/(1-fi0))**(-2) )
@@ -502,35 +465,25 @@ while time < tfinal:
         else:
 
             if test == "pression":
-                1
+                
                 compute_Pexact_Pimp(Pexact.cell, Iexact.cell, np.zeros(nbcells), visc.cell, fi, Pin, time, x0, cells.center[:,0])
             elif test == "debit":
-                1
+                
                 compute_Pexact_Uimp(Pexact.cell, Iexact.cell, np.zeros(nbcells), visc.cell, fi, U_n, time, x0, cells.center[:,0])
-
-            # Errors.append(I.norml2(Iexact.cell, 2))
-            # Times.append(time)
-
 
             domain.save_on_cell_multi(d_t, time, niter, miter, variables=["I", "Iexact", "u","v", "w", "P", "Pexact"],
                                       values=[I.cell, Iexact.cell, u.cell, v.cell, w.cell, P.cell, Pexact.cell])
 
         miter += 1
-    # if Tau == 1:
-    #     break
+    if Tau == 1:
+        break
     niter += 1
-
-#if RANK == 0:
-#    L.destroy()
 
 stop = MPI.Wtime()
 
 cputime = COMM.reduce(stop - start, op=MPI.MAX, root=0)
 if RANK == 0:
 
-    #print("norm l2", norme_L2(Pexact.cell, P.cell, cells.volume))
     print( "cpu time:", cputime)
 
-    #print(Errors, Times )
     print(x_front, Times )
-#os.system("mv results results_"+(str(cfl)+"_"+str(nbcells)))
