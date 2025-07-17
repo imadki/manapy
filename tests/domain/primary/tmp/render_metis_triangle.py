@@ -3,7 +3,6 @@ import sys
 import subprocess
 import os
 import numpy as np
-import pymetis
 
 # Add the parent directory to sys.path
 helpers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')

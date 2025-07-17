@@ -6,7 +6,7 @@ import os
 
 # Add the parent directory to sys.path
 
-sys.path.append("/home/aben-ham/Desktop/work/manapy/tests/domain/primary/2D")
+sys.path.append("/home/aben-ham/Desktop/work/manapy/tests/domain/primary/")
 
 import subprocess
 import os
@@ -33,7 +33,7 @@ def create_partitions(nb_partitions, mesh_name, float_precision, dim):
     print(result.__str__(), os.getcwd())
     raise SystemExit(result.returncode)
 
-domain_tables = DomainTables(nb_partitions=7, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
+domain_tables = DomainTables(nb_partitions=4, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
 unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
 size = domain_tables.nb_partitions
 
@@ -143,6 +143,7 @@ def show_partition():
   for k in range(size):
     cells = domain_tables.d_cells[k]
     d_cell_center = domain_tables.d_cell_center[k]
+    g_index = domain_tables.d_cell_loctoglob[k]
 
     for i in range(len(cells)):
       p = d_cell_center[i] * 2
@@ -151,7 +152,7 @@ def show_partition():
     for i in range(len(d_cell_center)):
       p = d_cell_center[i] * 2
       draw_rec(p[0], p[1], 0.5, 0.5, 10, 100)
-      ft_put_item(p[0], p[1], k, 9, -1, 50)
+      ft_put_item(p[0], p[1], g_index[i], 9, -1, 50)
 
 def show_face():
   for k in range(size):
