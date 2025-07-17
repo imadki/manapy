@@ -5,7 +5,7 @@
 
 // Geometry parameters
 Lx = 10;   Ly = 5;    Lz = 15;
-Nx = 10;   Ny = 10;   Nz = 10;
+Nx = 11;   Ny = 11;   Nz = 11;
 
 // Corner points
 Point(1) = {0,   0,   0,  1.0};

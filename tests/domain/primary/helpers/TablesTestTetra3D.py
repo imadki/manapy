@@ -703,10 +703,10 @@ class TablesTestTetra3D:
       self.l_face_name[i] = name
 
     #! Change to force match with the domain face name for these cases
-    self.l_face_name[0, 1] = 3
-    self.l_face_name[544, 1] = 3
-    self.l_face_name[5455, 2] = 4
-    self.l_face_name[5999, 3] = 4
+    # self.l_face_name[0, 1] = 3
+    # self.l_face_name[544, 1] = 3
+    # self.l_face_name[5455, 2] = 4
+    # self.l_face_name[5999, 3] = 4
 
   def _set_cell_nf(self, faces_normal):
     self.cell_nf = faces_normal.copy()

@@ -31,10 +31,13 @@ class Checker2D:
     sorted_indexes = np.argmax(matches, axis=0)
     return c_faces[sorted_indexes], faces_nodes, sorted_indexes
 
+
   def sort_float_arr(self, arr):
-    arr = arr[np.argsort(np.sum(arr, axis=1))]
-    arr = arr[np.argsort(np.round(arr[:, 0], decimals=2))]
-    # np.round to limit sort precision sometime 10.5 is bigger than 10.5
+    # Lexicographic sort by rows.
+    arr = np.round(arr, decimals=3) # np.round to limit sort precision sometime 10.5 is bigger than 10.5
+    keys = [arr[:, 0], arr[:, 1]]
+    indices = np.lexsort(keys)
+    arr = arr[indices]
     return arr
 
   def test_cell_info(self):
@@ -43,6 +46,8 @@ class Checker2D:
 
     for p in range(self.nb_partitions):
       d_cell_loctoglob = self.domain_tables.d_cell_loctoglob[p]
+      if self.nb_partitions == 1:
+        d_cell_loctoglob = np.arange(len(self.domain_tables.d_cells[0]))
 
       d_cells = self.domain_tables.d_cells[p]
       d_nodes = self.domain_tables.d_nodes[p][:, 0:2]
@@ -60,7 +65,8 @@ class Checker2D:
       d_halo_halosext = self.domain_tables.d_halo_halosext[p]
       d_face_name = self.domain_tables.d_face_name[p]
 
-      d_face_halofid[d_face_name != 10] = -1 # used by Halo by face section
+      if self.nb_partitions != 1:
+        d_face_halofid[d_face_name != 10] = -1 # used by Halo by face section
 
       for i in range(len(d_cell_loctoglob)):
         g_index = d_cell_loctoglob[i]
@@ -94,24 +100,26 @@ class Checker2D:
         self.logger.testing("Cell Neighbors by node", np.testing.assert_equal, cellnid, c_cellnid)
 
         # Halo by face
-        halofid = self.test_tables.cell_halofid[g_index]
-        halofid = np.sort(halofid[halofid != -1])
+        if self.nb_partitions != 1:
+          halofid = self.test_tables.cell_halofid[g_index]
+          halofid = np.sort(halofid[halofid != -1])
 
-        cell_faces = d_cell_faces[i] # get cell faces
-        c_halofid = d_face_halofid[cell_faces[0:cell_faces[-1]]] # get cell halo cells
-        c_halofid = c_halofid[c_halofid != -1] # get cell halo cells
-        c_halofid = d_halo_halosext[c_halofid][:, 0] # get halos global index
-        c_halofid = np.sort(c_halofid)
-        self.logger.testing("Cell Halo by face", np.testing.assert_equal, halofid, c_halofid)
+          cell_faces = d_cell_faces[i] # get cell faces
+          c_halofid = d_face_halofid[cell_faces[0:cell_faces[-1]]] # get cell halo cells
+          c_halofid = c_halofid[c_halofid != -1] # get cell halo cells
+          c_halofid = d_halo_halosext[c_halofid][:, 0] # get halos global index
+          c_halofid = np.sort(c_halofid)
+          self.logger.testing("Cell Halo by face", np.testing.assert_equal, halofid, c_halofid)
 
         # Halo by node
-        halonid = self.test_tables.cell_halonid[g_index]
-        halonid = np.sort(halonid[halonid != -1])
+        if self.nb_partitions != 1:
+          halonid = self.test_tables.cell_halonid[g_index]
+          halonid = np.sort(halonid[halonid != -1])
 
-        c_halonid = d_cell_halonid[i]
-        c_halonid = d_halo_halosext[c_halonid[0:c_halonid[-1]]][:, 0] # get domain global halo cells index
-        c_halonid = np.sort(c_halonid)
-        self.logger.testing("Cell Halo by node", np.testing.assert_equal, halonid, c_halonid)
+          c_halonid = d_cell_halonid[i]
+          c_halonid = d_halo_halosext[c_halonid[0:c_halonid[-1]]][:, 0] # get domain global halo cells index
+          c_halonid = np.sort(c_halonid)
+          self.logger.testing("Cell Halo by node", np.testing.assert_equal, halonid, c_halonid)
 
         # Ghostnid TODO Changed Need to check gamma
         ghostnid = self.test_tables.l_cell_ghostnid[g_index]
@@ -125,16 +133,17 @@ class Checker2D:
         self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center[:, 0:2], ghostn_center[:, 0:2], self.decimal_precision)
 
         # Haloghostnid and Haloghostcenter
-        haloghostnid = self.test_tables.cell_haloghostnid[g_index]
-        haloghostnid = haloghostnid[0:haloghostnid[-1]]
-        haloghostcenter = self.test_tables.ghost_info[haloghostnid][:, 0:2] #(center only)
-        haloghostcenter = self.sort_float_arr(haloghostcenter)
+        if self.nb_partitions != 1:
+          haloghostnid = self.test_tables.cell_haloghostnid[g_index]
+          haloghostnid = haloghostnid[0:haloghostnid[-1]]
+          haloghostcenter = self.test_tables.ghost_info[haloghostnid][:, 0:2] #(center only)
+          haloghostcenter = self.sort_float_arr(haloghostcenter)
 
-        c_haloghostnid = d_cell_haloghostnid[i]
-        c_haloghostnid = c_haloghostnid[0:c_haloghostnid[-1]]
-        c_haloghostcenter = d_cell_haloghostcenter[c_haloghostnid][:, 0:2] # center (x, y)
-        c_haloghostcenter = self.sort_float_arr(c_haloghostcenter)
-        self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal, c_haloghostcenter, haloghostcenter, self.decimal_precision)
+          c_haloghostnid = d_cell_haloghostnid[i]
+          c_haloghostnid = c_haloghostnid[0:c_haloghostnid[-1]]
+          c_haloghostcenter = d_cell_haloghostcenter[c_haloghostnid][:, 0:2] # center (x, y)
+          c_haloghostcenter = self.sort_float_arr(c_haloghostcenter)
+          self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal, c_haloghostcenter, haloghostcenter, self.decimal_precision)
 
 
 
@@ -148,6 +157,8 @@ class Checker2D:
 
     for p in range(self.nb_partitions):
       d_cell_loctoglob = self.domain_tables.d_cell_loctoglob[p]
+      if self.nb_partitions == 1:
+        d_cell_loctoglob = np.arange(len(self.domain_tables.d_cells[0]))
 
       d_cells = self.domain_tables.d_cells[p]
       d_nodes = self.domain_tables.d_nodes[p][:, 0:2]
@@ -188,23 +199,25 @@ class Checker2D:
 
 
         # Loctoglob
-        cell_vertices = self.test_tables.cell_vertices[g_index]
+        if self.nb_partitions != 1:
+          cell_vertices = self.test_tables.cell_vertices[g_index]
 
-        c_cell_nodeid = d_cells[i][0:d_cells[i][-1]]
-        c_cell_nodeid = d_node_loctoglob[c_cell_nodeid]
-        c_cell_vertices = dglobal_nodes[c_cell_nodeid]
-        self.logger.testing("Node Loctoglob", np.testing.assert_almost_equal, cell_vertices, c_cell_vertices, decimal=self.decimal_precision)
+          c_cell_nodeid = d_cells[i][0:d_cells[i][-1]]
+          c_cell_nodeid = d_node_loctoglob[c_cell_nodeid]
+          c_cell_vertices = dglobal_nodes[c_cell_nodeid]
+          self.logger.testing("Node Loctoglob", np.testing.assert_almost_equal, cell_vertices, c_cell_vertices, decimal=self.decimal_precision)
 
         # Halonid
-        node_halonid = self.test_tables.node_halonid[g_index]
+        if self.nb_partitions != 1:
+          node_halonid = self.test_tables.node_halonid[g_index]
 
-        c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
-        for k in range(cnb_nodes):
-          c_node_halonid = d_node_halonid[c_cell_nodes[k]]
-          c_node_halonid = c_node_halonid[0:c_node_halonid[-1]]
-          c_node_halonid = d_halo_halosext[c_node_halonid][:, 0]
-          c_node_halonid = np.sort(c_node_halonid)
-          self.logger.testing("Node Halonid", np.testing.assert_equal, node_halonid[k][0:node_halonid[k][-1]], c_node_halonid)
+          c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
+          for k in range(cnb_nodes):
+            c_node_halonid = d_node_halonid[c_cell_nodes[k]]
+            c_node_halonid = c_node_halonid[0:c_node_halonid[-1]]
+            c_node_halonid = d_halo_halosext[c_node_halonid][:, 0]
+            c_node_halonid = np.sort(c_node_halonid)
+            self.logger.testing("Node Halonid", np.testing.assert_equal, node_halonid[k][0:node_halonid[k][-1]], c_node_halonid)
 
         # Oldname
         node_oldname = self.test_tables.g_node_name[g_index]
@@ -257,8 +270,8 @@ class Checker2D:
           c_node_ghostid = d_node_ghostid[c_cell_nodes[k]]
           c_node_ghostid = c_node_ghostid[0:c_node_ghostid[-1]]
           c_node_cellid = c_node_ghostcenter[:, 2].astype(np.int32)
-          c_node_cellid = c_node_cellid[c_node_cellid != -1]
           c_nb_ghost = len(c_node_ghostid)
+          c_node_cellid = c_node_cellid[0:c_nb_ghost]
 
           c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0] #g_x
           c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1] #g_y
@@ -276,60 +289,60 @@ class Checker2D:
           c_ghostinfo = self.sort_float_arr(c_ghostinfo)
           self.logger.testing("Node ghostid, ghostcenter and ghostfaceinfo *", np.testing.assert_almost_equal, ghostinfo, c_ghostinfo, decimal=self.decimal_precision)
 
-
         # Node: haloghostid, haloghostcenter, haloghostfaceinfo
         # The same code as above except that tables are become the halo's tables
-        c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
-        for k in range(cnb_nodes):
-          haloghostinfo = np.ones(shape=(2, 11), dtype=np.float32) * -1
-          node_haloghostid = self.test_tables.node_haloghostid[g_index]
-          node_haloghostid = node_haloghostid[k][0:node_haloghostid[k][-1]]
-          node_haloghostinfo = self.test_tables.ghost_info[node_haloghostid]
+        if self.nb_partitions != 1:
+          c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
+          for k in range(cnb_nodes):
+            haloghostinfo = np.ones(shape=(2, 11), dtype=np.float32) * -1
+            node_haloghostid = self.test_tables.node_haloghostid[g_index]
+            node_haloghostid = node_haloghostid[k][0:node_haloghostid[k][-1]]
+            node_haloghostinfo = self.test_tables.ghost_info[node_haloghostid]
 
-          node_cellid = node_haloghostinfo[:, 4].astype(np.int32)
-          node_faceid = node_haloghostinfo[:, 5].astype(np.int32)
-          nb_ghost = len(node_haloghostinfo)
+            node_cellid = node_haloghostinfo[:, 4].astype(np.int32)
+            node_faceid = node_haloghostinfo[:, 5].astype(np.int32)
+            nb_ghost = len(node_haloghostinfo)
 
-          haloghostinfo[0:nb_ghost, 0] = node_haloghostinfo[:, 0] #g_x
-          haloghostinfo[0:nb_ghost, 1] = node_haloghostinfo[:, 1] #g_y
-          haloghostinfo[0:nb_ghost, 2] = node_haloghostinfo[:, 4] #cell_id
-          haloghostinfo[0:nb_ghost, 3] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
-          haloghostinfo[0:nb_ghost, 4] = node_haloghostinfo[:, 0] #g_x
-          haloghostinfo[0:nb_ghost, 5] = node_haloghostinfo[:, 1] #g_y
-          #haloghostinfo[0:nb_ghost, 6] = node_haloghostinfo[:, 2] #vol
-          haloghostinfo[0:nb_ghost, 7] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
-          haloghostinfo[0:nb_ghost, 8] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
-          haloghostinfo[0:nb_ghost, 9] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
-          haloghostinfo[0:nb_ghost, 10] = self.test_tables.face_normal[node_cellid, node_faceid][:, 1] # face_normal_y
+            haloghostinfo[0:nb_ghost, 0] = node_haloghostinfo[:, 0] #g_x
+            haloghostinfo[0:nb_ghost, 1] = node_haloghostinfo[:, 1] #g_y
+            haloghostinfo[0:nb_ghost, 2] = node_haloghostinfo[:, 4] #cell_id
+            haloghostinfo[0:nb_ghost, 3] = self.test_tables.l_face_name[node_cellid, node_faceid] # face_oldname
+            haloghostinfo[0:nb_ghost, 4] = node_haloghostinfo[:, 0] #g_x
+            haloghostinfo[0:nb_ghost, 5] = node_haloghostinfo[:, 1] #g_y
+            #haloghostinfo[0:nb_ghost, 6] = node_haloghostinfo[:, 2] #vol
+            haloghostinfo[0:nb_ghost, 7] = self.test_tables.face_center[node_cellid, node_faceid][:, 0] # face_center_x
+            haloghostinfo[0:nb_ghost, 8] = self.test_tables.face_center[node_cellid, node_faceid][:, 1] # face_center_y
+            haloghostinfo[0:nb_ghost, 9] = self.test_tables.face_normal[node_cellid, node_faceid][:, 0] # face_normal_x
+            haloghostinfo[0:nb_ghost, 10] = self.test_tables.face_normal[node_cellid, node_faceid][:, 1] # face_normal_y
 
 
-          ##########################
+            ##########################
 
-          c_haloghostinfo = np.ones(shape=(2, 11), dtype=np.float32) * -1
-          c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
-          c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
-          c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
-          c_node_haloghostid = c_node_haloghostid[0:c_node_haloghostid[-1]]
-          c_node_cellid = c_node_haloghostcenter[:, 2].astype(np.int32)
-          c_node_cellid = c_node_cellid[c_node_cellid != -1]
-          c_nb_ghost = len(c_node_haloghostid)
+            c_haloghostinfo = np.ones(shape=(2, 11), dtype=np.float32) * -1
+            c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
+            c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
+            c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
+            c_node_haloghostid = c_node_haloghostid[0:c_node_haloghostid[-1]]
+            c_node_cellid = c_node_haloghostcenter[:, 2].astype(np.int32)
+            c_nb_ghost = len(c_node_haloghostid)
+            c_node_cellid = c_node_cellid[0:c_nb_ghost]
 
-          c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
-          c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
-          c_haloghostinfo[0:c_nb_ghost, 2] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
-          c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter[0:c_nb_ghost, 3] # face_old_name
+            c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
+            c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
+            c_haloghostinfo[0:c_nb_ghost, 2] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
+            c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter[0:c_nb_ghost, 3] # face_old_name
 
-          c_haloghostinfo[0:c_nb_ghost, 4] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
-          c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid
-          #c_haloghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_haloghostid, 2] # no need
-          c_haloghostinfo[0:c_nb_ghost, 7] = c_node_haloghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
-          c_haloghostinfo[0:c_nb_ghost, 8] = c_node_haloghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
-          c_haloghostinfo[0:c_nb_ghost, 9] = c_node_haloghostfaceinfo[0:c_nb_ghost, 2] # face_normal_x
-          c_haloghostinfo[0:c_nb_ghost, 10] = c_node_haloghostfaceinfo[0:c_nb_ghost, 3] # face_normal_y
+            c_haloghostinfo[0:c_nb_ghost, 4] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
+            c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid
+            #c_haloghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_haloghostid, 2] # no need
+            c_haloghostinfo[0:c_nb_ghost, 7] = c_node_haloghostfaceinfo[0:c_nb_ghost, 0] # face_center_x
+            c_haloghostinfo[0:c_nb_ghost, 8] = c_node_haloghostfaceinfo[0:c_nb_ghost, 1] # face_center_y
+            c_haloghostinfo[0:c_nb_ghost, 9] = c_node_haloghostfaceinfo[0:c_nb_ghost, 2] # face_normal_x
+            c_haloghostinfo[0:c_nb_ghost, 10] = c_node_haloghostfaceinfo[0:c_nb_ghost, 3] # face_normal_y
 
-          haloghostinfo = self.sort_float_arr(haloghostinfo)
-          c_haloghostinfo = self.sort_float_arr(c_haloghostinfo)
-          self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo, c_haloghostinfo, decimal=self.decimal_precision)
+            haloghostinfo = self.sort_float_arr(haloghostinfo)
+            c_haloghostinfo = self.sort_float_arr(c_haloghostinfo)
+            self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo, c_haloghostinfo, decimal=self.decimal_precision)
 
     # Node: number of nodes
     a = np.concatenate(self.domain_tables.d_nodes)
@@ -341,6 +354,8 @@ class Checker2D:
 
     for p in range(self.nb_partitions):
       d_cell_loctoglob = self.domain_tables.d_cell_loctoglob[p]
+      if self.nb_partitions == 1:
+        d_cell_loctoglob = np.arange(len(self.domain_tables.d_cells[0]))
 
       d_cells = self.domain_tables.d_cells[p]
       d_nodes = self.domain_tables.d_nodes[p][:, 0:2]
@@ -385,7 +400,7 @@ class Checker2D:
         self.logger.testing("Face Name", np.testing.assert_equal, faces_name, c_faces_name)
 
         # Oldname
-        faces_oldname = self.test_tables.l_face_name[g_index]
+        faces_oldname = self.test_tables.g_face_name[g_index]
         c_faces_oldname = d_face_oldname[c_faces]
         self.logger.testing("Face Oldname", np.testing.assert_equal, faces_oldname, c_faces_oldname)
 

@@ -60,18 +60,18 @@ Transfinite Line {5, 7, 1, 3} = Ny + 1;
 Transfinite Line {8, 6, 2, 4} = Nz + 1;
 
 Transfinite Surface "*";
-Recombine Surface {1, 2, 3, 4, 5, 6};
+// Recombine Surface {1, 2, 3, 4, 5, 6};
 Transfinite Volume {1};
 
 
 
 
-Physical Surface(1) = {1};
-Physical Surface(2) = {2};
-Physical Surface(3) = {3};
-Physical Surface(4) = {4};
-Physical Surface(5) = {5};
-Physical Surface(6) = {6};
+Physical Surface(6) = {1};
+Physical Surface(5) = {2};
+Physical Surface(4) = {3};
+Physical Surface(2) = {4};
+Physical Surface(3) = {5};
+Physical Surface(1) = {6};
 Physical Volume (1) = {1};
 
 Mesh.Algorithm3D = 1;

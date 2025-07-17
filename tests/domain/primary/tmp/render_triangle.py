@@ -99,6 +99,7 @@ def test():
     d_face_name = domain_tables.d_face_name[k]
     d_face_oldname = domain_tables.d_face_oldname[k]
     d_cell_center = domain_tables.d_cell_center[k]
+    d_cell_loctoglob = domain_tables.d_cell_loctoglob[k]
 
     for i in range(len(d_cell_center)):
       cell_nodeid = d_cell_nodeid[i][0:d_cell_nodeid[i, -1]]
@@ -117,9 +118,10 @@ def test():
       ft_put_item(p, d_node_oldname[i], getColor(0, flag=0), 12)
 
     for i in range(len(d_cell_center)):
+      g_index = d_cell_loctoglob[i]
       p = d_cell_center[i]
       scale(p)
-      ft_put_item(p, f"{k}, {i}", getColor(0, flag=0), 12)
+      ft_put_item(p, f"{k}, {g_index}", getColor(0, flag=0), 12)
 
 test()
 root.mainloop()

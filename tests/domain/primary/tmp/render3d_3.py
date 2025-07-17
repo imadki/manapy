@@ -2,33 +2,39 @@
 from vedo import Text3D, show
 import vedo
 import sys
-import subprocess
 import os
 import numpy as np
-helpers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+
+
+helpers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'domain')
 sys.path.append(helpers_path)
-from helpers.DomainTables import DomainTables
+from create_domain import Domain, Mesh, GlobalDomain, LocalDomain, SingleCoreDomainTables
 
-mpi_exec = "/usr/bin/mpirun"
-python_exec = "/home/aben-ham/anaconda3/envs/work/bin/python3"
-float_precision = 'float32'
-dim=3
-mesh_name = 'cube.msh'
+mesh_list = [
+  (2, 'triangles.msh'),
+  (3, 'cube.msh'),
+  (3, 'cuboid.msh'),
+  (3, 'tetrahedron.msh'),
+  (3, 'tetrahedron_big.msh'),
+]
+float_precision = 'float32' # the test does not support float64 or int64 yet
+root_file = os.getcwd()
+dim, mesh_path = mesh_list[1] # also modify dim variable accordingly
+mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
+def create_domain(nb_parts):
+  mesh = Mesh(mesh_path, dim)
+  domain = GlobalDomain(mesh, float_precision)
+  local_domain_data = domain.c_create_sub_domains(nb_parts)
 
-def create_partitions(nb_partitions, mesh_name, float_precision, dim):
-  root_file = os.getcwd()
-  mesh_file_path = os.path.join(root_file, '..', 'mesh', mesh_name)
-  script_path = os.path.join(root_file, '..', 'helpers', 'create_partitions_mpi_worker.py')
-  cmd = [mpi_exec, "-n", str(nb_partitions), "--oversubscribe", python_exec, script_path, mesh_file_path, float_precision, str(dim)]
+  local_domains = LocalDomain.create_local_domains(local_domain_data)
+  domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
 
-  result = subprocess.run(cmd, env=os.environ.copy(), stderr=subprocess.PIPE)
-  if result.returncode != 0:
-    print(result.__str__(), os.getcwd())
-    raise SystemExit(result.returncode)
+  return domains, SingleCoreDomainTables(domains, float_precision)
 
-domain_tables = DomainTables(nb_partitions=4, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
-unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
+l_domains, domain_tables = create_domain(4)
+#g_domains, unified_domain = create_domain(1)
+
 domain = domain_tables
 size = domain.nb_partitions
 
@@ -106,7 +112,7 @@ def render_node_name():
         face_center = domain.d_face_center[k][face]
         face_oldname = domain.d_face_oldname[k][face]
         p = face_center
-        if face_oldname != 0 and face_oldname != 10:
+        if face_oldname != 0:
           #print(j, p, face_oldname)
           text = vedo.Text3D(str(face_oldname), pos=(p[0], p[1], p[2]), c=colors[k], s=0.2, justify="center")
           objects.append(text)
