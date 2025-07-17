@@ -120,5 +120,5 @@ Physical Surface(6) = {3};
 //+
 Physical Volume(66) = {1};
 
-Mesh 3;
-Save "tetrahedron.msh";
+// Mesh 3;
+// Save "tetrahedron.msh";
