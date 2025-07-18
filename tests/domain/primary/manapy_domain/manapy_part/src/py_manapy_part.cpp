@@ -57,7 +57,7 @@ struct LocalDomainStruct {
             nb_halos_int += size;
         }
 
-        print_instant("Create Tables\n");
+        //print_instant("Create Tables\n");
         const npy_intp l_cells_dim[2] = {nb_cells, this->max_cell_nodeid + 1};
         PyArrayObject *l_cells = (PyArrayObject *)PyArray_SimpleNew(2, l_cells_dim, int_type);
 
@@ -127,7 +127,7 @@ struct LocalDomainStruct {
         this->halo_halosext = l_halo_halosext;
         this->halo_halosint = l_halo_halosint;
 
-        print_instant("End Create Tables\n");
+        //print_instant("End Create Tables\n");
         return 0;
     }
 
@@ -238,6 +238,30 @@ struct LocalDomainStruct {
     }
 };
 
+long get_time(void)
+{
+    struct timeval t;
+
+    gettimeofday(&t, NULL);
+    return (t.tv_sec * 1000000 + t.tv_usec);
+}
+
+void    log_step(const std::string &str) {
+    static long start = 0;
+
+    if (str.empty()) {
+        start = get_time();
+    } else {
+        double diff = (double)(get_time() - start);
+        std::string unit = "microseconds";
+        if (diff > 1000) {
+            diff /= 1000000.0;
+            unit = "seconds";
+        }
+        print_instant("C=> %s: Time=%lf %s\n", str.c_str(), diff, unit.c_str());
+    }
+}
+
 /* Graph representation in compressed Sparse Row (CSR) format
  * graph a 2D int32 numpy array of size (number of cells, max cell neighbors)
  * Example (4 vertices):
@@ -318,12 +342,12 @@ int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     idx_t deg_sum;
     idx_t ret;
 
-    print_instant("Start dense to csr\n");
+    //print_instant("Start dense to csr\n");
     ret = dense_to_csr(graph, &xadj, &adjncy, &nvtxs, &deg_sum);
     if (ret < 0)
         return -1;
 
-    print_instant("End dense to csr\n");
+    //print_instant("End dense to csr\n");
     idx_t *part_idx = (idx_t *)malloc(sizeof(idx_t) * nvtxs);
     if (part_idx == nullptr) {
         free(xadj);
@@ -342,7 +366,7 @@ int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
                                  nullptr, nullptr,
                                  nullptr,
                                  &edgecut, part_idx);
-    print_instant("End METIS_PartGraphKway\n");
+    //print_instant("End METIS_PartGraphKway\n");
     free(xadj);
     free(adjncy);
 
@@ -354,7 +378,7 @@ int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
 
     // Return
     *part_vert = part_idx;
-    print_instant("End function\n");
+    //print_instant("End function\n");
     return 0;
 }
 
@@ -375,20 +399,25 @@ int  create_sub_domains(PyArrayObject *graph,
     idx_t *part_vert = nullptr;
     idx_t ret;
 
+
+
     // Allocate phy_part_vert
     const idx_t nb_phy_faces = PyArray_DIMS(phy_faces)[0];
 
     // Make n part
-    print_instant("Make n part\n");
+    log_step("");
     ret = make_n_part(graph, nb_parts, &part_vert);
     if (ret == -1) {
         return -1;
     }
-
-    print_instant("Create local cells\n");
-    const npy_intp *cells_dim = PyArray_DIMS(cells);
+    log_step("Make n part");
 
 #pragma region Create local cells and nodes, map_halos
+    log_step("");
+
+    //print_instant("Create local cells\n");
+    const npy_intp *cells_dim = PyArray_DIMS(cells);
+
     for (idx_t i = 0; i < cells_dim[0]; i++) {
         const idx_t size = *(idx_t *)PyArray_GETPTR2(cells, i, cells_dim[1] - 1);
         const idx_t p = part_vert[i];
@@ -443,9 +472,11 @@ int  create_sub_domains(PyArrayObject *graph,
 
 
     }
+    log_step("Create local cells and nodes, map_halos");
 #pragma endregion
 
 #pragma region Create Phyical Faces Parts
+    log_step("");
 //Create Physical Faces Parts And NodeOldName
     const idx_t nb_nodes = (idx_t)PyArray_DIM(node_cellid, 0);
     std::vector<idx_t> vec_node_oldname(nb_nodes);
@@ -453,7 +484,7 @@ int  create_sub_domains(PyArrayObject *graph,
     idx_t intersect_cell[2];
     idx_t total_nb_phyfaces = 0;
     const npy_intp *phyfaces_dim = PyArray_DIMS(phy_faces);
-    print_instant("Create Physical faces And node old name\n");
+    //print_instant("Create Physical faces And node old name\n");
     for (idx_t i = 0; i < phyfaces_dim[0]; i++) {
         const idx_t *phy_face = (idx_t *)PyArray_GETPTR2(phy_faces, i, 0);
         const idx_t size = phy_face[phyfaces_dim[1] - 1];
@@ -483,11 +514,17 @@ int  create_sub_domains(PyArrayObject *graph,
 
         PyErr_WarnEx(PyExc_UserWarning, msg, 1);
     }
+
+    log_step("Create Phyical Faces Parts");
 #pragma endregion
 
     // =================================
     // Create part_bf
     // =================================
+
+
+    log_step("");
+
     idx_t size_bf_cellid = (idx_t)PyArray_DIMS(bf_cellid)[0];
     idx_t *part_bf = new (std::nothrow) idx_t[size_bf_cellid];
     if (part_bf == nullptr) {
@@ -500,9 +537,8 @@ int  create_sub_domains(PyArrayObject *graph,
     }
 
     // Create Local Domains
-    print_instant("Create local domains struct\n");
     for (idx_t p = 0; p < nb_parts; p++) {
-        print_instant("Create local domains struct p=%d\n", p);
+        //print_instant("Create local domains struct p=%d\n", p);
         auto &map_cells = local_domains[p].map_cells;
         auto &map_phy_faces = local_domains[p].map_phy_faces;
         auto &map_nodes = local_domains[p].map_nodes;
@@ -565,7 +601,7 @@ int  create_sub_domains(PyArrayObject *graph,
 // ++++++++++++++++++++++++++++++++++++++
 // ++++++++++++++++++++++++++++++++++++++
 
-        print_instant("Create map_bf_recv, shared_bf_recv\n");
+        //print_instant("Create map_bf_recv, shared_bf_recv\n");
         // Create map_bf_recv, shared_bf_recv
         local_domains[p].vec_shared_bf_recv = std::vector<idx_t>(set_bf_recv.begin(), set_bf_recv.end());
         std::vector<idx_t> &vec_shared_bf_recv = local_domains[p].vec_shared_bf_recv;
@@ -610,7 +646,7 @@ int  create_sub_domains(PyArrayObject *graph,
 
 
         // # Cells, CellsType, CellsLocToGlob
-        print_instant("Cells, CellsType, CellsLocToGlob\n");
+        //print_instant("Cells, CellsType, CellsLocToGlob\n");
 
         for (auto item : local_domains[p].map_halo_neighsub) {
             const idx_t partition = item.first;
@@ -710,7 +746,7 @@ int  create_sub_domains(PyArrayObject *graph,
         }
 
         //# PhyFaces, PhyFacesName
-        print_instant("PhyFaces, PhyFacesName\n");
+        //print_instant("PhyFaces, PhyFacesName\n");
         for (auto iter = map_phy_faces.begin(); iter != map_phy_faces.end(); ++iter) {
             const idx_t k = iter->first;
             const idx_t local_index = iter->second;
@@ -729,7 +765,7 @@ int  create_sub_domains(PyArrayObject *graph,
 
 
         // # Halo neighsub, HalosExt, shared_bf_recv, l_bf_recv_part_size_data, l_bf_cellid_data
-        print_instant("Halo neighsub, Halos\n");
+        //print_instant("Halo neighsub, Halos\n");
 
         idx_t counter = 0;
 
@@ -808,7 +844,7 @@ int  create_sub_domains(PyArrayObject *graph,
             l_halo_halosext_data[index + data_size - 1] = size + 1;
         }
 
-        print_instant("End Halo neighsub, Halos\n");
+        //print_instant("End Halo neighsub, Halos\n");
 
 
     }
@@ -850,9 +886,9 @@ int  create_sub_domains(PyArrayObject *graph,
 
 
 
-    print_instant("End function\n");
     free(part_vert);
     free(part_bf);
+    log_step("Create LocalDomainStruct Data");
     return 0;
 }
 
@@ -915,7 +951,6 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
     PyObject *phy_faces_name_obj = nullptr;
     idx_t nb_part = 0;
 
-    print_instant("Parse Input \n");
     if (!PyArg_ParseTuple(args, "OOOOOOOOOOi", &graph_obj, &node_cellid_obj, &node_bfid_obj, &bf_cellid_obj, &cells_obj, &cell_cellnid_obj, &cells_type_obj, &nodes_obj, &phy_faces_obj, &phy_faces_name_obj, &nb_part))
         return nullptr;
     if (nb_part < 2) {
@@ -1019,7 +1054,6 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
         return nullptr;
     }
 
-    print_instant("Return List \n");
     for (int i = 0; i < nb_part; i++) {
         if (local_domains[i].create_tuple() == -1) {
             Py_XDECREF(py_list_result);
