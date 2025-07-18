@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from create_domain import Domain, Mesh, GlobalDomain, LocalDomain
+from create_domain import Domain, Mesh, GlobalDomain, LocalDomain, log_step
 
 from mpi4py import MPI
 
@@ -34,16 +34,14 @@ import time
 if rank == 0:
   start = time.time()
 
-# domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
+domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
+log_step.print_resutls()
 
-mesh = Mesh(mesh_path, dim)
-domain = GlobalDomain(mesh, float_precision)
-local_domain_data = domain.c_create_sub_domains(4)
-local_domain = LocalDomain(local_domain_data[0], 0, 4)
 
 # domain = create_original_domain(recreate=False)
 
 MPI.COMM_WORLD.Barrier()
+time.sleep(1)
 if rank == 0:
   print(f"END:: Execution time: {time.time() - start:.6f} seconds")
 
