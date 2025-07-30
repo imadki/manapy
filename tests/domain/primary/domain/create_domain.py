@@ -44,9 +44,24 @@ from create_domain_utils import (append,
                                  create_normal_face_of_cell_2d,
                                  dist_ortho_function_2d,
                                  get_max_b_ncellid,
-                                 create_b_ncellid
+                                 create_b_ncellid,
+                                 reinterpret_int32_as_float32,
+                                 reinterpret_float32_as_int32,
+                                 reinterpret_int32_as_float64,
+                                 reinterpret_float64_as_int32
                                  )
 
+
+def prepare_clean_folder(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+    else:
+        for item in os.listdir(path):
+            item_path = os.path.join(path, item)
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
 
 def log_step(string = ""):
   if not hasattr(log_step, "start"):
@@ -66,6 +81,7 @@ def log_step(string = ""):
     log_step.rank = rank
     log_step.dic = {}
     log_step.print_resutls = print_results
+    log_step.file = f'results_{rank}.log'
   if string != "":
     name = f"[Rank {log_step.rank}]: {string}"
     print(name, end='')
@@ -214,7 +230,6 @@ class LocalDomainStruct:
     self.cells_type = None # [cell type]
     self.phy_faces = None # [[physical face nodes]]
     self.phy_faces_name = None # [physical face name]
-    self.phy_faces_loctoglob = None
     self.bf_cellid = None # [[cellid, face index in the cell]] for each boundary face
     self.cell_loctoglob = None # [cell global index]
     self.node_loctoglob = None # [node global index]
@@ -411,7 +426,6 @@ class GlobalDomain:
     local_domain.max_face_nodeid = self.max_face_nodeid
 
     ## Halo related tables
-    local_domain.phy_faces_loctoglob = np.zeros(shape=0, dtype=np.int32)
     local_domain.halo_neighsub = np.zeros(shape=0, dtype=np.int32)
     local_domain.halo_halosint = np.zeros(shape=0, dtype=np.int32)
     local_domain.node_halos = np.zeros(shape=(1, 1), dtype=np.int32)
@@ -454,6 +468,7 @@ class GlobalDomain:
     log_step()
 
     log_step("Start creating sub domains")
+
     res = manapy_domain.create_sub_domains(
       cell_cellfid,
       node_cellid,
@@ -1159,26 +1174,34 @@ class LocalDomain:
     ghost_part_size = np.zeros(shape=2, dtype=np.int32)
     get_ghost_part_size(bf_recv_part_size, rank, ghost_part_size)
 
+    reinterpret_int32_as_float = reinterpret_int32_as_float32
+    if self.float_precision == 'float64':
+      reinterpret_int32_as_float = reinterpret_int32_as_float64
+
     if self.dim == 2:
       shared_ghost_info_data_size = 11
       shared_ghost_info = np.zeros(shape=(shared_bf_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
-      create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
+      create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0], reinterpret_int32_as_float)
     else:
       shared_ghost_info_data_size = 14
       shared_ghost_info = np.zeros(shape=(shared_bf_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
-      create_ghost_info_3d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
+      create_ghost_info_3d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0], reinterpret_int32_as_float)
 
     return (shared_ghost_info, ghost_part_size)
 
   def _create_ghost_tables(self, shared_ghost_info: 'int[:, :]', cells: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', ghost_part_size: 'int[:]'):
 
+    reinterpret_float_as_int32 = reinterpret_float32_as_int32
+    if self.float_precision == 'float64':
+      reinterpret_float_as_int32 = reinterpret_float64_as_int32
+
     start = ghost_part_size[0]
     end = start + ghost_part_size[1]
 
     node_nb_ghostid = np.zeros(shape=self.nb_nodes, dtype=np.int32)
-    get_ghost_tables_size(shared_ghost_info, faces, cell_faceid, node_nb_ghostid, start, end)
+    get_ghost_tables_size(shared_ghost_info, faces, cell_faceid, node_nb_ghostid, start, end, reinterpret_float_as_int32)
 
     max_node_ghost = np.max(node_nb_ghostid)
     node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_ghost + 1), dtype=np.int32)
@@ -1190,6 +1213,12 @@ class LocalDomain:
     #  node_ghostfaceinfo
     # ------------------------------------------------------------------
 
+    reinterpret_float_as_int32 = reinterpret_float32_as_int32
+    reinterpret_int32_as_float = reinterpret_int32_as_float32
+    if self.float_precision == 'float64':
+      reinterpret_float_as_int32 = reinterpret_float64_as_int32
+      reinterpret_int32_as_float = reinterpret_int32_as_float64
+
     if self.dim == 2:
       node_ghostcenter_data_size = 5  # [ghost_center x.y, cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 3  # [ghost_center x.y, gamma]
@@ -1198,7 +1227,7 @@ class LocalDomain:
       face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
       node_ghostfaceinfo = np.zeros(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precision)
 
-      create_ghost_tables_2d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end)
+      create_ghost_tables_2d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end, reinterpret_float_as_int32, reinterpret_int32_as_float)
     else:
       node_ghostcenter_data_size = 6  # [ghost_center x.y.z, cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 4  # [ghost_center x.y.z, gamma]
@@ -1209,7 +1238,7 @@ class LocalDomain:
       node_ghostfaceinfo = np.zeros(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size),
                                     dtype=self.float_precision)
 
-      create_ghost_tables_3d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end)
+      create_ghost_tables_3d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end, reinterpret_float_as_int32, reinterpret_int32_as_float)
 
     # ------------------------------------------------------------------
     # cell_ghostnid
@@ -1394,6 +1423,12 @@ class LocalDomain:
       # ------------------------------------------------------------------
       cell_haloghostnid = np.zeros(shape=(nb_cells, max_bcell_halobfid + 1), dtype=np.int32)
 
+      reinterpret_float_as_int32 = reinterpret_float32_as_int32
+      reinterpret_int32_as_float = reinterpret_int32_as_float32
+      if self.float_precision == 'float64':
+        reinterpret_float_as_int32 = reinterpret_float64_as_int32
+        reinterpret_int32_as_float = reinterpret_int32_as_float64
+
       if self.dim == 2:
         cell_haloghostcenter_data_size = 2
         node_haloghostcenter_data_size = 5
@@ -1403,7 +1438,7 @@ class LocalDomain:
         node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostcenter_data_size), dtype=self.float_precision)
         node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halobfid.shape[1], node_haloghostfaceinfo_data_size), dtype=self.float_precision)
 
-        create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
+        create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo, reinterpret_float_as_int32, reinterpret_int32_as_float)
 
       else:
         cell_haloghostcenter_data_size = 3
@@ -1417,7 +1452,7 @@ class LocalDomain:
                                           dtype=self.float_precision)
 
 
-        create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
+        create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halobfid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo, reinterpret_float_as_int32, reinterpret_int32_as_float)
 
     halo_sizehaloghost = np.sum(node_haloghostid[:, -1])
     return (
