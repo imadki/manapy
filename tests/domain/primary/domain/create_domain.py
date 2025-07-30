@@ -4,7 +4,8 @@ import time
 import h5py
 import os
 import shutil
-import manapy_domain
+import manapy_domain32
+import manapy_domain64
 from mpi4py import MPI
 from manapy.ddm.geometry   import Face, Cell, Node, Halo
 from create_domain_utils import (append,
@@ -317,7 +318,7 @@ class GlobalDomain:
     if float_precision != 'float32' and float_precision != 'float64':
       raise ValueError('Invalid float precision argument')
 
-    self.nodes = np.array(mesh.points[:, 0:mesh.dim]).astype(np.float32)
+    self.nodes = np.array(mesh.points[:, 0:mesh.dim]).astype(float_precision)
     self.cells = mesh.cells
     self.cells_type = mesh.cells_type
     self.max_cell_nodeid = mesh.max_cell_nodeid
@@ -433,7 +434,7 @@ class GlobalDomain:
     local_domain.node_halobfid = np.zeros(shape=(1, 1), dtype=np.int32)
     local_domain.shared_bf_send = np.zeros(shape=0, dtype=np.int32)
     local_domain.halo_halosext = np.zeros(shape=(1, 1), dtype=np.int32)
-    local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=np.float32)
+    local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=self.float_precision)
     local_domain.max_node_haloid = 0 # NONE
     local_domain.max_cell_halonid = 0 # NONE
 
@@ -464,6 +465,10 @@ class GlobalDomain:
     log_step()
 
     log_step("Start creating sub domains")
+
+    manapy_domain = manapy_domain32
+    if self.float_precision == 'float64':
+      manapy_domain = manapy_domain64
 
     res = manapy_domain.create_sub_domains(
       cell_cellfid,
@@ -1096,6 +1101,7 @@ class LocalDomain:
     face_normal = np.zeros(shape=(nb_faces, self.dim), dtype=self.float_precision)
     face_tangent = np.zeros(shape=0, dtype=self.float_precision)
     face_binormal = np.zeros(shape=0, dtype=self.float_precision)
+
     if self.dim == 2:
       compute_face_info_2d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal)
     else:
