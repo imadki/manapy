@@ -1,4 +1,6 @@
 import os
+import traceback
+import sys
 import numpy as np
 from create_domain import Domain, Mesh, GlobalDomain, LocalDomain, log_step
 
@@ -34,8 +36,15 @@ import time
 if rank == 0:
   start = time.time()
 
-domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
-log_step.print_resutls()
+try:
+  #raise RuntimeError("dsfsdfs")
+  domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
+  log_step.print_resutls()
+except Exception as e:
+  traceback.print_exc()
+  sys.stderr.flush()
+  #print(traceback.format_exc())
+  MPI.COMM_WORLD.Abort(1)
 
 
 # domain = create_original_domain(recreate=False)
