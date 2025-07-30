@@ -1013,7 +1013,7 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
         Py_XDECREF(phy_faces_name);
         return nullptr;
     }
-
+    
 
     print_instant("Start Creating SubDomains \n");
     LocalDomainStruct *local_domains = new (std::nothrow) LocalDomainStruct[nb_part];
