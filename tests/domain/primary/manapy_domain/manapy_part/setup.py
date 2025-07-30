@@ -25,12 +25,35 @@ SOURCE = ["src/py_manapy_part.cpp", "src/utils.cpp"]
 
 ext_modules = [
     Extension(
-        name="manapy_domain",
+        name="manapy_domain32",
         sources=SOURCE,
         include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
         extra_compile_args=["-O3"],
+        define_macros=[
+            ("MODULE_NAME", "manapy_domain32"),
+            ("FDX_T", "npy_float32"),
+            ("FLOAT_TYPE", "NPY_FLOAT32")
+        ],
+        # extra_compile_args=["-O0", "-g", "-fsanitize=address"],
+        # extra_compile_args=["-O0", "-g"],
+        # extra_link_args=["-fsanitize=address"],
+        language="c++"
+    ),
+
+    Extension(
+        name="manapy_domain64",
+        sources=SOURCE,
+        include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
+        library_dirs=[METIS_LIB_DIR],
+        libraries=["metis", "GKlib"],
+        extra_compile_args=["-O3"],
+        define_macros=[
+            ("MODULE_NAME", "manapy_domain64"),
+            ("FDX_T", "npy_float64"),
+            ("FLOAT_TYPE", "NPY_FLOAT64")
+        ],
         # extra_compile_args=["-O0", "-g", "-fsanitize=address"],
         # extra_compile_args=["-O0", "-g"],
         # extra_link_args=["-fsanitize=address"],

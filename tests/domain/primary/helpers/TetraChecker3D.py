@@ -1,6 +1,9 @@
 import numpy as np
 from .TestLogger import TestLogger
 
+def _reinterpret_float32_as_int32(i):
+  return np.float32(i).view(np.int32)
+
 class TetraChecker3D:
 
   def __init__(self, decimal_precision, domain_tables, unified_domain, test_tables):
@@ -176,9 +179,7 @@ class TetraChecker3D:
       d_face_ghostcenter = self.domain_tables.d_face_ghostcenter[p]
       d_cell_haloghostcenter = self.domain_tables.d_cell_haloghostcenter[p]
 
-      int_type = np.int32
-      if d_cell_haloghostcenter.dtype == np.float64:
-        int_type = np.int64
+
 
       for i in range(len(d_cell_loctoglob)):
         g_index = d_cell_loctoglob[i]
@@ -277,13 +278,13 @@ class TetraChecker3D:
           c_node_ghostid = c_node_ghostid[0:c_node_ghostid[-1]]
           c_nb_ghost = len(c_node_ghostid)
           c_node_cellid = c_node_ghostcenter[:, 3][0:c_nb_ghost]
-          c_node_cellid = np.array(c_node_cellid).view(int_type)
+          c_node_cellid = _reinterpret_float32_as_int32(c_node_cellid)
 
           c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0] #g_x
           c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1] #g_y
           c_ghostinfo[0:c_nb_ghost, 2] = c_node_ghostcenter[0:c_nb_ghost, 2] #g_z
           c_ghostinfo[0:c_nb_ghost, 3] = d_cell_loctoglob[c_node_cellid] #cell_id
-          c_ghostinfo[0:c_nb_ghost, 4] = np.int32(c_node_ghostcenter[0:c_nb_ghost, 4].view(int_type)) # face_old_name
+          c_ghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_ghostcenter[0:c_nb_ghost, 4]) # face_old_name
           c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 0] # g_x from ghostid
           c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 1] # g_y from ghostid
           c_ghostinfo[0:c_nb_ghost, 7] = d_face_ghostcenter[c_node_ghostid, 2] # g_z from ghostid
@@ -339,14 +340,14 @@ class TetraChecker3D:
             c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
             c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
             c_node_haloghostid = c_node_haloghostid[0:c_node_haloghostid[-1]]
-            c_node_cellid = np.int32(c_node_haloghostcenter[:, 3].view(int_type))
+            c_node_cellid = _reinterpret_float32_as_int32(c_node_haloghostcenter[:, 3])
             c_nb_ghost = len(c_node_haloghostid)
             c_node_cellid = c_node_cellid[0:c_nb_ghost]
 
             c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
             c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
             c_haloghostinfo[0:c_nb_ghost, 2] = c_node_haloghostcenter[0:c_nb_ghost, 2] #g_z
-            c_haloghostinfo[0:c_nb_ghost, 3] = np.int32(c_node_haloghostcenter[0:c_nb_ghost, 4].view(int_type)) # face_old_name
+            c_haloghostinfo[0:c_nb_ghost, 3] = _reinterpret_float32_as_int32(c_node_haloghostcenter[0:c_nb_ghost, 4]) # face_old_name
             c_haloghostinfo[0:c_nb_ghost, 4] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
 
             c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
@@ -364,7 +365,6 @@ class TetraChecker3D:
             c_haloghostinfo = self.sort_float_arr(c_haloghostinfo)
 
             self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo, c_haloghostinfo, decimal=self.decimal_precision)
-
 
 
     # Node: number of nodes
