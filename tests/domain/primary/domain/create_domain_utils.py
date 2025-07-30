@@ -4,6 +4,24 @@ from numba.typed import Dict
 from numba import types
 
 
+def _reinterpret_int32_as_float32(i):
+  return np.int32(i).view(np.float32)
+
+# def _reinterpret_int32_as_float64(i):
+#   return np.int64(i).view(np.float64)
+
+def _reinterpret_float32_as_int32(i):
+  return np.float32(i).view(np.int32)
+
+# def _reinterpret_float64_as_int32(i):
+#   return np.int32(np.float64(i).view(np.int64))
+
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
+# #########################################################
+
 def _is_in_array(array: 'int[:]', item: 'int') -> 'int':
   """
     Check if an item is in the array
@@ -635,7 +653,7 @@ def _get_bf_recv_part_info(bf_recv_part_size: 'int[:]', rank: 'int', part_info: 
 # #########################################################
 # #########################################################
 
-def _create_ghost_info_2d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', ghost_info: 'float[:, :]', start: 'int', reinterpret_int32_as_float_func):
+def _create_ghost_info_2d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', ghost_info: 'float[:, :]', start: 'int'):
   # ghost_info [0=bc, 1=bf, 2=ghostcenter_x, 3=ghostcenter_y, 4=gamma, 5=face_oldname, 6=face_center_x, 7=face_center_y, 8=face_normal_x, 9=face_normal_y]
 
   cmp = start
@@ -655,21 +673,21 @@ def _create_ghost_info_2d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', ce
     n = face_normal[fid] / face_measure[i]
     gamma = np.dot(u, n)
 
-    ghost_info[cmp, 0] = reinterpret_int32_as_float_func(cid)
-    ghost_info[cmp, 1] = reinterpret_int32_as_float_func(bf)
+    ghost_info[cmp, 0] = _reinterpret_int32_as_float32(cid)
+    ghost_info[cmp, 1] = _reinterpret_int32_as_float32(bf)
     ghost_info[cmp, 2] = ghostcenter[0]
     ghost_info[cmp, 3] = ghostcenter[1]
     ghost_info[cmp, 4] = gamma
-    ghost_info[cmp, 5] = reinterpret_int32_as_float_func(face_oldname[fid])
+    ghost_info[cmp, 5] = _reinterpret_int32_as_float32(face_oldname[fid])
     ghost_info[cmp, 6] = face_center[fid, 0]  # fc_x
     ghost_info[cmp, 7] = face_center[fid, 1]  # fc_y
     ghost_info[cmp, 8] = face_normal[fid, 0]  # fn_x
     ghost_info[cmp, 9] = face_normal[fid, 1]  # fn_y
     if cell_loctoglob.shape[0] != 0:
-      ghost_info[cmp, 10] = reinterpret_int32_as_float_func(cell_loctoglob[cid]) # global_id of local cell
+      ghost_info[cmp, 10] = _reinterpret_int32_as_float32(cell_loctoglob[cid]) # global_id of local cell
     cmp += 1
 
-def _create_ghost_info_3d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', ghost_info: 'float[:, :]', start: 'int', reinterpret_int32_as_float_func):
+def _create_ghost_info_3d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', ghost_info: 'float[:, :]', start: 'int'):
   # ghost_info [0=bc, 1=bf, 2=ghostcenter_x, 3=ghostcenter_y, 4=ghostcenter_z, 5=gamma, 6=face_oldname, 7=face_center_x, 8=face_center_y, 9=face_center_z, 10=face_normal_x, 11=face_normal_y, 12=face_normal_z]
 
 
@@ -690,13 +708,13 @@ def _create_ghost_info_3d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', ce
     n = face_normal[fid] / face_measure[i]
     gamma = np.dot(u, n)
 
-    ghost_info[cmp, 0] = reinterpret_int32_as_float_func(cid)
-    ghost_info[cmp, 1] = reinterpret_int32_as_float_func(bf)
+    ghost_info[cmp, 0] = _reinterpret_int32_as_float32(cid)
+    ghost_info[cmp, 1] = _reinterpret_int32_as_float32(bf)
     ghost_info[cmp, 2] = ghostcenter[0]
     ghost_info[cmp, 3] = ghostcenter[1]
     ghost_info[cmp, 4] = ghostcenter[2]
     ghost_info[cmp, 5] = gamma
-    ghost_info[cmp, 6] = reinterpret_int32_as_float_func(face_oldname[fid])
+    ghost_info[cmp, 6] = _reinterpret_int32_as_float32(face_oldname[fid])
     ghost_info[cmp, 7] = face_center[fid, 0]  # fc_x
     ghost_info[cmp, 8] = face_center[fid, 1]  # fc_y
     ghost_info[cmp, 9] = face_center[fid, 2]  # fc_z
@@ -704,21 +722,21 @@ def _create_ghost_info_3d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', ce
     ghost_info[cmp, 11] = face_normal[fid, 1]  # fn_y
     ghost_info[cmp, 12] = face_normal[fid, 2]  # fn_z
     if cell_loctoglob.shape[0] != 0:
-      ghost_info[cmp, 13] = reinterpret_int32_as_float_func(cell_loctoglob[cid]) # global_id of local cell
+      ghost_info[cmp, 13] = _reinterpret_int32_as_float32(cell_loctoglob[cid]) # global_id of local cell
     cmp += 1
 
-def _get_ghost_tables_size(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_nb_ghostid: 'int[:]', start: 'int', end: 'int', reinterpret_float_as_int32):
+def _get_ghost_tables_size(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_nb_ghostid: 'int[:]', start: 'int', end: 'int'):
 
   for i in range(start, end):
-    bc = reinterpret_float_as_int32(ghost_info[i, 0])
-    bf = reinterpret_float_as_int32(ghost_info[i, 1])
+    bc = _reinterpret_float32_as_int32(ghost_info[i, 0])
+    bf = _reinterpret_float32_as_int32(ghost_info[i, 1])
     fid = cell_faceid[bc, bf]
     for j in range(faces[fid, -1]):
       nid = faces[fid, j]
       node_nb_ghostid[nid] += 1
 
 
-def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int', reinterpret_float_as_int32, reinterpret_int32_as_float):
+def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
   # node_ghostid
   # node_ghostcenter
   # face_ghostcenter
@@ -737,8 +755,8 @@ def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
     face_normal_x = ghost_info[i, 8]
     face_normal_y = ghost_info[i, 9]
 
-    tmp_bc = reinterpret_float_as_int32(bc)
-    tmp_bf = reinterpret_float_as_int32(bf)
+    tmp_bc = _reinterpret_float32_as_int32(bc)
+    tmp_bf = _reinterpret_float32_as_int32(bf)
     fid = cell_faceid[tmp_bc, tmp_bf]
 
     # face_ghostcenter
@@ -757,14 +775,14 @@ def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
       node_ghostcenter[nid, size, 1] = ghostcenter_y
       node_ghostcenter[nid, size, 2] = bc
       node_ghostcenter[nid, size, 3] = face_oldname # face_old_name
-      node_ghostcenter[nid, size, 4] = reinterpret_int32_as_float(fid)
+      node_ghostcenter[nid, size, 4] = _reinterpret_int32_as_float32(fid)
 
       node_ghostfaceinfo[nid, size, 0] = face_center_x
       node_ghostfaceinfo[nid, size, 1] = face_center_y
       node_ghostfaceinfo[nid, size, 2] = face_normal_x
       node_ghostfaceinfo[nid, size, 3] = face_normal_y
 
-def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int', reinterpret_float_as_int32, reinterpret_int32_as_float):
+def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
 
   for i in range(start, end):
     bc = ghost_info[i, 0]
@@ -781,8 +799,8 @@ def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
     face_normal_y = ghost_info[i, 11]
     face_normal_z = ghost_info[i, 12]
 
-    tmp_bc = reinterpret_float_as_int32(bc)
-    tmp_bf = reinterpret_float_as_int32(bf)
+    tmp_bc = _reinterpret_float32_as_int32(bc)
+    tmp_bf = _reinterpret_float32_as_int32(bf)
     fid = cell_faceid[tmp_bc, tmp_bf]
 
 
@@ -804,7 +822,7 @@ def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
       node_ghostcenter[nid, size, 2] = ghostcenter_z
       node_ghostcenter[nid, size, 3] = bc
       node_ghostcenter[nid, size, 4] = face_oldname # face_old_name
-      node_ghostcenter[nid, size, 5] = reinterpret_int32_as_float(fid)
+      node_ghostcenter[nid, size, 5] = _reinterpret_int32_as_float32(fid)
 
       node_ghostfaceinfo[nid, size, 0] = face_center_x
       node_ghostfaceinfo[nid, size, 1] = face_center_y
@@ -918,7 +936,7 @@ def _search_halo_cell(node_halo_cells: 'int[:]', halo_haloext: 'int[:, :]', item
       return n_halo_cell
   raise RuntimeError(f"{item} must be in halo_haloext of node_halo_cells {node_halo_cells}")
 
-def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]', reinterpret_float_as_int32, reinterpret_int32_as_float):
+def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
   """
   * cell_haloghostcenter [[g_x, g_y]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -948,14 +966,14 @@ def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       hg_id = node_halobfid[bn, j] # halo_ghost_index
       node_haloghostid[bn, j] = ghost_new_index[hg_id]
 
-      cell_global_id = reinterpret_float_as_int32(ghost_info[hg_id, 10])
+      cell_global_id = _reinterpret_float32_as_int32(ghost_info[hg_id, 10])
       cell_haloext_id = _search_halo_cell(node_haloid[bn], halo_halosext, cell_global_id)
 
       node_haloghostcenter[bn, j, 0] = ghost_info[hg_id, 2] # g_x
       node_haloghostcenter[bn, j, 1] = ghost_info[hg_id, 3] # g_y
-      node_haloghostcenter[bn, j, 2] = reinterpret_int32_as_float(cell_haloext_id) # index point to halo_halosext of cell_global_id
+      node_haloghostcenter[bn, j, 2] = _reinterpret_int32_as_float32(cell_haloext_id) # index point to halo_halosext of cell_global_id
       node_haloghostcenter[bn, j, 3] = ghost_info[hg_id, 5] #face_old_name
-      node_haloghostcenter[bn, j, 4] = reinterpret_int32_as_float(ghost_new_index[hg_id]) # index point to cell_haloghostcenter
+      node_haloghostcenter[bn, j, 4] = _reinterpret_int32_as_float32(ghost_new_index[hg_id]) # index point to cell_haloghostcenter
 
       node_haloghostfaceinfo[bn, j, 0] = ghost_info[hg_id, 6] # fc_x
       node_haloghostfaceinfo[bn, j, 1] = ghost_info[hg_id, 7] # fc_y
@@ -963,7 +981,7 @@ def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       node_haloghostfaceinfo[bn, j, 3] = ghost_info[hg_id, 9] # fn_y
     node_haloghostid[bn, -1] = node_halobfid[bn, -1]
 
-def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]', reinterpret_float_as_int32, reinterpret_int32_as_float):
+def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
   """
   * cell_haloghostcenter [[g_x, g_y, g_z]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -994,15 +1012,15 @@ def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       hg_id = node_halobfid[bn, j] # halo_ghost_index
       node_haloghostid[bn, j] = ghost_new_index[hg_id]
 
-      cell_global_id = reinterpret_float_as_int32(ghost_info[hg_id, 13])
+      cell_global_id = _reinterpret_float32_as_int32(ghost_info[hg_id, 13])
       cell_haloext_id = _search_halo_cell(node_haloid[bn], halo_halosext, cell_global_id)
 
       node_haloghostcenter[bn, j, 0] = ghost_info[hg_id, 2] # g_x
       node_haloghostcenter[bn, j, 1] = ghost_info[hg_id, 3] # g_y
       node_haloghostcenter[bn, j, 2] = ghost_info[hg_id, 4] # g_z
-      node_haloghostcenter[bn, j, 3] = reinterpret_int32_as_float(cell_haloext_id) # index point to halo_halosext of cell_global_id
+      node_haloghostcenter[bn, j, 3] = _reinterpret_int32_as_float32(cell_haloext_id) # index point to halo_halosext of cell_global_id
       node_haloghostcenter[bn, j, 4] = ghost_info[hg_id, 6] #face_old_name
-      node_haloghostcenter[bn, j, 5] = reinterpret_int32_as_float(ghost_new_index[hg_id]) # index point to cell_haloghostcenter
+      node_haloghostcenter[bn, j, 5] = _reinterpret_int32_as_float32(ghost_new_index[hg_id]) # index point to cell_haloghostcenter
 
       node_haloghostfaceinfo[bn, j, 0] = ghost_info[hg_id, 7] # fc_x
       node_haloghostfaceinfo[bn, j, 1] = ghost_info[hg_id, 8] # fc_y
@@ -1588,24 +1606,6 @@ def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', f
 # #########################################################
 # #########################################################
 
-def _reinterpret_int32_as_float32(i):
-  return np.int32(i).view(np.float32)
-
-def _reinterpret_int32_as_float64(i):
-  return np.int64(i).view(np.float64)
-
-def _reinterpret_float32_as_int32(i):
-  return np.float32(i).view(np.int32)
-
-def _reinterpret_float64_as_int32(i):
-  return np.int32(np.float64(i).view(np.int64))
-
-# #########################################################
-# #########################################################
-# #########################################################
-# #########################################################
-# #########################################################
-
 def compile(func):
   # return func
   return numba.jit(nopython=True, fastmath=True, cache=True)(func)
@@ -1625,6 +1625,9 @@ _triangle_normal_3d = compile(_triangle_normal_3d)
 _get_face_name = compile(_get_face_name)
 _distance_2d = compile(_distance_2d)
 _search_halo_cell = compile(_search_halo_cell)
+_reinterpret_int32_as_float32= compile(_reinterpret_int32_as_float32)
+_reinterpret_float32_as_int32= compile(_reinterpret_float32_as_int32)
+
 
 # public
 append = compile(_append)
@@ -1666,10 +1669,7 @@ create_halo_ghost_tables_3d = compile(_create_halo_ghost_tables_3d)
 create_normal_face_of_cell_2d = compile(_create_normal_face_of_cell_2d)
 dist_ortho_function_2d = compile(_dist_ortho_function_2d)
 
-reinterpret_int32_as_float32= compile(_reinterpret_int32_as_float32)
-reinterpret_float32_as_int32= compile(_reinterpret_float32_as_int32)
-reinterpret_int32_as_float64= compile(_reinterpret_int32_as_float64)
-reinterpret_float64_as_int32= compile(_reinterpret_float64_as_int32)
+
 
 get_max_b_ncellid = compile(_get_max_b_ncellid)
 create_b_ncellid = compile(_create_b_ncellid)
