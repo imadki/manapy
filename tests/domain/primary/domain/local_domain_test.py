@@ -29,7 +29,11 @@ local_domain_data = domain.c_create_sub_domains(4)
 
 # print(local_domain_data[0].node_oldname)
 
+print(local_domain_data[0].nodes.dtype)
+print(local_domain_data[0].node_halos.dtype)
+
 local_domains = LocalDomain.create_local_domains(local_domain_data)
 
-log_step.print_resutls()
+
+#log_step.print_resutls()
 

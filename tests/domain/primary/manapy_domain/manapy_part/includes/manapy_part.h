@@ -13,9 +13,26 @@
 #include <algorithm>
 #include <stdarg.h>
 
-typedef npy_float32 fdx_t;
-constexpr int int_type = NPY_INT32;
-constexpr int float_type = NPY_FLOAT32;
+#ifndef MODULE_NAME
+# define MODULE_NAME "manapy_part32"
+#endif
+
+// Convert macro to string
+#define _STR(x) #x
+#define STR(x) _STR(x)
+
+#ifndef FLOAT_TYPE
+  #define FLOAT_TYPE NPY_FLOAT32
+#endif
+
+#ifndef FDX_T
+  #define FDX_T npy_float32
+#endif
+
+typedef FDX_T fdx_t;
+const int float_type = FLOAT_TYPE;
+const int int_type = NPY_INT32;
+
 
 enum CELL_TYPE {
     Triangle = 1,

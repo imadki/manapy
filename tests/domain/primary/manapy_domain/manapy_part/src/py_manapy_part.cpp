@@ -615,6 +615,7 @@ int  create_sub_domains(PyArrayObject *graph,
             map_bf_recv[vec_shared_bf_recv[i]] = (idx_t)i;
         }
 
+
 // ++++++++++++++++++++++++++++++++++++++
         // Create tables
 // ++++++++++++++++++++++++++++++++++++++
@@ -626,7 +627,6 @@ int  create_sub_domains(PyArrayObject *graph,
             PyErr_SetString(PyExc_MemoryError, "Failed to allocate NumPy array");
             return -1;
         }
-
 
         idx_t *l_cells_data = (idx_t *)PyArray_DATA(local_domains[p].cells);
         idx_t *l_cells_type_data = (idx_t *)PyArray_DATA(local_domains[p].cells_type);
@@ -643,7 +643,6 @@ int  create_sub_domains(PyArrayObject *graph,
         idx_t *l_bf_recv_part_size_data = (idx_t *)PyArray_DATA(local_domains[p].bf_recv_part_size);
         idx_t *l_halo_halosext_data = (idx_t *)PyArray_DATA(local_domains[p].halo_halosext);
         idx_t *l_halo_halosint_data = (idx_t *)PyArray_DATA(local_domains[p].halo_halosint);
-
 
         // # Cells, CellsType, CellsLocToGlob
         //print_instant("Cells, CellsType, CellsLocToGlob\n");
@@ -1074,23 +1073,31 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
 }
 
 /* -------- module definition --------------------------------------- */
+// ----------------- Method Table -----------------------
 static PyMethodDef ManapyMethods[] = {
-    { "make_n_part", py_make_n_part, METH_VARARGS, nullptr },
-    { "create_sub_domains", py_create_sub_domains, METH_VARARGS, nullptr },
-    { nullptr, nullptr, 0, nullptr }
+    { "make_n_part", py_make_n_part, METH_VARARGS, NULL },
+    { "create_sub_domains", py_create_sub_domains, METH_VARARGS, NULL },
+    { NULL, NULL, 0, NULL }
 };
 
+// ----------------- Module Definition -----------------------
 static struct PyModuleDef manapy_module = {
     PyModuleDef_HEAD_INIT,
-    "manapy_domain",  /* m_name */
-    "Manapy domain partitioning helpers (METIS-backed)", /* m_doc */
-    -1,                /* m_size */
-    ManapyMethods      /* m_methods */
+    STR(MODULE_NAME),    // dynamic module name
+    "Manapy domain partitioning helpers (METIS-backed)",
+    -1,
+    ManapyMethods
 };
 
-PyMODINIT_FUNC PyInit_manapy_domain(void)
+// ----------------- Dynamic Init Function -----------------------
+#define INIT_FUNC_NAME(module) PyInit_##module
+#define MAKE_INIT_FUNC(module) INIT_FUNC_NAME(module)
+
+PyMODINIT_FUNC MAKE_INIT_FUNC(MODULE_NAME)(void)
 {
-    import_array(); /* initialise NumPy C-API */
+    import_array();  // initialize NumPy C-API
     return PyModule_Create(&manapy_module);
 }
+
+
 

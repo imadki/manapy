@@ -4,14 +4,21 @@ from numba.typed import Dict
 from numba import types
 
 
+# def _reinterpret_int32_as_float32(i):
+#   return np.int32(i).view(np.float32)
+#
+# def _reinterpret_float32_as_int32(i):
+#   return np.float32(i).view(np.int32)
+
 def _reinterpret_int32_as_float32(i):
   return np.int32(i).view(np.float32)
+
+def _reinterpret_float32_as_int32(i):
+  return np.float32(i).view(np.int32)
 
 # def _reinterpret_int32_as_float64(i):
 #   return np.int64(i).view(np.float64)
 
-def _reinterpret_float32_as_int32(i):
-  return np.float32(i).view(np.int32)
 
 # def _reinterpret_float64_as_int32(i):
 #   return np.int32(np.float64(i).view(np.int64))
