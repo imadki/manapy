@@ -382,6 +382,68 @@ int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     return 0;
 }
 
+int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_nodes, idx_t nb_part, idx_t n_common, idx_t **part_vert) {
+    idx_t *eptr;
+    idx_t *eind;
+    idx_t ne;
+    idx_t deg_sum;
+    idx_t objval;
+    idx_t ret;
+    idx_t options[METIS_NOPTIONS];
+
+    print_instant("dense to csr");
+    if (dense_to_csr(cells, &eptr, &eind, &ne, &deg_sum) < 0)
+        return -1;
+
+    idx_t *part_idx = (idx_t *)malloc(sizeof(idx_t) * ne);
+    idx_t *npart = (idx_t *)malloc(sizeof(idx_t) * nb_nodes);
+    if (part_idx == nullptr || npart == nullptr) {
+        free(eptr);
+        free(eind);
+        free(part_idx);
+        PyErr_SetString(PyExc_MemoryError, "malloc failed");
+        return -1;
+    }
+
+
+    print_instant("METIS_PartMeshDual");
+
+    METIS_SetDefaultOptions(options);
+    options[METIS_OPTION_NUMBERING] = 0; // C-style indexing (0-based)
+    // options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT; // or METIS_OBJTYPE_VOL
+    // options[METIS_OPTION_CONTIG] = 1; // enforce contiguous partitions
+
+    ret = METIS_PartMeshDual(
+        &ne, // number of elements
+        &nb_nodes, // number of nodes
+        eptr, // element pointer array (CSR-style)
+        eind, // element connectivity (node indices)
+        nullptr, // vwgt optional: weights for elements
+        nullptr, // vsize optional: sizes for elements
+        &n_common, // number of common nodes to define adjacency
+        &nb_part, // number of partitions
+        nullptr,  // tpwgts optional: target partition weights
+        options, // array of options
+        &objval, // output: edgecut or communication volume
+        part_idx, // output: element partition assignment
+        npart // output: node partition assignment
+        );
+
+    free(eptr);
+    free(eind);
+    free(npart);
+
+    if (ret != METIS_OK) {
+        free(part_idx);
+        PyErr_Format(PyExc_RuntimeError, "METIS_PartGraphKway failed (status=%d)", ret);
+        return -1;
+    }
+
+    // Return
+    *part_vert = part_idx;
+    //print_instant("End function\n");
+    return 0;
+}
 
 int  create_sub_domains(PyArrayObject *graph,
             PyArrayObject *node_cellid,
@@ -936,6 +998,51 @@ static PyObject *py_make_n_part(PyObject *self, PyObject *args) {
     return ret_data;
 }
 
+static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
+    PyObject *cells_obj = nullptr;
+    int nb_nodes = 0;
+    int nb_parts = 0;
+    int n_common = 0;
+
+    if (!PyArg_ParseTuple(args, "Oiii", &cells_obj, &nb_nodes, &nb_parts, &n_common))
+        return nullptr;
+    if (nb_parts < 2) {
+        PyErr_SetString(PyExc_ValueError, "nb_parts must be ≥ 2");
+        return nullptr;
+    }
+
+    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT64, NPY_ARRAY_IN_ARRAY);
+    if (!cells)
+        return nullptr;
+
+    idx_t *part_vert = nullptr;
+    idx_t ret;
+
+    print_instant("Start Creating partitioning make_n_part_mesh_dual \n");
+    ret = make_n_part_mesh_dual(cells, nb_nodes, nb_parts, n_common, &part_vert);
+    if (ret == -1) {
+        Py_DECREF(cells);
+        return nullptr;
+    }
+
+
+    const npy_intp dims[1] = { PyArray_DIMS(cells)[0] };
+    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, int_type, part_vert);
+    if (!part_array) {
+        Py_DECREF(cells);
+        free(part_array);
+        return nullptr;
+    }
+    PyArray_ENABLEFLAGS((PyArrayObject *)part_array, NPY_ARRAY_OWNDATA);
+    Py_DECREF(cells);
+
+    PyObject *ret_data = Py_BuildValue("O", part_array);
+    if (!ret_data)
+        Py_DECREF(part_array);
+    return ret_data;
+}
+
+
 static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
     // TODO check numpy type and dimension
     PyObject *graph_obj = nullptr;
@@ -1074,9 +1181,72 @@ static PyObject *py_create_sub_domains(PyObject *self, PyObject *args) {
 
 /* -------- module definition --------------------------------------- */
 // ----------------- Method Table -----------------------
+
+static const char *doc_make_n_part =
+    "make_n_part(graph, nb_part) -> np.ndarray\n"
+    "\n"
+    "Partition a graph into `nb_part` parts using METIS.\n"
+    "\n"
+    "Parameters\n"
+    "----------\n"
+    "graph : numpy.ndarray\n"
+    "    2D adjacency matrix.\n"
+    "nb_part : int\n"
+    "    Number of partitions.\n"
+    "\n"
+    "Returns\n"
+    "-------\n"
+    "numpy.ndarray\n"
+    "    Array of partition IDs for each vertex.";
+
+static const char *doc_make_n_part_mesh_dual =
+    "make_n_part(cells, nb_nodes, nb_parts, n_common) -> np.ndarray\n"
+    "\n"
+    "Partition a mesh into `nb_part` parts using METIS.\n"
+    "\n"
+    "Parameters\n"
+    "----------\n"
+    "cells : numpy.ndarray\n"
+    "nb_nodes : int\n"
+    "nb_parts : int\n"
+    "n_common : int\n"
+    "\n"
+    "Returns\n"
+    "-------\n"
+    "numpy.ndarray\n"
+    "    Array of partition IDs for each vertex.";
+
+static const char *doc_create_sub_domains =
+    "create_sub_domains(graph, node_cellid, node_bfid, bf_cellid, cells,\n"
+    "                   cell_cellnid, cells_type, nodes, phy_faces,\n"
+    "                   phy_faces_name, nb_part) -> tuple\n"
+    "\n"
+    "Partition mesh into subdomains and return partitioned data.\n"
+    "\n"
+    "Parameters\n"
+    "----------\n"
+    "graph : numpy.ndarray\n"
+    "    Graph representation of the domain.\n"
+    "node_cellid, node_bfid, bf_cellid : numpy.ndarray\n"
+    "    Mappings between nodes, boundary faces, and cells.\n"
+    "cells, cell_cellnid, cells_type, nodes : numpy.ndarray\n"
+    "    Mesh topology and geometry arrays.\n"
+    "phy_faces, phy_faces_name : numpy.ndarray\n"
+    "    Physical boundary information.\n"
+    "nb_part : int\n"
+    "    Number of partitions.\n"
+    "\n"
+    "Returns\n"
+    "-------\n"
+    "tuple\n"
+    "    Partitioned domain data.";
+
+
+
 static PyMethodDef ManapyMethods[] = {
-    { "make_n_part", py_make_n_part, METH_VARARGS, NULL },
-    { "create_sub_domains", py_create_sub_domains, METH_VARARGS, NULL },
+    { "make_n_part", py_make_n_part, METH_VARARGS, doc_make_n_part },
+    { "create_sub_domains", py_create_sub_domains, METH_VARARGS, doc_create_sub_domains },
+    { "make_n_part_mesh_dual", py_make_n_part_mesh_dual, METH_VARARGS, doc_make_n_part_mesh_dual },
     { NULL, NULL, 0, NULL }
 };
 

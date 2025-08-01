@@ -18,7 +18,7 @@ for ((m=10; m<=300; m+=10)); do
 
 
     mesh_name="$mesh_folder""/tetra_test_$m.msh"
-    domain_time=$(python3 benchmark.py "$mesh_name" "$number_of_cells" | grep "=99>")
+    domain_time=$(python3 benchmark_new_domain.py "$mesh_name" "$number_of_cells" | grep "=99>")
     echo "$domain_time"
     echo "$domain_time" >> $result_file
 
