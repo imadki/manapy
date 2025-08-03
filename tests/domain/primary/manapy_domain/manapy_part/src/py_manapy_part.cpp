@@ -445,7 +445,7 @@ int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_nodes, idx_t nb_part, i
     return 0;
 }
 
-int  create_sub_domains(PyArrayObject *graph,
+int  create_sub_domains(PyArrayObject *part_vert_obj,
             PyArrayObject *node_cellid,
             PyArrayObject *node_bfid,
             PyArrayObject *bf_cellid,
@@ -458,21 +458,12 @@ int  create_sub_domains(PyArrayObject *graph,
             idx_t nb_parts,
             LocalDomainStruct *local_domains
             ) {
-    idx_t *part_vert = nullptr;
+    idx_t *part_vert = (idx_t *)PyArray_DATA(part_vert_obj);
     idx_t ret;
 
 
 
-    // Allocate phy_part_vert
-    const idx_t nb_phy_faces = PyArray_DIMS(phy_faces)[0];
 
-    // Make n part
-    log_step("");
-    ret = make_n_part(graph, nb_parts, &part_vert);
-    if (ret == -1) {
-        return -1;
-    }
-    log_step("Make n part");
 
 #pragma region Create local cells and nodes, map_halos
     log_step("");
