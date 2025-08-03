@@ -553,7 +553,7 @@ def _create_info(
   cell_cellfid: 'int[:, :]',
   faces_counter: 'int[:]',
   bf_cellid: 'int[:]',
-  part_size: 'int'
+  node_phyid: 'int'
 ):
   """
     - Create faces
@@ -630,13 +630,22 @@ def _create_info(
         #cell_cellfid[i, j] = intersect_cells[1]
         cell_cellfid[i, size] = intersect_cells[1]
         cell_cellfid[i, -1] += 1
-      elif part_size == 1:
-        # works only if there is one partition
-        if cmp == len(bf_cellid):
-          raise RuntimeError("Number of physical faces does not match number of boundary faces !")
-        bf_cellid[cmp, 0] = i
-        bf_cellid[cmp, 1] = j
-        cmp += 1
+      else:
+        # make sure that this face is a physical face
+        _intersect_nodes(tmp_cell_faces[j], tmp_size_info[j], node_phyid, intersect_cells)
+        if intersect_cells[0] != -1:
+          if cmp == len(bf_cellid):
+            raise RuntimeError("Number of physical faces does not match number of boundary faces !")
+          bf_cellid[cmp, 0] = i
+          bf_cellid[cmp, 1] = j
+          cmp += 1
+      # elif part_size == 1:
+      #   # works only if there is one partition
+      #   if cmp == len(bf_cellid):
+      #     raise RuntimeError("Number of physical faces does not match number of boundary faces !")
+      #   bf_cellid[cmp, 0] = i
+      #   bf_cellid[cmp, 1] = j
+      #   cmp += 1
 
 
 
@@ -1614,8 +1623,8 @@ def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', f
 # #########################################################
 
 def compile(func):
-  # return func
-  return numba.jit(nopython=True, fastmath=True, cache=True)(func)
+  return func
+  #return numba.jit(nopython=True, fastmath=True, cache=True)(func)
 def rcompile(func):
   return func
 

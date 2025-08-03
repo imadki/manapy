@@ -461,7 +461,7 @@ class GlobalDomain:
     log_step()
 
     log_step("node_bfid")  # node_boundary_face_id
-    node_bfid = self.create_node_bfid(bf_nodes, self.nb_nodes)
+    node_bfid = self.create_node_bfid(self.phy_faces, self.nb_nodes)
     log_step()
 
     log_step("Start creating sub domains")
@@ -470,8 +470,10 @@ class GlobalDomain:
     if self.float_precision == 'float64':
       manapy_domain = manapy_domain64
 
+    part_vert = manapy_domain.make_n_part(cell_cellfid, nb_parts)
+
     res = manapy_domain.create_sub_domains(
-      cell_cellfid,
+      part_vert,
       node_cellid,
       node_bfid,
       bf_cellid,
@@ -1050,6 +1052,9 @@ class LocalDomain:
     faces_counter = np.zeros(shape=1, dtype=np.int32)
 
 
+    node_phyid = GlobalDomain.create_node_cellid(self.phy_faces, self.nb_nodes)
+    node_phyid[:, -1].sort()
+
     create_info(
       cells,
       node_cellid,
@@ -1063,14 +1068,14 @@ class LocalDomain:
       cell_cellfid,
       faces_counter,
       bf_cellid,
-      self.size
+      node_phyid
     )
 
     faces = faces[:faces_counter[0]]
     face_cellid = face_cellid[:faces_counter[0]]
 
-    if self.size != 1:
-      bf_cellid = origin_bf_cellid
+    # if self.size != 1:
+    #   bf_cellid = origin_bf_cellid
 
     return (
       faces,
