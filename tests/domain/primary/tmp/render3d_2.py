@@ -28,7 +28,7 @@ size = 1
 mesh = Mesh(mesh_path, dim)
 domain = Domain(mesh, float_precision)
 nb_parts = 4
-local_domains = domain.create_sub_domains(nb_parts)
+local_domains = domain._create_sub_domains(nb_parts)
 
 ##########################################
 ##########################################
