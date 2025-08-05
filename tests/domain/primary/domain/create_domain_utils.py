@@ -551,9 +551,7 @@ def _create_info(
   cell_faceid: 'int[:, :]',
   face_cellid: 'int[:, :]',
   cell_cellfid: 'int[:, :]',
-  faces_counter: 'int[:]',
-  bf_cellid: 'int[:]',
-  node_phyid: 'int'
+  faces_counter: 'int[:]'
 ):
   """
     - Create faces
@@ -630,35 +628,20 @@ def _create_info(
         #cell_cellfid[i, j] = intersect_cells[1]
         cell_cellfid[i, size] = intersect_cells[1]
         cell_cellfid[i, -1] += 1
-      else:
-        # make sure that this face is a physical face
-        _intersect_nodes(tmp_cell_faces[j], tmp_size_info[j], node_phyid, intersect_cells)
-        if intersect_cells[0] != -1:
-          if cmp == len(bf_cellid):
-            raise RuntimeError("Number of physical faces does not match number of boundary faces !")
-          bf_cellid[cmp, 0] = i
-          bf_cellid[cmp, 1] = j
-          cmp += 1
-      # elif part_size == 1:
-      #   # works only if there is one partition
-      #   if cmp == len(bf_cellid):
-      #     raise RuntimeError("Number of physical faces does not match number of boundary faces !")
-      #   bf_cellid[cmp, 0] = i
-      #   bf_cellid[cmp, 1] = j
-      #   cmp += 1
 
 
 
-def _get_bf_recv_part_info(bf_recv_part_size: 'int[:]', rank: 'int', part_info: 'int[:]'):
+
+def _get_bf_recv_part_info(phyid_recv_part_size: 'int[:]', rank: 'int', part_info: 'int[:]'):
   start = 0
   size = -1
-  for i in range(0, len(bf_recv_part_size), 2):
-    if bf_recv_part_size[i] == rank:
-      size = bf_recv_part_size[i + 1]
+  for i in range(0, len(phyid_recv_part_size), 2):
+    if phyid_recv_part_size[i] == rank:
+      size = phyid_recv_part_size[i + 1]
       break
-    start += bf_recv_part_size[i + 1]
+    start += phyid_recv_part_size[i + 1]
   if size == -1:
-    raise RuntimeError(f"Partition {rank} not found in {bf_recv_part_size}")
+    raise RuntimeError(f"Partition {rank} not found in {phyid_recv_part_size}")
   
   part_info[0] = start
   part_info[1] = size
@@ -668,6 +651,31 @@ def _get_bf_recv_part_info(bf_recv_part_size: 'int[:]', rank: 'int', part_info: 
 # #########################################################
 # #########################################################
 # #########################################################
+
+def _create_bf_cellid(phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, node_faceid, cell_faceid, intersect, start, end, bf_cellid):
+  counter = 0
+  for i in range(start, end):
+    phyid = phyid_recv[i]
+    phy_face = phy_faces[phyid]
+    size = phy_face[-1]
+    _intersect_nodes(phy_face, size, node_cellid, intersect)
+    cellid = intersect[0]
+    _intersect_nodes(phy_face, size, node_faceid, intersect)
+    faceid = intersect[0]
+    if cellid == -1:
+      raise RuntimeError("cellid must exist for a physical face")
+    if faceid == -1:
+      raise RuntimeError("faceid must exist for a physical face")
+    face_index = -1
+    for j in range(cell_faceid[cellid, -1]):
+      if cell_faceid[cellid, j] == faceid:
+        face_index = j
+        break
+    if face_index == -1:
+      raise RuntimeError("faceid must exist in cell_faceid")
+    bf_cellid[counter, 0] = cellid
+    bf_cellid[counter, 1] = face_index
+    counter += 1
 
 def _create_ghost_info_2d(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', ghost_info: 'float[:, :]', start: 'int'):
   # ghost_info [0=bc, 1=bf, 2=ghostcenter_x, 3=ghostcenter_y, 4=gamma, 5=face_oldname, 6=face_center_x, 7=face_center_y, 8=face_normal_x, 9=face_normal_y]
@@ -871,7 +879,7 @@ def _create_cell_ghostnid(cells: 'int[:, :]', node_ghostid: 'int[:, :]', ghost_i
           cell_ghostnid[i, -1] += 1
           cell_ghostnid[i, size] = g_id
 
-def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halobfid: 'int[:, :]', i_visited: 'int[:]'):
+def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halophyid: 'int[:, :]', i_visited: 'int[:]'):
 
   max_counter = 0
   for i in range(b_ncellid.shape[0]):
@@ -879,7 +887,7 @@ def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_h
     cell = cells[bc]
     counter = 0
     for j in range(cell[-1]):
-      node_nbf = node_halobfid[cell[j]]
+      node_nbf = node_halophyid[cell[j]]
       for k in range(node_nbf[-1]):
         if i_visited[node_nbf[k]] != i:
           i_visited[node_nbf[k]] = i
@@ -888,7 +896,7 @@ def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_h
   return max_counter
 
 
-def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halobfid: 'int[:, :]', i_visited: 'int[:]', bcell_halobfid: 'int[:, :]'):
+def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halophyid: 'int[:, :]', i_visited: 'int[:]', bcell_halobfid: 'int[:, :]'):
 
   for i in range(b_ncellid.shape[0]):
     bc = b_ncellid[i]
@@ -897,7 +905,7 @@ def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halo
     bcell_halobfid[i, 0] = bc
     counter = 1
     for j in range(cell[-1]):
-      node_nbf = node_halobfid[cell[j]]
+      node_nbf = node_halophyid[cell[j]]
       for k in range(node_nbf[-1]):
         if i_visited[node_nbf[k]] != i:
           i_visited[node_nbf[k]] = i
@@ -930,6 +938,7 @@ def _create_b_ncellid(b_nodeid, node_cellid, b_visited, b_ncellid):
 
 
 def _create_ghost_new_index(ghost_part_size: 'int[:]', ghost_new_index: 'int[:]'):
+
   start = ghost_part_size[0]
   end = start + ghost_part_size[1]
   cmp = 0
@@ -952,7 +961,7 @@ def _search_halo_cell(node_halo_cells: 'int[:]', halo_haloext: 'int[:, :]', item
       return n_halo_cell
   raise RuntimeError(f"{item} must be in halo_haloext of node_halo_cells {node_halo_cells}")
 
-def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
+def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halophyid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
   """
   * cell_haloghostcenter [[g_x, g_y]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -978,8 +987,8 @@ def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
 
   for i in range(len(b_nodeid)):
     bn = b_nodeid[i]
-    for j in range(node_halobfid[bn, -1]):
-      hg_id = node_halobfid[bn, j] # halo_ghost_index
+    for j in range(node_halophyid[bn, -1]):
+      hg_id = node_halophyid[bn, j] # halo_ghost_index
       node_haloghostid[bn, j] = ghost_new_index[hg_id]
 
       cell_global_id = _reinterpret_float32_as_int32(ghost_info[hg_id, 10])
@@ -995,9 +1004,9 @@ def _create_halo_ghost_tables_2d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       node_haloghostfaceinfo[bn, j, 1] = ghost_info[hg_id, 7] # fc_y
       node_haloghostfaceinfo[bn, j, 2] = ghost_info[hg_id, 8] # fn_x
       node_haloghostfaceinfo[bn, j, 3] = ghost_info[hg_id, 9] # fn_y
-    node_haloghostid[bn, -1] = node_halobfid[bn, -1]
+    node_haloghostid[bn, -1] = node_halophyid[bn, -1]
 
-def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halobfid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
+def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:, :]', b_nodeid: 'int[:]', node_halophyid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_new_index: 'int[:]', cell_haloghostnid: 'int[:, :]', cell_haloghostcenter: 'float[:, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:, :, :]', node_haloghostfaceinfo: 'float[:, :, :]'):
   """
   * cell_haloghostcenter [[g_x, g_y, g_z]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -1024,8 +1033,8 @@ def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
 
   for i in range(len(b_nodeid)):
     bn = b_nodeid[i]
-    for j in range(node_halobfid[bn, -1]):
-      hg_id = node_halobfid[bn, j] # halo_ghost_index
+    for j in range(node_halophyid[bn, -1]):
+      hg_id = node_halophyid[bn, j] # halo_ghost_index
       node_haloghostid[bn, j] = ghost_new_index[hg_id]
 
       cell_global_id = _reinterpret_float32_as_int32(ghost_info[hg_id, 13])
@@ -1044,7 +1053,7 @@ def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
       node_haloghostfaceinfo[bn, j, 3] = ghost_info[hg_id, 10] # fn_x
       node_haloghostfaceinfo[bn, j, 4] = ghost_info[hg_id, 11] # fn_y
       node_haloghostfaceinfo[bn, j, 5] = ghost_info[hg_id, 12] # fn_z
-    node_haloghostid[bn, -1] = node_halobfid[bn, -1]
+    node_haloghostid[bn, -1] = node_halophyid[bn, -1]
 
 
 
@@ -1689,3 +1698,4 @@ dist_ortho_function_2d = compile(_dist_ortho_function_2d)
 
 get_max_b_ncellid = compile(_get_max_b_ncellid)
 create_b_ncellid = compile(_create_b_ncellid)
+create_bf_cellid = compile(_create_bf_cellid)
