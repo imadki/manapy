@@ -198,35 +198,30 @@ class GlobalDomain:
     return cell_cellnid
 
   @staticmethod
-  def _create_cellfid_bf_info(
+  def _create_cellfid(
     cells: 'int[:, :]',
     node_cellid: 'int[:, :]',
     cell_type: 'int[:]',
     max_cell_faceid: 'int',
-    max_face_nodeid: 'int',
-    nb_phy_faces: 'int'
+    max_face_nodeid: 'int'
   ):
     nb_cells = len(cells)
-    tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
-    tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
+    # tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
+    # tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
     cell_cellfid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
-    bf_cellid = np.zeros(shape=(nb_phy_faces, 2), dtype=np.int32)
-    bf_nodes = np.zeros(shape=(nb_phy_faces, max_face_nodeid + 1), dtype=np.int32)
 
-    create_cellfid_and_bf_info(
+    create_cellfid(
       cells,
       node_cellid,
       cell_type,
-      tmp_cell_faces,
-      tmp_size_info,
-      cell_cellfid,
-      bf_cellid,
-      bf_nodes
+      max_cell_faceid,
+      max_face_nodeid,
+      cell_cellfid
     )
 
 
 
-    return (cell_cellfid, bf_cellid, bf_nodes)
+    return cell_cellfid
 
 
   def _define_node_oldname(self, phy_faces, phy_faces_name):
@@ -283,22 +278,33 @@ class Partitioning(GlobalDomain):
     node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
     log_step()
 
-    log_step("cell_cellfid and boundary_faces")
-    (
-      cell_cellfid,
-      bf_cellid,
-      bf_nodes
-    ) = self._create_cellfid_bf_info(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
-                                     self.max_face_nodeid, self.nb_phy_faces)
-    log_step()
-
     log_step("node_bfid")  # node_boundary_face_id
     node_phyid = self.create_node_phyid(self.phy_faces, self.nb_nodes)
     log_step()
 
-    log_step("Start creating sub domains")
+    log_step("metis cell_cellfid and make_n_part")
+    #log_step("metis cell_cellfid")
+    cell_cellfid = self._create_cellfid(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
+                                     self.max_face_nodeid)
+    #log_step()
+    #log_step("metis make_n_part")
     part_vert = manapy_domain32.make_n_part(cell_cellfid, nb_parts)
+    log_step()
 
+
+    log_step("metis make_n_part_mesh_dual")
+    #part_vert = manapy_domain32.make_n_part_mesh_dual(self.cells, nb_parts, 3)
+    part_vert = manapy_domain32.make_n_part_mesh_nodal(self.cells, nb_parts)
+    print()
+    log_step()
+    #return
+
+    unique_vals, part_vert = np.unique(part_vert, return_inverse=True)
+    nb_parts = len(unique_vals)
+    print(nb_parts)
+    return
+
+    log_step(f"-> create_local_domains {nb_parts}")
     local_domains = create_local_domains(
       part_vert,
       node_cellid,
@@ -465,23 +471,21 @@ class LocalDomain:
     (
       self.face_oldname,
       self.face_name,
-      self.node_name
+      self.node_name,
+      self.phyid_to_faceid
     ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces, self.face_haloid, self.node_haloid, self.node_oldname)
     log_step()
 
-    log_step("_create_node_faceid")
-    self.node_faceid = self._create_node_faceid(self.faces, self.nb_nodes)
-    log_step()
 
     log_step("create_bf_cellid")
     (
       self.ghost_part_size,
       self.bf_cellid
-    ) = self._create_bf_cellid(self.phy_faces, self.phyid_recv, self.phyid_recv_part_size, self.node_cellid, self.node_faceid, self.cell_faceid, self.rank)
+    ) = self._create_bf_cellid(self.phy_faces, self.phyid_recv, self.phyid_recv_part_size, self.node_cellid, self.phyid_to_faceid, self.cell_faceid, self.rank)
     log_step()
 
     log_step("Create shared_ghost_info")
-    self.shared_ghost_info = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, self.rank, len(self.phyid_recv))
+    self.shared_ghost_info = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, len(self.phyid_recv))
     log_step()
 
     log_step("Create shared_ghost_info")
@@ -711,6 +715,8 @@ class LocalDomain:
       node_haloid
     )
 
+
+
   def _define_face_and_node_name(self,
                                  phy_faces: 'int[:, :]',
                                  phy_faces_name: 'int[:]',
@@ -722,32 +728,23 @@ class LocalDomain:
     nb_nodes = self.nb_nodes
     face_name = np.zeros(shape=faces.shape[0], dtype=np.int32)
     face_oldname = np.zeros(shape=faces.shape[0], dtype=np.int32)
+    phyid_to_faceid = np.ones(shape=phy_faces.shape[0], dtype=np.int32) * -1
 
     node_name = node_oldname.copy()
     node_name[node_haloid[:, -1] != 0] = 10
 
-    # count max_node_faceid
-    tmp = np.zeros(shape=nb_nodes, dtype=np.int32)
-    get_max_node_faceid(phy_faces, tmp)
-    max_node_faceid = np.max(tmp)
+    node_phyid = GlobalDomain.create_node_phyid(phy_faces, nb_nodes)
 
-    # create node_phyfaceid
-    node_phyfaceid = np.zeros(shape=(nb_nodes, max_node_faceid + 1), dtype=np.int32)
-    get_node_faceid(phy_faces, node_phyfaceid)
-
-
-    define_face_name(phy_faces, phy_faces_name, faces, node_phyfaceid, face_haloid, face_oldname, face_name)
+    define_face_name(phy_faces, phy_faces_name, faces, node_phyid, face_haloid, face_oldname, face_name, phyid_to_faceid)
 
     return (
       face_oldname,
       face_name,
-      node_name
+      node_name,
+      phyid_to_faceid
     )
 
-  def _create_node_faceid(self, faces, nb_nodes):
-    return GlobalDomain.create_node_cellid(faces, nb_nodes)
-
-  def _create_bf_cellid(self, phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, node_faceid, cell_faceid, rank):
+  def _create_bf_cellid(self, phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, phyid_to_faceid, cell_faceid, rank):
     """
     bf_cellid need to create shared_ghost_info correctlly
     bf_cellid => [[cell_id, face_index in cell_id]] for every boundary cell_id
@@ -762,7 +759,7 @@ class LocalDomain:
     intersect = np.zeros(shape=2, dtype=np.int32)
     start = ghost_part_size[0]
     end = ghost_part_size[0] + ghost_part_size[1]
-    create_bf_cellid(phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, node_faceid, cell_faceid, intersect, start, end, bf_cellid)
+    create_bf_cellid(phy_faces, phyid_recv, node_cellid, phyid_to_faceid, cell_faceid, intersect, start, end, bf_cellid)
 
     return (
       ghost_part_size,
@@ -771,18 +768,18 @@ class LocalDomain:
 
 
 
-  def _create_shared_ghost_info(self, bf_cellid: 'int[:, :]', ghost_part_size: 'int[:]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', rank: 'int', shared_bf_recv_size: 'int'):
+  def _create_shared_ghost_info(self, bf_cellid: 'int[:, :]', ghost_part_size: 'int[:]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', phyid_recv_size: 'int'):
 
 
 
     if self.dim == 2:
       shared_ghost_info_data_size = 11
-      shared_ghost_info = np.zeros(shape=(shared_bf_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
+      shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
       create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
     else:
       shared_ghost_info_data_size = 14
-      shared_ghost_info = np.zeros(shape=(shared_bf_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
+      shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
       create_ghost_info_3d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
 

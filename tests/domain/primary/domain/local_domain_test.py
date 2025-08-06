@@ -1,14 +1,12 @@
 import os
-import numpy as np
-from create_domain import Domain, Mesh, GlobalDomain, LocalDomain, log_step
-import time
-from mpi4py import MPI
-
-comm  = MPI.COMM_WORLD
-rank  = comm.Get_rank()
-size  = comm.Get_size()
+import sys
+sys.path.append(os.path.join(os.getcwd()))
+sys.path.append(os.path.join(os.getcwd(), 'domain'))
+from create_domain import Mesh, Partitioning, LocalDomain
+from local_domain_1cpu_testing import LocalDomain1Cpu
 
 mesh_list = [
+  (2, 'rectangles.msh'),
   (2, 'triangles.msh'),
   (3, 'cube.msh'),
   (3, 'tetrahedron.msh'),
@@ -16,24 +14,16 @@ mesh_list = [
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
-dim, mesh_path = mesh_list[2] # also modify dim variable accordingly
+dim, mesh_path = mesh_list[4] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
 
-# ------------------------------------------------------------------
-# 1. Start
-# ------------------------------------------------------------------
+
 mesh = Mesh(mesh_path, dim)
-domain = GlobalDomain(mesh, float_precision)
-local_domain_data = domain.c_create_sub_domains(4)
+partitioning = Partitioning(mesh, float_precision)
+nb_parts = 2048
+local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
 
-# print(local_domain_data[0].node_oldname)
+#ld = LocalDomain1Cpu.create_local_domains(local_domains)
 
-print(local_domain_data[0].nodes.dtype)
-print(local_domain_data[0].node_halos.dtype)
-
-local_domains = LocalDomain.create_local_domains(local_domain_data)
-
-
-#log_step.print_resutls()
 

@@ -38,12 +38,8 @@ cell_cellnid = domain.create_cell_cellnid(domain.cells, node_cellid)
 log_step()
 
 log_step("cell_cellfid and boundary_faces")
-(
-  cell_cellfid,
-  bf_cellid,
-  bf_nodes
-) = domain._create_cellfid_bf_info(domain.cells, node_cellid, domain.cells_type, domain.max_cell_faceid,
-                                 domain.max_face_nodeid, domain.nb_phy_faces)
+cell_cellfid = domain._create_cellfid_bf_info(domain.cells, node_cellid, domain.cells_type, domain.max_cell_faceid,
+                                 domain.max_face_nodeid)
 log_step()
 
 log_step("make_n_part")

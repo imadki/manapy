@@ -652,7 +652,7 @@ def _get_bf_recv_part_info(phyid_recv_part_size: 'int[:]', rank: 'int', part_inf
 # #########################################################
 # #########################################################
 
-def _create_bf_cellid(phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, node_faceid, cell_faceid, intersect, start, end, bf_cellid):
+def _create_bf_cellid(phy_faces, phyid_recv, node_cellid, phyid_to_faceid, cell_faceid, intersect, start, end, bf_cellid):
   counter = 0
   for i in range(start, end):
     phyid = phyid_recv[i]
@@ -660,8 +660,7 @@ def _create_bf_cellid(phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, 
     size = phy_face[-1]
     _intersect_nodes(phy_face, size, node_cellid, intersect)
     cellid = intersect[0]
-    _intersect_nodes(phy_face, size, node_faceid, intersect)
-    faceid = intersect[0]
+    faceid = phyid_to_faceid[phyid]
     if cellid == -1:
       raise RuntimeError("cellid must exist for a physical face")
     if faceid == -1:
@@ -1057,20 +1056,21 @@ def _create_halo_ghost_tables_3d(ghost_info: 'int[:, :]', bcell_halobfid: 'int[:
 
 
 
-def _create_cellfid_and_bf_info(
+def _create_cellfid(
         cells: 'int[:, :]',
         node_cellid: 'int[:, :]',
         cell_type: 'int[:]',
-        tmp_cell_faces: 'int[:, :]',
-        tmp_size_info: 'int[:]',
-        cell_cellfid: 'int[:, :]',
-        bf_cellid: 'int[:, :]',
-        bf_nodes: 'int[:, :]'
+        max_cell_faceid: 'int',
+        max_face_nodeid: 'int',
+        cell_cellfid: 'int[:, :]'
 ):
-  intersect_cells = np.zeros(2, dtype=np.int32)
 
-  cmp = 0
-  for i in range(cells.shape[0]):
+  for i in numba.prange(cells.shape[0]):
+    # this function is parallelized
+    intersect_cells = np.zeros(2, dtype=np.int32)
+    tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
+    tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
+
     _create_cell_faces(cells[i], tmp_cell_faces, tmp_size_info, cell_type[i])
     for j in range(tmp_size_info[-1]):
       _intersect_nodes(tmp_cell_faces[j], tmp_size_info[j], node_cellid, intersect_cells)
@@ -1084,16 +1084,6 @@ def _create_cellfid_and_bf_info(
         size = cell_cellfid[i, -1]
         cell_cellfid[i, size] = intersect_cells[1]
         cell_cellfid[i, -1] += 1
-      else:
-        # bf_cellid, bf_nodes has the same size of phy_faces
-        if cmp == len(bf_cellid):
-          raise RuntimeError("Number of physical faces does not match number of boundary faces !")
-        bf_cellid[cmp, 0] = i
-        bf_cellid[cmp, 1] = j
-        for k in range(tmp_size_info[j]):
-          bf_nodes[cmp, k] = tmp_cell_faces[j, k]
-        bf_nodes[cmp, -1] = tmp_size_info[j]
-        cmp += 1
 
 
 
@@ -1103,33 +1093,18 @@ def _create_cellfid_and_bf_info(
 
 def _get_face_name(
   phy_faces: 'int[:, :]',
-  phy_faces_name: 'int[:]',
   face_nodes: 'int[:]',
-  node_phyfaceid: 'int[:, :]',
+  node_phyid: 'int[:, :]',
 ):
-  sorted_face_node = np.sort(face_nodes[0:-1])
+  sorted_face_node = np.sort(face_nodes[0:face_nodes[-1]])
   n = face_nodes[0] # select any node, choosing node 0
-  for k in range(node_phyfaceid[n, -1]):
-    f_index = node_phyfaceid[n, k]
-    mesh_face = phy_faces[f_index][0:-1]
-    mesh_face.sort()
-    if np.all(mesh_face == sorted_face_node):
-      return phy_faces_name[f_index]
-  return 0
-
-def _get_max_node_faceid(faces: 'int[:, :]', arr: 'int[:]'):
-  for i in range(len(faces)):
-    for j in range(faces[i, -1]):
-      n = faces[i, j]
-      arr[n] += 1
-
-def _get_node_faceid(faces: 'int[:, :]', node_faceid: 'int[:, :]'):
-  for i in range(len(faces)):
-    for j in range(faces[i, -1]):
-      n = faces[i, j]
-      size = node_faceid[n, -1]
-      node_faceid[n, size] = i
-      node_faceid[n, -1] += 1
+  for k in range(node_phyid[n, -1]):
+    phyid = node_phyid[n, k]
+    phyid_nodes = phy_faces[phyid][0:-1]
+    phyid_nodes.sort()
+    if np.all(phyid_nodes == sorted_face_node):
+      return phyid
+  return -1
 
 def _define_node_oldname(phy_faces, phy_faces_name, node_oldname):
   for i in range(phy_faces.shape[0]):
@@ -1147,12 +1122,17 @@ def _define_face_name(
         node_phyfaceid: 'int[:, :]',
         face_haloid: 'int[:]',
         face_oldname: 'int[:]',
-        face_name: 'int[:]'
+        face_name: 'int[:]',
+        phyid_to_faceid
 ):
   for i in range(faces.shape[0]):
-    name = _get_face_name(phy_faces, phy_faces_name, faces[i], node_phyfaceid)
-    face_oldname[i] = name
+    phyid = _get_face_name(phy_faces, faces[i], node_phyfaceid)
+    name = 0
+    if phyid != -1:
+      phyid_to_faceid[phyid] = i
+      name = phy_faces_name[phyid]
 
+    face_oldname[i] = name
     face_name[i] = name
     if face_haloid.shape[0] != 0 and face_haloid[i] != -1:
       face_name[i] = 10
@@ -1631,9 +1611,9 @@ def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', f
 # #########################################################
 # #########################################################
 
-def compile(func):
-  return func
-  #return numba.jit(nopython=True, fastmath=True, cache=True)(func)
+def compile(func, parallel=False):
+  #return func
+  return numba.jit(nopython=True, fastmath=True, cache=True, parallel=parallel)(func)
 def rcompile(func):
   return func
 
@@ -1658,7 +1638,7 @@ _reinterpret_float32_as_int32= compile(_reinterpret_float32_as_int32)
 append = compile(_append)
 count_max_node_cellid = compile(_count_max_node_cellid)
 create_node_cellid = compile(_create_node_cellid)
-create_cellfid_and_bf_info = compile(_create_cellfid_and_bf_info)
+create_cellfid = compile(_create_cellfid, parallel=True)
 count_max_cell_cellnid = compile(_count_max_cell_cellnid)
 create_cell_cellnid = compile(_create_cell_cellnid)
 create_info = compile(_create_info)
@@ -1670,8 +1650,6 @@ face_gradient_info_2d = compile(_face_gradient_info_2d)
 face_gradient_info_3d = compile(_face_gradient_info_3d)
 variables_2d = compile(_variables_2d)
 variables_3d = compile(_variables_3d)
-get_max_node_faceid = compile(_get_max_node_faceid)
-get_node_faceid = compile(_get_node_faceid)
 define_node_oldname = compile(_define_node_oldname)
 define_face_name = compile(_define_face_name)
 append_1d = compile(_append_1d)
