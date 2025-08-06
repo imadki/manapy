@@ -21,18 +21,22 @@ spec = [
   ('halo_halosext', int32[:, :]),
   ('halo_halosint', int32[:]),
   ('halo_centvol', float64[:, :]),
+  ('phyid_recv', int32[:]),
+  ('phyid_recv_part_size', int32[:]),
+  ('phyid_send', int32[:]),
 
   ('max_cell_nodeid', int32),
   ('max_cell_faceid', int32),
   ('max_face_nodeid', int32),
   ('max_node_haloid', int32),
   ('max_cell_halonid', int32),
-  ('max_node_halophyid', int32),
-  ('max_phy_face_nodeid', int32),
-  ('nb_node_halos', int32),
   ('float_precision', int32),
   ('dim', int32),
 
+  # Temporary
+  ('max_node_halophyid', int32),
+  ('max_phy_face_nodeid', int32),
+  ('nb_node_halos', int32),
   ('map_cells', types.DictType(int32, int32)),
   ('map_phy_faces', types.DictType(int32, int32)),
   ('map_nodes', types.DictType(int32, int32)),
@@ -44,15 +48,14 @@ spec = [
   ('map_halo_int', types.DictType(int32, types.ListType(int32))),
   ('vec_phyids', int32[:]),
   ('map_phyids', types.DictType(int32, int32)),
-  ('phyid_recv', int32[:]),
-  ('phyid_recv_part_size', int32[:]),
-  ('phyid_send', types.ListType(int32)),
+  ('list_phyid_send', types.ListType(int32)),
 ]
 
 @jitclass(spec)
 class LocalDomainStructData:
   def __init__(self):
     # Arrays: use zeros(1) as placeholder (cannot be None)
+    # Returned tables and Scalars
     self.nodes = np.zeros((1, 1), dtype=np.float64) # [[node x, y, z]]
     self.cells = np.zeros((1, 1), dtype=np.int32) # [[cells nodes]]
     self.cells_type = np.zeros(1, dtype=np.int8) # [cell type]
@@ -67,6 +70,9 @@ class LocalDomainStructData:
     self.halo_halosext = np.zeros((1, 1), dtype=np.int32) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
     self.halo_halosint = np.zeros(1, dtype=np.int32) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
     self.halo_centvol = np.zeros((1, 1), dtype=np.float64)  # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
+    self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"
+    self.phyid_recv_part_size = np.zeros(1, dtype=np.int32) # [boundary faces part, size]
+    self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
 
     # Scalars
     self.max_cell_nodeid = 0
@@ -74,13 +80,15 @@ class LocalDomainStructData:
     self.max_face_nodeid = 0
     self.max_node_haloid = 0
     self.max_cell_halonid = 0
-    self.max_node_halophyid = 0
-    self.max_phy_face_nodeid = 0
-    self.nb_node_halos = 0
     self.float_precision = 0 # 32 or 64
     self.dim = 0 # 2 or 3
 
-    # Dictionaries
+
+    # Temporary members used to generate the above tables and scalars
+    self.max_node_halophyid = 0
+    self.max_phy_face_nodeid = 0
+    self.nb_node_halos = 0
+
     self.map_cells = Dict.empty(key_type=int32, value_type=int32)
     self.map_phy_faces = Dict.empty(key_type=int32, value_type=int32)
     self.map_nodes = Dict.empty(key_type=int32, value_type=int32)
@@ -101,9 +109,8 @@ class LocalDomainStructData:
 
     self.vec_phyids = np.zeros(1, dtype=np.int32)
     self.map_phyids = Dict.empty(key_type=int32, value_type=int32)
-    self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"
-    self.phyid_recv_part_size = np.zeros(1, dtype=np.int32) # [boundary faces part, size]
-    self.phyid_send = List.empty_list(int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
+    self.list_phyid_send = List.empty_list(int32) # look self.phyid_send
+
 
 
 list_type = LocalDomainStructData.class_type.instance_type
