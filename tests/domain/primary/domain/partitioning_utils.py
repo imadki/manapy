@@ -5,11 +5,11 @@ from numba import types
 from LocalDomainStructData import LocalDomainStructData, new_local_domains
 
 int_type = types.int32
-CELL_TRIANGLE = 0
-CELL_QUAD = 1
-CELL_TETRA = 2
-CELL_HEXA = 3
-CELL_PYRAMID = 4
+CELL_TRIANGLE = 1
+CELL_QUAD = 2
+CELL_TETRA = 3
+CELL_HEXA = 4
+CELL_PYRAMID = 5
 
 def _binary_search(array: 'int[:]', item: 'int') -> 'int':
   """
@@ -56,6 +56,7 @@ def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:,
       return
 
 def _get_max_info(cell_type):
+  # [max_cell_faceid, max_face_nodeid, max_cell_nodeid]
   if cell_type == CELL_TRIANGLE:
     return [3, 2, 3]
   elif cell_type == CELL_QUAD:
@@ -137,13 +138,13 @@ def _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, p
         if p != part_n_cellid:
           nb_node_halonid += 1
 
+          if n_cellid not in map_halos:
+            map_halos[n_cellid] = len(map_halos)
           if n_cellid != i and i_visited[n_cellid] != i:
             # allow visiting n_cellid only once for the current cell `i`
             i_visited[n_cellid] = i
 
             nb_cell_halonid += 1
-            if n_cellid not in map_halos:
-              map_halos[n_cellid] = len(map_halos)
 
             # halo_interior
             if part_n_cellid not in map_halo_int:
@@ -260,7 +261,6 @@ def _create_locals(p, cells, nodes, cells_type, node_cellid, node_phyid, part_ph
   # #########################################################
   # l_nodes, l_node_loctoglob, l_node_oldname, l_node_halos, l_node_halophyid, max_node_haloid
   # #########################################################
-
   halos_counter = 0
   for g_id in map_nodes:
     l_id = map_nodes[g_id]
@@ -374,15 +374,21 @@ def _create_phyid_send(local_domains):
       part = phyid_recv_part_size[i]
       size = phyid_recv_part_size[i + 1]
       if part != p:
-        phyid_send = local_domains[part].phyid_send
+        list_phyid_send = local_domains[part].list_phyid_send
         map_phyids = local_domains[part].map_phyids
-        phyid_send.append(p)
-        phyid_send.append(size)
+        list_phyid_send.append(p)
+        list_phyid_send.append(size)
         for j in range(size):
           phy_id = vec_phyids[counter + j]
           index = map_phyids[phy_id]
-          phyid_send.append(index)
+          list_phyid_send.append(index)
       counter += size
+
+  for p in range(len(local_domains)):
+    list_phyid_send = local_domains[p].list_phyid_send
+    local_domains[p].phyid_send = np.zeros(shape=len(list_phyid_send), dtype=np.int32)
+    for i in range(len(list_phyid_send)):
+      local_domains[p].phyid_send[i] = list_phyid_send[i]
 
 def _create_partition_tables(local_domains, cells, nodes, cells_type, node_cellid, node_phyid, part_phyid, phy_faces, phy_faces_name, part_vert, vec_node_oldname, float_precision, dim):
   for p in range(len(local_domains)):

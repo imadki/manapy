@@ -1,12 +1,8 @@
 import os
-from create_domain import Domain as DomainAlt
-from manapy.partitions import MeshPartition
-from manapy.base.base import Struct
-from manapy.ddm import Domain
+from create_domain import Partitioning, Mesh
 import sys
 import psutil
-#  gmsh ../mesh/tetra_test_2.geo -3 -setnumber Nx 20 -setnumber Ny 20 -setnumber Nz 20  -o tetra_test.msh
-
+import time
 import threading
 
 peak_mem = 0
@@ -32,12 +28,11 @@ def mem_usage():
   return f"{mem_mb:.2f}MB"
 
 
-if len(sys.argv) != 3:
-  print("Usage: python benchmark.py <size> <is_alt=0/1")
+if len(sys.argv) != 2:
+  print("wrong Usage")
   sys.exit(1)
 
 mesh_name = sys.argv[1]
-nb_cells = int(sys.argv[2])
 
 mesh_list = [
   (3, mesh_name),
@@ -48,23 +43,10 @@ dim, mesh_path = mesh_list[0] # also modify dim variable accordingly
 
 
 
+mesh = Mesh(mesh_path, dim)
+partitioning = Partitioning(mesh, float_precision)
+nb_parts = 2048
+local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
+print(mem_usage())
 
-
-import time
-
-
-
-size = 2
-while size <= 32768:
-    start = time.time()
-    peak_mem = 0.0
-    if nb_cells / size > 10:
-        DomainAlt.partitioning(mesh_path, dim, float_precision, size)
-        print(f"=99>{size} {nb_cells} {time.time() - start:.6f} {mem_usage()}")
-    size *= 2
-
-
-
-# print(f"END:: Execution time: {time.time() - start:.6f} seconds")
-# print(f"{time.time() - start:.6f} {mem_usage()}")
 

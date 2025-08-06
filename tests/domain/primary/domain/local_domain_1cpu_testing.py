@@ -264,28 +264,26 @@ class LocalDomain1Cpu(LocalDomain):
       (
         self.face_oldname,
         self.face_name,
-        self.node_name
+        self.node_name,
+        self.phyid_to_faceid
       ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces, self.face_haloid,
                                           self.node_haloid, self.node_oldname)
       log_step()
 
-      log_step("_create_node_faceid")
-      self.node_faceid = self._create_node_faceid(self.faces, self.nb_nodes)
-      log_step()
 
       log_step("create_bf_cellid")
       (
         self.ghost_part_size,
         self.bf_cellid
       ) = self._create_bf_cellid(self.phy_faces, self.phyid_recv, self.phyid_recv_part_size, self.node_cellid,
-                                 self.node_faceid, self.cell_faceid, self.rank)
+                                 self.phyid_to_faceid, self.cell_faceid, self.rank)
       log_step()
 
       log_step("Create shared_ghost_info")
       self.shared_ghost_info = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center,
                                                               self.cell_faceid, self.cell_loctoglob, self.face_oldname,
                                                               self.face_normal, self.face_center, self.face_measure,
-                                                              self.rank, len(self.phyid_recv))
+                                                              len(self.phyid_recv))
       log_step()
 
       log_step("Create shared_ghost_info")

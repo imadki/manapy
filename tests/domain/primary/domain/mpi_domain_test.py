@@ -11,13 +11,14 @@ rank  = comm.Get_rank()
 size  = comm.Get_size()
 
 mesh_list = [
+  (2, 'rectangles.msh'),
   (2, 'triangles.msh'),
   (3, 'tetrahedron.msh'),
   (3, 'tetrahedron_big.msh'),
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
-dim, mesh_path = mesh_list[1] # also modify dim variable accordingly
+dim, mesh_path = mesh_list[0] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
 
