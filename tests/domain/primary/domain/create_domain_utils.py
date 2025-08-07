@@ -3,7 +3,6 @@ import numba
 from numba.typed import Dict
 from numba import types
 
-
 # def _reinterpret_int32_as_float32(i):
 #   return np.int32(i).view(np.float32)
 #
@@ -77,6 +76,7 @@ def _append_1d(arr_dest: 'int[:]', arr_src: 'int[:]', counter):
   for i in range(len(arr_src)):
     arr_dest[counter] = arr_src[i]
     counter += 1
+
 
 def _count_max_node_cellid(cells: 'int[:, :]', res: 'int[:]'):
   """
@@ -160,14 +160,6 @@ def _create_cell_cellnid(
           cell_cellnid[nc, size] = i
           cell_cellnid[nc, -1] += 1
 
-  # for i in range(cells.shape[0]):
-  #   for j in range(cells[i][-1]):
-  #     node_n = node_cellid[cells[i][j]]
-  #     for k in range(node_n[-1]):
-  #       if node_n[k] != i and _is_in_array(cell_cellnid[i], node_n[k]) == 0:
-  #         size = cell_cellnid[i][-1]
-  #         cell_cellnid[i][-1] += 1
-  #         cell_cellnid[i][size] = node_n[k]
 
 
 

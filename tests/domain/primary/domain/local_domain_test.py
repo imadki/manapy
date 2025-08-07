@@ -14,16 +14,17 @@ mesh_list = [
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
-dim, mesh_path = mesh_list[4] # also modify dim variable accordingly
+dim, mesh_path = mesh_list[3] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
 
 
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh, float_precision)
-nb_parts = 2048
+nb_parts = 1024
 local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
 
-#ld = LocalDomain1Cpu.create_local_domains(local_domains)
+
+# ld = LocalDomain1Cpu.create_local_domains(local_domains)
 
 

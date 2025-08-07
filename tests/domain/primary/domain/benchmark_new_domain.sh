@@ -9,7 +9,7 @@ mesh_folder="$1"
 
 echo -n '' > $result_file
 
-for ((m=10; m<=300; m+=30)); do
+for ((m=200; m<=300; m+=50)); do
 
 
 

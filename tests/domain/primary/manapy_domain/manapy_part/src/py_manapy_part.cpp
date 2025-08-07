@@ -1,30 +1,5 @@
 #include "manapy_part.h"
 
-
-long get_time(void)
-{
-    struct timeval t;
-
-    gettimeofday(&t, NULL);
-    return (t.tv_sec * 1000000 + t.tv_usec);
-}
-
-void    log_step(const std::string &str) {
-    static long start = 0;
-
-    if (str.empty()) {
-        start = get_time();
-    } else {
-        double diff = (double)(get_time() - start);
-        std::string unit = "microseconds";
-        if (diff > 1000) {
-            diff /= 1000000.0;
-            unit = "seconds";
-        }
-        print_instant("C=> %s: Time=%lf %s\n", str.c_str(), diff, unit.c_str());
-    }
-}
-
 /* Graph representation in compressed Sparse Row (CSR) format
  * graph a 2D int32 numpy array of size (number of cells, max cell neighbors)
  * Example (4 vertices):
@@ -49,19 +24,15 @@ static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_
 
     // Get total_deg and nvtxs
     idx_t deg_sum = 0;
-    print_instant("Nb_vertices = %ld\n", (long) nb_vertices);
     for (idx_t vertex = 0; vertex < nb_vertices; vertex++) {
         const idx_t size = *(idx_t *)PyArray_GETPTR2(graph, vertex, max_cols - 1);
-        if (size < 0 || size >= max_cols) {
-            PyErr_Format(PyExc_ValueError, "row %ld has invalid size %ld (max_cols=%ld)", vertex,
-                         size, (max_cols - 1));
-            return -1;
-        }
         deg_sum += size;
     }
-    print_instant("size = %d\n", (long) deg_sum);
     *total_deg = deg_sum;
     *nvtxs = nb_vertices;
+
+
+
 
     //Get xadj and adjncy
     *xadj = (idx_t *)malloc(sizeof(idx_t) * (nb_vertices + 1));
@@ -78,12 +49,6 @@ static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_
         const idx_t deg = *(idx_t *)PyArray_GETPTR2(graph, i, max_cols - 1);
         for (idx_t j = 0; j < deg; j++) {
             const idx_t nb = *(idx_t *)PyArray_GETPTR2(graph, i, j);
-            if (nb < 0 || nb >= *nvtxs) {
-                free(*xadj);
-                free(*adjncy);
-                PyErr_Format(PyExc_ValueError, "row %ld, col %ld has invalid neighbour %ld", i, j, nb);
-                return -1;
-            }
             (*adjncy)[counter++] = nb;
             if (nb > *nb_nodes) {
                 // in the case of metis nodal or dual neighbor represent the node
@@ -93,19 +58,18 @@ static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_
         (*xadj)[i + 1] = counter;
     }
     (*nb_nodes)++;
+
+    print_instant("Nb_vertices = %ld\n", (long) nb_vertices);
+    print_instant("total_deg size = %d\n", (long) deg_sum);
     print_instant("Nb_nodes = %d\n", (long) (*nb_nodes));
     return 0;
 
 }
 
-/*
- * If you request 4 parts on a 3-vertex graph, METIS will do its best, but you may see something like:
- * part = [0, 0, 1]  // only 2 parts used
- * If your graph is very small, or
- * Disconnected, or
- * Your balance constraints are weird
-*/
-static int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
+
+
+
+static int make_n_part_graph_k_way(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     idx_t *xadj;
     idx_t *adjncy;
     idx_t nvtxs;
@@ -113,12 +77,12 @@ static int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     idx_t ret;
     idx_t nb_node;
 
-    //print_instant("Start dense to csr\n");
+
     ret = dense_to_csr(graph, &xadj, &adjncy, &nvtxs, &nb_node, &deg_sum);
     if (ret < 0)
         return -1;
 
-    //print_instant("End dense to csr\n");
+
     idx_t *part_idx = (idx_t *)malloc(sizeof(idx_t) * nvtxs);
     if (part_idx == nullptr) {
         free(xadj);
@@ -130,6 +94,7 @@ static int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     idx_t ncon = 1;
     idx_t edgecut = 0;
 
+    print_instant("METIS_PartGraphKway");
     ret = METIS_PartGraphKway(&nvtxs, &ncon,
                                  xadj, adjncy,
                                  nullptr, nullptr, nullptr,
@@ -137,7 +102,7 @@ static int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
                                  nullptr, nullptr,
                                  nullptr,
                                  &edgecut, part_idx);
-    //print_instant("End METIS_PartGraphKway\n");
+
     free(xadj);
     free(adjncy);
 
@@ -147,9 +112,8 @@ static int make_n_part(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
         return -1;
     }
 
-    // Return
+
     *part_vert = part_idx;
-    //print_instant("End function\n");
     return 0;
 }
 
@@ -163,7 +127,6 @@ static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_co
     idx_t nb_nodes;
     idx_t options[METIS_NOPTIONS];
 
-    print_instant("dense to csr");
     if (dense_to_csr(cells, &eptr, &eind, &ne, &nb_nodes, &deg_sum) < 0)
         return -1;
 
@@ -179,13 +142,13 @@ static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_co
     }
 
 
-    print_instant("METIS_PartMeshDual");
 
     METIS_SetDefaultOptions(options);
     options[METIS_OPTION_NUMBERING] = 0; // C-style indexing (0-based)
     // options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT; // or METIS_OBJTYPE_VOL
     // options[METIS_OPTION_CONTIG] = 1; // enforce contiguous partitions
 
+    print_instant("METIS_PartMeshDual");
     ret = METIS_PartMeshDual(
         &ne, // number of elements
         &nb_nodes, // number of nodes
@@ -212,9 +175,7 @@ static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_co
         return -1;
     }
 
-    // Return
     *part_vert = part_idx;
-    //print_instant("End function\n");
     return 0;
 }
 
@@ -228,7 +189,7 @@ static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **p
     idx_t nb_nodes;
     idx_t options[METIS_NOPTIONS];
 
-    print_instant("dense to csr");
+
     if (dense_to_csr(cells, &eptr, &eind, &ne, &nb_nodes, &deg_sum) < 0)
         return -1;
 
@@ -244,13 +205,12 @@ static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **p
     }
 
 
-    print_instant("METIS_PartMeshNodal");
-
     METIS_SetDefaultOptions(options);
     options[METIS_OPTION_NUMBERING] = 0; // C-style indexing (0-based)
     // options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT; // or METIS_OBJTYPE_VOL
     // options[METIS_OPTION_CONTIG] = 1; // enforce contiguous partitions
 
+    print_instant("METIS_PartMeshNodal");
     ret = METIS_PartMeshNodal(
         &ne, // number of elements
         &nb_nodes, // number of nodes
@@ -276,14 +236,16 @@ static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **p
         return -1;
     }
 
-    // Return
     *part_vert = part_idx;
-    //print_instant("End function\n");
     return 0;
 }
 
 
-static PyObject *py_make_n_part(PyObject *self, PyObject *args) {
+
+
+
+
+static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
     PyObject *graph_obj = nullptr;
     int nb_parts = 0;
 
@@ -301,8 +263,7 @@ static PyObject *py_make_n_part(PyObject *self, PyObject *args) {
     idx_t *part_vert = nullptr;
     idx_t ret;
 
-    print_instant("Start Creating graph \n");
-    ret = make_n_part(graph, nb_parts, &part_vert);
+    ret = make_n_part_graph_k_way(graph, nb_parts, &part_vert);
     if (ret == -1) {
         Py_DECREF(graph);
         return nullptr;
@@ -344,7 +305,7 @@ static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
     idx_t *part_vert = nullptr;
     idx_t ret;
 
-    print_instant("Start Creating partitioning make_n_part_mesh_dual \n");
+
     ret = make_n_part_mesh_dual(cells, nb_parts, n_common, &part_vert);
     if (ret == -1) {
         Py_DECREF(cells);
@@ -386,7 +347,7 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
     idx_t *part_vert = nullptr;
     idx_t ret;
 
-    print_instant("Start Creating partitioning make_n_part_mesh_dual \n");
+
     ret = make_n_part_mesh_nodal(cells, nb_parts, &part_vert);
     if (ret == -1) {
         Py_DECREF(cells);
@@ -415,7 +376,7 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
 /* -------- module definition --------------------------------------- */
 // ----------------- Method Table -----------------------
 
-static const char *doc_make_n_part =
+static const char *doc_make_n_part_graph_k_way =
     "make_n_part(graph, nb_part) -> np.ndarray\n"
     "\n"
     "Partition a graph into `nb_part` parts using METIS.\n"
@@ -466,7 +427,7 @@ static const char *doc_make_n_part_mesh_nodal =
 
 
 static PyMethodDef ManapyMethods[] = {
-    { "make_n_part", py_make_n_part, METH_VARARGS, doc_make_n_part },
+    { "make_n_part_graph_k_way", py_make_n_part_graph_k_way, METH_VARARGS, doc_make_n_part_graph_k_way },
     { "make_n_part_mesh_dual", py_make_n_part_mesh_dual, METH_VARARGS, doc_make_n_part_mesh_dual },
     { "make_n_part_mesh_nodal", py_make_n_part_mesh_nodal, METH_VARARGS, doc_make_n_part_mesh_nodal },
     { NULL, NULL, 0, NULL }

@@ -138,20 +138,23 @@ def _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, p
         if p != part_n_cellid:
           nb_node_halonid += 1
 
+          # halos
           if n_cellid not in map_halos:
             map_halos[n_cellid] = len(map_halos)
+
+          # halo_interior
+          if part_n_cellid not in map_halo_int:
+            map_halo_int[part_n_cellid] = List.empty_list(int_type)
+          vec = map_halo_int[part_n_cellid]
+          if len(vec) == 0 or vec[-1] != i:
+            vec.append(i) # append haloint_cell `i` to halo interiors connected to neighbor part `part_n_cellid`
+
+          #nb_cell_halonid
           if n_cellid != i and i_visited[n_cellid] != i:
             # allow visiting n_cellid only once for the current cell `i`
             i_visited[n_cellid] = i
-
             nb_cell_halonid += 1
 
-            # halo_interior
-            if part_n_cellid not in map_halo_int:
-              map_halo_int[part_n_cellid] = List.empty_list(int_type)
-            vec = map_halo_int[part_n_cellid]
-            if len(vec) == 0 or vec[-1] != i:
-              vec.append(i) # append haloint_cell `i` to halo interiors connected to neighbor part `part_n_cellid`
 
       if nodeid not in map_nodes:
         local_domains[p].nb_node_halos += nb_node_halonid
@@ -402,7 +405,7 @@ def _create_partition_tables(local_domains, cells, nodes, cells_type, node_celli
 def _create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, float_precision, dim):
 
   local_domains = new_local_domains(nb_parts)
-  i_visited = np.zeros(shape=len(cells), dtype=np.int32)
+  i_visited = np.ones(shape=len(cells), dtype=np.int32) * -1
   vec_node_oldname = np.zeros(shape=len(nodes), dtype=np.int32)
   intersect_cell = np.zeros(shape=2, dtype=np.int32)
   boundary_cells = np.zeros(shape=len(phy_faces), dtype=np.int32)  # cells that has at least one physical face attached to it
