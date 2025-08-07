@@ -10,7 +10,7 @@ from manapy.ddm.geometry   import Face, Cell, Node, Halo
 from LocalDomainStructData import new_local_domains, LocalDomainStructData, load_hd5, save_hdf5
 from partitioning_utils import *
 from create_domain_utils import *
-
+import warnings
 
 class Mesh:
   def __init__(self, mesh_path, dim):
@@ -272,37 +272,17 @@ class Partitioning(GlobalDomain):
     super().__init__(mesh, float_precision)
 
 
-  def _create_multiple_partitions(self, nb_parts: 'int'):
-
-    log_step("node_cellid")
-    node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
-    log_step()
-
-    log_step("node_bfid")  # node_boundary_face_id
-    node_phyid = self.create_node_phyid(self.phy_faces, self.nb_nodes)
-    log_step()
-
-    log_step("metis cell_cellfid and make_n_part")
-    #log_step("metis cell_cellfid")
-    cell_cellfid = self._create_cellfid(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
-                                     self.max_face_nodeid)
-    #log_step()
-    #log_step("metis make_n_part")
-    part_vert = manapy_domain32.make_n_part(cell_cellfid, nb_parts)
-    log_step()
-
-
-    log_step("metis make_n_part_mesh_dual")
-    #part_vert = manapy_domain32.make_n_part_mesh_dual(self.cells, nb_parts, 3)
-    part_vert = manapy_domain32.make_n_part_mesh_nodal(self.cells, nb_parts)
-    print()
-    log_step()
-    #return
-
+  def _create_local_domains(self, node_cellid, node_phyid, part_vert, nb_parts):
+    # Remap the partition labels in `part_vert`
+    # `part_vert` will be updated to hold the corresponding new indices in [0, len(unique_vals) - 1].
     unique_vals, part_vert = np.unique(part_vert, return_inverse=True)
+    # TODO unconmment this condition after testing
+    # if len(unique_vals) != nb_parts:
+      # warnings.warn(
+      #   f"The original number of partitions (nb_parts={nb_parts}) was changed by METIS to {len(unique_vals)}. "
+      #   f"This means some partitions have no cells. Forcing the number of partitions to {len(unique_vals)}."
+      # )
     nb_parts = len(unique_vals)
-    print(nb_parts)
-    return
 
     log_step(f"-> create_local_domains {nb_parts}")
     local_domains = create_local_domains(
@@ -318,11 +298,70 @@ class Partitioning(GlobalDomain):
       32 if self.float_precision == 'float32' else 64,
       self.dim
     )
-    log_step()
-
     for i in range(nb_parts):
       halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, self.nodes)
       local_domains[i].halo_centvol = halocentvol
+    log_step()
+
+    arr = np.array([0, 0, 0], dtype=np.float64)
+    for item in local_domains:
+      arr[0] += len(item.node_halos)
+      arr[1] += len(item.halo_halosext)
+      arr[2] += len(item.halo_halosint)
+    arr /= len(local_domains)
+    print(f"avg_node_halos={arr[0]} avg_halo_halosext={arr[1]} avg_halo_halosint={arr[2]}")
+
+    return local_domains
+
+  def _create_multiple_partitions(self, nb_parts: 'int'):
+
+    log_step("node_cellid")
+    node_cellid = self.create_node_cellid(self.cells, self.nb_nodes)
+    log_step()
+
+    log_step("node_bfid")  # node_boundary_face_id
+    node_phyid = self.create_node_phyid(self.phy_faces, self.nb_nodes)
+    log_step()
+
+    # ########################
+    # Testing
+    part_vert = np.ones(shape=len(self.cells), dtype=np.int32)
+    part_vert[::2] = 2
+    part_vert[::3] = 3
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+
+    # ################################
+    # ################################
+    # ################################
+    print("\n")
+    log_step("cell_cellfid and make_n_part_graph_k_way")
+    #log_step("metis cell_cellfid")
+    cell_cellfid = self._create_cellfid(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
+                                     self.max_face_nodeid)
+    #log_step()
+    #log_step("metis make_n_part")
+    part_vert = manapy_domain32.make_n_part_graph_k_way(cell_cellfid, nb_parts)
+    log_step()
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+
+    # ################################
+    # ################################
+    # ################################
+    print("\n")
+    log_step("metis make_n_part_mesh_dual")
+    part_vert = manapy_domain32.make_n_part_mesh_dual(self.cells, nb_parts, 3) # 3 => testing with tetra (has face with 3 nodes)
+    log_step()
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+
+    # ################################
+    # ################################
+    # ################################
+    print("\n")
+    log_step("metis make_n_part_mesh_nodal")
+    part_vert = manapy_domain32.make_n_part_mesh_nodal(self.cells, nb_parts)
+    log_step()
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+
 
     return local_domains
 

@@ -45,7 +45,7 @@ dim, mesh_path = mesh_list[0] # also modify dim variable accordingly
 
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh, float_precision)
-nb_parts = 2048
+nb_parts = 2048*2*2
 local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
 print(mem_usage())
 
