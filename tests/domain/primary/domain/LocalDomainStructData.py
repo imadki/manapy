@@ -113,11 +113,12 @@ class LocalDomainStructData:
 
 
 
-list_type = LocalDomainStructData.class_type.instance_type
+LocalDomainStructDataType = LocalDomainStructData.class_type.instance_type
+ListLocalDomainStructDataType = types.ListType(LocalDomainStructDataType)
 
 @njit(fastmath=True, cache=True)
 def new_local_domains(nb):
-  list_local_domains = List.empty_list(list_type)
+  list_local_domains = List.empty_list(LocalDomainStructDataType)
   for i in range(nb):
     obj = LocalDomainStructData()
     list_local_domains.append(obj)
