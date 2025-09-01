@@ -2,7 +2,9 @@ import numpy as np
 import numba
 from numba.typed import Dict, List
 from numba import types
-from LocalDomainStructData import LocalDomainStructData, new_local_domains
+from LocalDomainStructData import new_local_domains, LocalDomainStructDataType, ListLocalDomainStructDataType
+from compile_fun import compile
+
 
 int_type = types.int32
 CELL_TRIANGLE = 1
@@ -55,7 +57,7 @@ def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:,
     if index >= 2:
       return
 
-def _get_max_info(cell_type):
+def _get_max_info(cell_type: 'int'):
   # [max_cell_faceid, max_face_nodeid, max_cell_nodeid]
   if cell_type == CELL_TRIANGLE:
     return [3, 2, 3]
@@ -71,7 +73,7 @@ def _get_max_info(cell_type):
 
 
 
-def _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, phy_faces, phy_faces_name, local_domains, i_visited, vec_node_oldname, intersect_cell, boundary_cells, part_phyid):
+def _create_sub_domains(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int[:]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', local_domains: ListLocalDomainStructDataType, i_visited: 'int32[:]', vec_node_oldname: 'int[:]', intersect_cell: 'int[:]', boundary_cells: 'int[:]', part_phyid: 'int[:]'):
 
   # #########################################################
   # Create Physical faces And node old name, boundary_cells
@@ -178,7 +180,7 @@ def _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, p
     local_domains[p].max_cell_halonid = max(nb_cell_halonid, local_domains[p].max_cell_halonid)
 
 
-def _create_tables(ld: 'LocalDomainStructData', nodes, part_phyid):
+def _create_tables(ld: LocalDomainStructDataType, nodes: 'float64[:, :]', part_phyid: 'int[:]'):
   # #########################################################
   # vec_phyids, map_phyids, nb_halos_int
   # #########################################################
@@ -219,7 +221,7 @@ def _create_tables(ld: 'LocalDomainStructData', nodes, part_phyid):
   ld.phyid_recv = np.zeros(shape=len(ld.vec_phyids), dtype=np.int32)
   ld.phyid_recv_part_size = np.zeros(shape=(len(ld.set_halo_phyid_neighsub) * 2 + 2), dtype=np.int32)
 
-def _create_locals(p, cells, nodes, cells_type, node_cellid, node_phyid, part_phyid, phy_faces, phy_faces_name, part_vert, vec_node_oldname, local_domain):
+def _create_locals(p: 'int', cells: 'int[:, :]', nodes: 'float64[:, :]', cells_type: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', part_phyid: 'int[:]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', part_vert: 'int[:]', vec_node_oldname: 'int[:]', local_domain: LocalDomainStructDataType):
   map_cells = local_domain.map_cells
   map_nodes = local_domain.map_nodes
   map_halos = local_domain.map_halos
@@ -364,7 +366,7 @@ def _create_locals(p, cells, nodes, cells_type, node_cellid, node_phyid, part_ph
     phyid_recv_part_size[counter] = p
     phyid_recv_part_size[counter + 1] = 0
 
-def _create_phyid_send(local_domains):
+def _create_phyid_send(local_domains: ListLocalDomainStructDataType):
   # #########################################################
   # phyid_send => [partition_id, size, indices point to phyid_recv_part_size, ...]
   # #########################################################
@@ -393,7 +395,7 @@ def _create_phyid_send(local_domains):
     for i in range(len(list_phyid_send)):
       local_domains[p].phyid_send[i] = list_phyid_send[i]
 
-def _create_partition_tables(local_domains, cells, nodes, cells_type, node_cellid, node_phyid, part_phyid, phy_faces, phy_faces_name, part_vert, vec_node_oldname, float_precision, dim):
+def _create_partition_tables(local_domains: ListLocalDomainStructDataType, cells: 'int[:, :]', nodes: 'float64[:, :]', cells_type: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', part_phyid: 'int[:]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', part_vert: 'int[:]', vec_node_oldname: 'int[:]', float_precision: 'int', dim: 'int'):
   for p in range(len(local_domains)):
     local_domain = local_domains[p]
     _create_tables(local_domain, nodes, part_phyid)
@@ -402,7 +404,7 @@ def _create_partition_tables(local_domains, cells, nodes, cells_type, node_celli
     local_domains[p].float_precision = float_precision
   _create_phyid_send(local_domains)
 
-def _create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, float_precision, dim):
+def _create_local_domains(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int[:]', nodes: 'float64[:, :]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', nb_parts: 'int', float_precision: 'int', dim: 'int'):
 
   local_domains = new_local_domains(nb_parts)
   i_visited = np.ones(shape=len(cells), dtype=np.int32) * -1
@@ -417,9 +419,9 @@ def _create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type,
 
   return local_domains
 
-def compile(func):
-  #return func
-  return numba.jit(nopython=True, fastmath=True, cache=True)(func)
+# def compile(func):
+#   #return func
+#   return numba.jit(nopython=True, fastmath=True, cache=True)(func)
 
 # private
 _binary_search = compile(_binary_search)

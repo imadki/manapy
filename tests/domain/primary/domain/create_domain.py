@@ -78,11 +78,13 @@ class Mesh:
     phy_faces = np.zeros(shape=(counter, max_nb_face_nodes + 1), dtype=np.int32)
     phy_faces_name = np.zeros(shape=counter, dtype=np.int32)
 
-    counter = 0
+    counter = np.int32(0)
     for k in physicals_key:
       if physicals.get(k) is not None:
-        append(phy_faces, cells_dict[k], counter)
-        append_1d(phy_faces_name, physicals[k], counter)
+        cells = np.array(cells_dict[k], dtype=np.int32)
+        append(phy_faces, cells, counter)
+        physical = np.array(physicals[k], dtype=np.int32)
+        append_1d(phy_faces_name, physical, counter)
         counter += len(physicals[k])
 
     return phy_faces, phy_faces_name
@@ -132,10 +134,10 @@ class Mesh:
     cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=np.int32)
     cells_type = np.zeros(shape=number_of_cells, dtype=np.int8)
 
-    counter = 0
+    counter = np.int32(0)
     for item in allowed_cells:
       if meshio_mesh_dic.get(item) is not None:
-        cells_item = meshio_mesh_dic[item]
+        cells_item = np.array(meshio_mesh_dic[item], dtype=np.int32)
         cells_type[counter:counter + len(cells_item)] = cell_type_dic[item]
         append(cells, cells_item, counter)
         counter += len(cells_item)
@@ -298,6 +300,7 @@ class Partitioning(GlobalDomain):
       32 if self.float_precision == 'float32' else 64,
       self.dim
     )
+    d = local_domains[0]
     for i in range(nb_parts):
       halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, self.nodes)
       local_domains[i].halo_centvol = halocentvol

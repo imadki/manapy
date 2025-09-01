@@ -2,6 +2,7 @@ import numpy as np
 import numba
 from numba.typed import Dict
 from numba import types
+from compile_fun import compile
 
 # def _reinterpret_int32_as_float32(i):
 #   return np.int32(i).view(np.float32)
@@ -9,10 +10,10 @@ from numba import types
 # def _reinterpret_float32_as_int32(i):
 #   return np.float32(i).view(np.int32)
 
-def _reinterpret_int32_as_float32(i):
+def _reinterpret_int32_as_float32(i: 'int32'):
   return np.int32(i).view(np.float32)
 
-def _reinterpret_float32_as_int32(i):
+def _reinterpret_float32_as_int32(i: 'float32'):
   return np.float32(i).view(np.int32)
 
 # def _reinterpret_int32_as_float64(i):
@@ -31,15 +32,15 @@ def _reinterpret_float32_as_int32(i):
 def _is_in_array(array: 'int[:]', item: 'int') -> 'int':
   """
     Check if an item is in the array
-    Return 1 if the item is in the array otherwise 0
+    Return the index of item inside the array if found otherwise -1
 
     Note:
       The number of item in the array must be array[-1]
   """
   for i in range(array[-1]):
     if item == array[i]:
-      return 1
-  return 0
+      return i
+  return -1
 
 def _binary_search(array: 'int[:]', item: 'int') -> 'int':
   """
@@ -72,7 +73,7 @@ def _append(cells: 'int[:, :]', cells_item: 'int[:, :]', counter: 'int'):
     cells[counter, -1] = len(cells_item[i])
     counter += 1
 
-def _append_1d(arr_dest: 'int[:]', arr_src: 'int[:]', counter):
+def _append_1d(arr_dest: 'int[:]', arr_src: 'int[:]', counter: 'int32'):
   for i in range(len(arr_src)):
     arr_dest[counter] = arr_src[i]
     counter += 1
@@ -167,7 +168,7 @@ def _create_cell_cellnid(
 # Create Info
 # #################
 
-def _intersect(indices: 'int[:]', size: 'int', array: 'int[:, :]', b_visited: 'int[:]', intersect: 'int[:]'):
+def _intersect(indices: 'int[:]', size: 'int8', array: 'int[:, :]', b_visited: 'int8[:]', intersect: 'int[:]'):
   """
   size must not exceed 127
   """
@@ -230,7 +231,7 @@ def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:,
     if index >= 2:
       return
 
-def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[:]', cell_type: 'int[:]'):
+def _create_cell_faces(nodes: 'int[:]', out_faces: 'int[:, :]', size_info: 'int[:]', cell_type: 'int'):
   """
     Create cell faces
 
@@ -644,7 +645,7 @@ def _get_bf_recv_part_info(phyid_recv_part_size: 'int[:]', rank: 'int', part_inf
 # #########################################################
 # #########################################################
 
-def _create_bf_cellid(phy_faces, phyid_recv, node_cellid, phyid_to_faceid, cell_faceid, intersect, start, end, bf_cellid):
+def _create_bf_cellid(phy_faces: 'int[:, :]', phyid_recv: 'int[:]', node_cellid: 'int[:, :]', phyid_to_faceid: 'int[:]', cell_faceid: 'int[:, :]', intersect: 'int[:]', start: 'int', end: 'int', bf_cellid: 'int[:, :]'):
   counter = 0
   for i in range(start, end):
     phyid = phyid_recv[i]
@@ -751,7 +752,7 @@ def _get_ghost_tables_size(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fac
       node_nb_ghostid[nid] += 1
 
 
-def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
+def _create_ghost_tables_2d(ghost_info: 'float[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'float[:, :, :]', face_ghostcenter: 'float[:, :]', node_ghostfaceinfo: 'float[:, :, :]', start: 'int', end: 'int'):
   # node_ghostid
   # node_ghostcenter
   # face_ghostcenter
@@ -797,7 +798,7 @@ def _create_ghost_tables_2d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_fa
       node_ghostfaceinfo[nid, size, 2] = face_normal_x
       node_ghostfaceinfo[nid, size, 3] = face_normal_y
 
-def _create_ghost_tables_3d(ghost_info: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'int[:, :]', face_ghostcenter: 'int[:, :]', node_ghostfaceinfo: 'int[:, :]', start: 'int', end: 'int'):
+def _create_ghost_tables_3d(ghost_info: 'float[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', node_ghostid: 'int[:, :]', node_ghostcenter: 'float[:, :, :]', face_ghostcenter: 'float[:, :]', node_ghostfaceinfo: 'float[:, :, :]', start: 'int', end: 'int'):
 
   for i in range(start, end):
     bc = ghost_info[i, 0]
@@ -870,7 +871,7 @@ def _create_cell_ghostnid(cells: 'int[:, :]', node_ghostid: 'int[:, :]', ghost_i
           cell_ghostnid[i, -1] += 1
           cell_ghostnid[i, size] = g_id
 
-def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halophyid: 'int[:, :]', i_visited: 'int[:]'):
+def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:]', node_halophyid: 'int[:, :]', i_visited: 'int[:]'):
 
   max_counter = 0
   for i in range(b_ncellid.shape[0]):
@@ -887,7 +888,7 @@ def _count_max_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_h
   return max_counter
 
 
-def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halophyid: 'int[:, :]', i_visited: 'int[:]', bcell_halobfid: 'int[:, :]'):
+def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:]', node_halophyid: 'int[:, :]', i_visited: 'int[:]', bcell_halobfid: 'int[:, :]'):
 
   for i in range(b_ncellid.shape[0]):
     bc = b_ncellid[i]
@@ -905,7 +906,7 @@ def _create_bcell_halobfid(cells: 'int[:, :]', b_ncellid: 'int[:, :]', node_halo
     bcell_halobfid[i, -1] = counter
 
 
-def _get_max_b_ncellid(b_nodeid, node_cellid, b_visited):
+def _get_max_b_ncellid(b_nodeid: 'int[:]', node_cellid: 'int[:, :]', b_visited: 'int8[:]'):
   cmp = 0
   for i in range(b_nodeid.shape[0]):
     nodeid = b_nodeid[i]
@@ -916,7 +917,7 @@ def _get_max_b_ncellid(b_nodeid, node_cellid, b_visited):
         cmp += 1
   return cmp
 
-def _create_b_ncellid(b_nodeid, node_cellid, b_visited, b_ncellid):
+def _create_b_ncellid(b_nodeid: 'int[:]', node_cellid: 'int[:, :]', b_visited: 'int8[:]', b_ncellid: 'int[:]'):
   cmp = 0
   for i in range(b_nodeid.shape[0]):
     nodeid = b_nodeid[i]
@@ -1098,7 +1099,7 @@ def _get_face_name(
       return phyid
   return -1
 
-def _define_node_oldname(phy_faces, phy_faces_name, node_oldname):
+def _define_node_oldname(phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', node_oldname: 'int32[:]'):
   for i in range(phy_faces.shape[0]):
     name = phy_faces_name[i]
     for j in range(phy_faces[i, -1]):
@@ -1115,7 +1116,7 @@ def _define_face_name(
         face_haloid: 'int[:]',
         face_oldname: 'int[:]',
         face_name: 'int[:]',
-        phyid_to_faceid
+        phyid_to_faceid: 'int32[:]'
 ):
   for i in range(faces.shape[0]):
     phyid = _get_face_name(phy_faces, faces[i], node_phyfaceid)
@@ -1137,7 +1138,7 @@ def _define_face_name(
 # Halos
 # #############################################
 
-def _create_halo_cells(cells, faces, node_halos, node_haloid, b_visited, cell_halonid, face_haloid):
+def _create_halo_cells(cells: 'int32[:, :]', faces: 'int32[:, :]', node_halos: 'int32[:]', node_haloid: 'int32[:, :]', b_visited: 'int8[:]', cell_halonid: 'int32[:, :]', face_haloid: 'int32[:]'):
   nb_cells = len(cells)
   nb_faces = len(faces)
   intersect_cell = np.zeros(shape=1, dtype=np.int32)
@@ -1152,7 +1153,7 @@ def _create_halo_cells(cells, faces, node_halos, node_haloid, b_visited, cell_ha
     i += c + 2
 
   for i in range(nb_faces):
-    nb_nodes = faces[i, -1]
+    nb_nodes = np.int8(faces[i, -1])
     _intersect(faces[i, 0:nb_nodes], nb_nodes, node_haloid, b_visited, intersect_cell)
     face_haloid[i] = intersect_cell[0]
 
@@ -1161,7 +1162,7 @@ def _create_halo_cells(cells, faces, node_halos, node_haloid, b_visited, cell_ha
       node = cells[i, j]
       n_halo = node_haloid[node]
       for k in range(n_halo[-1]):
-        if _is_in_array(cell_halonid[i], n_halo[k]) == 0:
+        if _is_in_array(cell_halonid[i], n_halo[k]) == -1:
           size = cell_halonid[i, -1]
           cell_halonid[i, -1] += 1
           cell_halonid[i, size] = n_halo[k]
@@ -1569,7 +1570,7 @@ def _create_normal_face_of_cell_2d(cell_center: 'float[:,:]', face_center: 'floa
 
       cell_nf[i, j] = f_normal
 
-def _distance_2d(x: 'float[:]', y: 'float[:]'):
+def _distance_2d(x: 'float64[:]', y: 'float64[:]'):
   return np.sqrt((x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2)
 
 def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', face_cellid: 'int[:,:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_normal: 'float[:,:]', face_dist_ortho: 'float[:]'):
@@ -1603,11 +1604,6 @@ def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', f
 # #########################################################
 # #########################################################
 
-def compile(func, parallel=False):
-  #return func
-  return numba.jit(nopython=True, fastmath=True, cache=True, parallel=parallel)(func)
-def rcompile(func):
-  return func
 
 # private
 _is_in_array = compile(_is_in_array)
