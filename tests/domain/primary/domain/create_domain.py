@@ -153,9 +153,9 @@ class GlobalDomain:
     self.nodes = np.array(mesh.points[:, 0:mesh.dim])
     self.cells = mesh.cells
     self.cells_type = mesh.cells_type
-    self.max_cell_nodeid = mesh.max_cell_nodeid
-    self.max_cell_faceid = mesh.max_cell_faceid
-    self.max_face_nodeid = mesh.max_face_nodeid
+    self.max_cell_nodeid = np.int32(mesh.max_cell_nodeid)
+    self.max_cell_faceid = np.int32(mesh.max_cell_faceid)
+    self.max_face_nodeid = np.int32(mesh.max_face_nodeid)
     self.phy_faces = mesh.phy_faces
     self.phy_faces_name = mesh.phy_faces_name
     self.dim = mesh.dim
@@ -204,8 +204,8 @@ class GlobalDomain:
     cells: 'int[:, :]',
     node_cellid: 'int[:, :]',
     cell_type: 'int[:]',
-    max_cell_faceid: 'int',
-    max_face_nodeid: 'int'
+    max_cell_faceid: 'int32',
+    max_face_nodeid: 'int32'
   ):
     nb_cells = len(cells)
     # tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
@@ -237,9 +237,9 @@ class GlobalDomain:
     halo_cells[:, -1] -= 1
 
     nb_halo_cells = len(halo_cells)
-    cell_volume = np.zeros(shape=nb_halo_cells, dtype=np.float64)
-    cell_center = np.zeros(shape=(nb_halo_cells, self.dim), dtype=np.float64)
-    halo_centvol = np.zeros(shape=(nb_halo_cells, 4), dtype=np.float64)
+    cell_volume = np.zeros(shape=nb_halo_cells, dtype=self.float_precision)
+    cell_center = np.zeros(shape=(nb_halo_cells, self.dim), dtype=self.float_precision)
+    halo_centvol = np.zeros(shape=(nb_halo_cells, 4), dtype=self.float_precision)
     if self.dim == 2:
       compute_cell_center_volume_2d(halo_cells, nodes, cell_volume, cell_center)
       halo_centvol[:, 0:2] = cell_center
@@ -274,10 +274,11 @@ class Partitioning(GlobalDomain):
     super().__init__(mesh, float_precision)
 
 
-  def _create_local_domains(self, node_cellid, node_phyid, part_vert, nb_parts):
+  def _create_local_domains(self, node_cellid, node_phyid, part_vert):
     # Remap the partition labels in `part_vert`
     # `part_vert` will be updated to hold the corresponding new indices in [0, len(unique_vals) - 1].
     unique_vals, part_vert = np.unique(part_vert, return_inverse=True)
+    part_vert = part_vert.astype(np.int32)
     # TODO unconmment this condition after testing
     # if len(unique_vals) != nb_parts:
       # warnings.warn(
@@ -300,19 +301,34 @@ class Partitioning(GlobalDomain):
       32 if self.float_precision == 'float32' else 64,
       self.dim
     )
-    d = local_domains[0]
     for i in range(nb_parts):
-      halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, self.nodes)
-      local_domains[i].halo_centvol = halocentvol
+      nodes = self.nodes.astype(self.float_precision)
+      halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, nodes)
+      local_domains[i].halo_centvol = halocentvol.astype(np.float64)
     log_step()
 
-    arr = np.array([0, 0, 0], dtype=np.float64)
+    # TODO REMOVE
+    arr = np.array([0, 0, 0, 0, 0, 0, 2**32, 2**32, 2**32, 0, 0, 2**32], dtype=np.float64)
     for item in local_domains:
       arr[0] += len(item.node_halos)
       arr[1] += len(item.halo_halosext)
       arr[2] += len(item.halo_halosint)
-    arr /= len(local_domains)
-    print(f"avg_node_halos={arr[0]} avg_halo_halosext={arr[1]} avg_halo_halosint={arr[2]}")
+      arr[3] = max(len(item.node_halos), arr[3])
+      arr[4] = max(len(item.halo_halosext), arr[4])
+      arr[5] = max(len(item.halo_halosint), arr[5])
+      arr[6] = min(len(item.node_halos), arr[6])
+      arr[7] = min(len(item.halo_halosext), arr[7])
+      arr[8] = min(len(item.halo_halosint), arr[8])
+      arr[9] += len(item.halo_neighsub[0])
+      arr[10] = max(len(item.halo_neighsub[0]), arr[10])
+      arr[11] = min(len(item.halo_neighsub[0]), arr[11])
+    arr[[0, 1, 2, 9]] /= len(local_domains)
+
+    print(f"{'Type':<20}{'Min':>14}{'Max':>14}{'Avg':>14}")
+    print(f"{'Node halos':<20}{arr[6]:14.2f}{arr[3]:14.2f}{arr[0]:14.2f}")
+    print(f"{'HalosExt':<20}{arr[7]:14.2f}{arr[4]:14.2f}{arr[1]:14.2f}")
+    print(f"{'HalosInt':<20}{arr[8]:14.2f}{arr[5]:14.2f}{arr[2]:14.2f}")
+    print(f"{'NeighborDomain':<20}{arr[11]:14.2f}{arr[10]:14.2f}{arr[9]:14.2f}")
 
     return local_domains
 
@@ -331,7 +347,9 @@ class Partitioning(GlobalDomain):
     part_vert = np.ones(shape=len(self.cells), dtype=np.int32)
     part_vert[::2] = 2
     part_vert[::3] = 3
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+    print("### This step is just for caching ###")
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
+    print("End #################################### End")
 
     # ################################
     # ################################
@@ -345,7 +363,7 @@ class Partitioning(GlobalDomain):
     #log_step("metis make_n_part")
     part_vert = manapy_domain32.make_n_part_graph_k_way(cell_cellfid, nb_parts)
     log_step()
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
 
     # ################################
     # ################################
@@ -354,7 +372,7 @@ class Partitioning(GlobalDomain):
     log_step("metis make_n_part_mesh_dual")
     part_vert = manapy_domain32.make_n_part_mesh_dual(self.cells, nb_parts, 3) # 3 => testing with tetra (has face with 3 nodes)
     log_step()
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
 
     # ################################
     # ################################
@@ -363,7 +381,7 @@ class Partitioning(GlobalDomain):
     log_step("metis make_n_part_mesh_nodal")
     part_vert = manapy_domain32.make_n_part_mesh_nodal(self.cells, nb_parts)
     log_step()
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert, nb_parts)
+    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
 
 
     return local_domains
@@ -431,7 +449,9 @@ class LocalDomain:
 
     self.rank = rank
     self.size = size
-    self.nodes = local_domain_struct.nodes
+    self.dim = local_domain_struct.dim
+    self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
+    self.nodes = local_domain_struct.nodes.astype(self.float_precision)
     self.cells = local_domain_struct.cells
     self.cells_type = local_domain_struct.cells_type
     self.phy_faces = local_domain_struct.phy_faces
@@ -447,9 +467,7 @@ class LocalDomain:
     self.phyid_recv_part_size = local_domain_struct.phyid_recv_part_size
     self.phyid_send = local_domain_struct.phyid_send
     self.halo_halosext = local_domain_struct.halo_halosext
-    self.halo_centvol = local_domain_struct.halo_centvol
-    self.dim = local_domain_struct.dim
-    self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
+    self.halo_centvol = local_domain_struct.halo_centvol.astype(self.float_precision)
     self.max_cell_nodeid = local_domain_struct.max_cell_nodeid
     self.max_cell_faceid = local_domain_struct.max_cell_faceid
     self.max_face_nodeid = local_domain_struct.max_face_nodeid
