@@ -13,7 +13,7 @@ CELL_TETRA = 3
 CELL_HEXA = 4
 CELL_PYRAMID = 5
 
-def _binary_search(array: 'int[:]', item: 'int') -> 'int':
+def _binary_search(array: 'int32[:]', item: 'int32') -> 'int':
   """
     Check if an item is in the array
     Return index >= 0 if the item is in the array otherwise -1
@@ -38,8 +38,8 @@ def _binary_search(array: 'int[:]', item: 'int') -> 'int':
 
   return -1
 
-def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:, :]',
-                     intersect_cell: 'int[:]'):
+def _intersect_nodes(face_nodes: 'int32[:]', nb_nodes: 'int32', node_cellid: 'int32[:, :]',
+                     intersect_cell: 'int32[:]'):
   index = 0
 
   intersect_cell[0] = -1
@@ -57,7 +57,7 @@ def _intersect_nodes(face_nodes: 'int[:]', nb_nodes: 'int', node_cellid: 'int[:,
     if index >= 2:
       return
 
-def _get_max_info(cell_type: 'int'):
+def _get_max_info(cell_type: 'int8'):
   # [max_cell_faceid, max_face_nodeid, max_cell_nodeid]
   if cell_type == CELL_TRIANGLE:
     return [3, 2, 3]
@@ -73,7 +73,7 @@ def _get_max_info(cell_type: 'int'):
 
 
 
-def _create_sub_domains(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int[:]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', local_domains: ListLocalDomainStructDataType, i_visited: 'int32[:]', vec_node_oldname: 'int[:]', intersect_cell: 'int[:]', boundary_cells: 'int[:]', part_phyid: 'int[:]'):
+def _create_sub_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', local_domains: ListLocalDomainStructDataType, i_visited: 'int32[:]', vec_node_oldname: 'int32[:]', intersect_cell: 'int32[:]', boundary_cells: 'int32[:]', part_phyid: 'int32[:]'):
 
   # #########################################################
   # Create Physical faces And node old name, boundary_cells
@@ -180,7 +180,7 @@ def _create_sub_domains(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyi
     local_domains[p].max_cell_halonid = max(nb_cell_halonid, local_domains[p].max_cell_halonid)
 
 
-def _create_tables(ld: LocalDomainStructDataType, nodes: 'float64[:, :]', part_phyid: 'int[:]'):
+def _create_tables(ld: LocalDomainStructDataType, nodes: 'float64[:, :]', part_phyid: 'int32[:]'):
   # #########################################################
   # vec_phyids, map_phyids, nb_halos_int
   # #########################################################
@@ -221,7 +221,7 @@ def _create_tables(ld: LocalDomainStructDataType, nodes: 'float64[:, :]', part_p
   ld.phyid_recv = np.zeros(shape=len(ld.vec_phyids), dtype=np.int32)
   ld.phyid_recv_part_size = np.zeros(shape=(len(ld.set_halo_phyid_neighsub) * 2 + 2), dtype=np.int32)
 
-def _create_locals(p: 'int', cells: 'int[:, :]', nodes: 'float64[:, :]', cells_type: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', part_phyid: 'int[:]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', part_vert: 'int[:]', vec_node_oldname: 'int[:]', local_domain: LocalDomainStructDataType):
+def _create_locals(p: 'int32', cells: 'int32[:, :]', nodes: 'float64[:, :]', cells_type: 'int8[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', part_phyid: 'int32[:]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', part_vert: 'int32[:]', vec_node_oldname: 'int32[:]', local_domain: LocalDomainStructDataType):
   map_cells = local_domain.map_cells
   map_nodes = local_domain.map_nodes
   map_halos = local_domain.map_halos
@@ -395,7 +395,7 @@ def _create_phyid_send(local_domains: ListLocalDomainStructDataType):
     for i in range(len(list_phyid_send)):
       local_domains[p].phyid_send[i] = list_phyid_send[i]
 
-def _create_partition_tables(local_domains: ListLocalDomainStructDataType, cells: 'int[:, :]', nodes: 'float64[:, :]', cells_type: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', part_phyid: 'int[:]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', part_vert: 'int[:]', vec_node_oldname: 'int[:]', float_precision: 'int', dim: 'int'):
+def _create_partition_tables(local_domains: ListLocalDomainStructDataType, cells: 'int32[:, :]', nodes: 'float64[:, :]', cells_type: 'int8[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', part_phyid: 'int32[:]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', part_vert: 'int32[:]', vec_node_oldname: 'int32[:]', float_precision: 'int32', dim: 'int32'):
   for p in range(len(local_domains)):
     local_domain = local_domains[p]
     _create_tables(local_domain, nodes, part_phyid)
@@ -404,10 +404,12 @@ def _create_partition_tables(local_domains: ListLocalDomainStructDataType, cells
     local_domains[p].float_precision = float_precision
   _create_phyid_send(local_domains)
 
-def _create_local_domains(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int[:]', nodes: 'float64[:, :]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', nb_parts: 'int', float_precision: 'int', dim: 'int'):
+
+
+def _create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float64[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
 
   local_domains = new_local_domains(nb_parts)
-  i_visited = np.ones(shape=len(cells), dtype=np.int32) * -1
+  i_visited = np.ones(shape=len(cells), dtype=np.int32) * np.int32(-1)
   vec_node_oldname = np.zeros(shape=len(nodes), dtype=np.int32)
   intersect_cell = np.zeros(shape=2, dtype=np.int32)
   boundary_cells = np.zeros(shape=len(phy_faces), dtype=np.int32)  # cells that has at least one physical face attached to it
