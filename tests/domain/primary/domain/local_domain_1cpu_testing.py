@@ -183,7 +183,8 @@ class LocalDomain1Cpu(LocalDomain):
 
       self.rank = rank
       self.size = size
-      self.nodes = local_domain_struct.nodes
+      self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
+      self.nodes = local_domain_struct.nodes.astype(self.float_precision)
       self.cells = local_domain_struct.cells
       self.cells_type = local_domain_struct.cells_type
       self.phy_faces = local_domain_struct.phy_faces
@@ -199,9 +200,8 @@ class LocalDomain1Cpu(LocalDomain):
       self.phyid_recv_part_size = local_domain_struct.phyid_recv_part_size
       self.phyid_send = local_domain_struct.phyid_send
       self.halo_halosext = local_domain_struct.halo_halosext
-      self.halo_centvol = local_domain_struct.halo_centvol
+      self.halo_centvol = local_domain_struct.halo_centvol.astype(self.float_precision)
       self.dim = local_domain_struct.dim
-      self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
       self.max_cell_nodeid = local_domain_struct.max_cell_nodeid
       self.max_cell_faceid = local_domain_struct.max_cell_faceid
       self.max_face_nodeid = local_domain_struct.max_face_nodeid

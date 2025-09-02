@@ -84,7 +84,7 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False):
 
   # Compile and store hash
   if backend == "numba":
-    print("=>", func.__name__, "->", signature)
+    # print("=>", func.__name__, "->", signature)
     compiled_func = numba.jit(signature, nopython=True, fastmath=False, cache=True, parallel=parallel)(func)
   elif backend == "cuda":
     compiled_func = cuda.jit(signature, fastmath=True, device=True)(func)
