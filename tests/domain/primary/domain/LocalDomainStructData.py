@@ -32,23 +32,6 @@ spec = [
   ('max_cell_halonid', int32),
   ('float_precision', int32),
   ('dim', int32),
-
-  # Temporary
-  ('max_node_halophyid', int32),
-  ('max_phy_face_nodeid', int32),
-  ('nb_node_halos', int32),
-  ('map_cells', types.DictType(int32, int32)),
-  ('map_phy_faces', types.DictType(int32, int32)),
-  ('map_nodes', types.DictType(int32, int32)),
-  ('map_halos', types.DictType(int32, int32)),
-
-  ('set_phyids', types.DictType(int32, boolean)),
-  ('set_halo_phyid_neighsub', types.DictType(int32, boolean)),
-  ('map_halo_neighsub', types.DictType(int32, types.ListType(int32))),
-  ('map_halo_int', types.DictType(int32, types.ListType(int32))),
-  ('vec_phyids', int32[:]),
-  ('map_phyids', types.DictType(int32, int32)),
-  ('list_phyid_send', types.ListType(int32)),
 ]
 
 @jitclass(spec)
@@ -82,36 +65,6 @@ class LocalDomainStructData:
     self.max_cell_halonid = 0
     self.float_precision = 0 # 32 or 64
     self.dim = 0 # 2 or 3
-
-
-    # Temporary members used to generate the above tables and scalars
-    self.max_node_halophyid = 0
-    self.max_phy_face_nodeid = 0
-    self.nb_node_halos = 0
-
-    self.map_cells = Dict.empty(key_type=int32, value_type=int32)
-    self.map_phy_faces = Dict.empty(key_type=int32, value_type=int32)
-    self.map_nodes = Dict.empty(key_type=int32, value_type=int32)
-    self.map_halos = Dict.empty(key_type=int32, value_type=int32)
-
-    self.set_phyids = Dict.empty(key_type=int32, value_type=boolean)
-    self.set_halo_phyid_neighsub = Dict.empty(key_type=int32, value_type=boolean)
-
-    self.map_halo_neighsub = Dict.empty(
-      key_type=int32,
-      value_type=List.empty_list(int32)
-    )
-
-    self.map_halo_int = Dict.empty(
-      key_type=int32,
-      value_type=List.empty_list(int32)
-    )
-
-    self.vec_phyids = np.zeros(1, dtype=np.int32)
-    self.map_phyids = Dict.empty(key_type=int32, value_type=int32)
-    self.list_phyid_send = List.empty_list(int32) # look self.phyid_send
-
-
 
 LocalDomainStructDataType = LocalDomainStructData.class_type.instance_type
 ListLocalDomainStructDataType = types.ListType(LocalDomainStructDataType)
@@ -150,7 +103,6 @@ def save_hdf5(ld: 'LocalDomainStructData', path):
     f.create_dataset('max_face_nodeid', data=ld.max_face_nodeid)
     f.create_dataset('max_node_haloid', data=ld.max_node_haloid)
     f.create_dataset('max_cell_halonid', data=ld.max_cell_halonid)
-
 
 def load_hd5(path: 'str'):
   local_domain = LocalDomainStructData()

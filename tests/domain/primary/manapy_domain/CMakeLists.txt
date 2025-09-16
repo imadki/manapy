@@ -20,4 +20,6 @@ add_executable(manapy_domain
         metis/main.c
         manapy_part/src/utils.cpp
         manapy_part/includes/manapy_part.h
+        manapy_part/src/partitioning.cpp
+        manapy_part/includes/PyArray.h
 )
