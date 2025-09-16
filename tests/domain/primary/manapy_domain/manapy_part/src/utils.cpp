@@ -2,7 +2,7 @@
 
 
 
-// # define PRINT_DEBUG false
+# define PRINT_DEBUG false
 void print_instant(const char *fmt, ...) {
 #ifdef PRINT_DEBUG
     char buffer[1024];  // temp string buffer

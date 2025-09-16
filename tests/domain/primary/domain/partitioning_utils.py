@@ -406,34 +406,69 @@ def _create_partition_tables(local_domains: ListLocalDomainStructDataType, cells
 
 
 
+# def _create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float64[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
+#
+#   local_domains = new_local_domains(nb_parts)
+#   i_visited = np.ones(shape=len(cells), dtype=np.int32) * np.int32(-1)
+#   vec_node_oldname = np.zeros(shape=len(nodes), dtype=np.int32)
+#   intersect_cell = np.zeros(shape=2, dtype=np.int32)
+#   boundary_cells = np.zeros(shape=len(phy_faces), dtype=np.int32)  # cells that has at least one physical face attached to it
+#   part_phyid = np.zeros(shape=len(boundary_cells), dtype=np.int32)
+#
+#   _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, phy_faces, phy_faces_name, local_domains, i_visited, vec_node_oldname, intersect_cell, boundary_cells, part_phyid)
+#
+#   _create_partition_tables(local_domains, cells, nodes, cells_type, node_cellid, node_phyid, part_phyid, phy_faces, phy_faces_name, part_vert, vec_node_oldname, float_precision, dim)
+#
+#   return local_domains
+
+import manapy_domain32
+from LocalDomainStructData import new_local_domains
+
 def _create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float64[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
 
-  local_domains = new_local_domains(nb_parts)
-  i_visited = np.ones(shape=len(cells), dtype=np.int32) * np.int32(-1)
-  vec_node_oldname = np.zeros(shape=len(nodes), dtype=np.int32)
-  intersect_cell = np.zeros(shape=2, dtype=np.int32)
-  boundary_cells = np.zeros(shape=len(phy_faces), dtype=np.int32)  # cells that has at least one physical face attached to it
-  part_phyid = np.zeros(shape=len(boundary_cells), dtype=np.int32)
+  print("C -> Create local domains")
+  c_res = manapy_domain32.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts)
 
-  _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, phy_faces, phy_faces_name, local_domains, i_visited, vec_node_oldname, intersect_cell, boundary_cells, part_phyid)
+  print("C -> End Create local domains")
 
-  _create_partition_tables(local_domains, cells, nodes, cells_type, node_cellid, node_phyid, part_phyid, phy_faces, phy_faces_name, part_vert, vec_node_oldname, float_precision, dim)
+  list_local_domains = new_local_domains(nb_parts)
+  k = 0
+  for i in range(nb_parts):
+    obj = list_local_domains[i]
 
-  return local_domains
+    obj.nodes = c_res[i][k]; k+=1
+    obj.cells = c_res[i][k]; k+=1
+    obj.cells_type = c_res[i][k]; k+=1
+    obj.phy_faces = c_res[i][k]; k+=1
+    obj.phy_faces_name = c_res[i][k]; k+=1
+    obj.cell_loctoglob = c_res[i][k]; k+=1
+    obj.node_loctoglob = c_res[i][k]; k+=1
+    obj.node_oldname = c_res[i][k]; k+=1
+    obj.halo_neighsub = c_res[i][k]; k+=1
+    obj.node_halos = c_res[i][k]; k+=1
+    obj.node_halophyid = c_res[i][k]; k+=1
+    obj.phyid_recv = c_res[i][k]; k+=1
+    obj.phyid_recv_part_size = c_res[i][k]; k+=1
+    obj.phyid_send = c_res[i][k]; k+=1
+    obj.halo_halosext = c_res[i][k]; k+=1
+    obj.halo_halosint = c_res[i][k]; k+=1
+    obj.max_cell_nodeid = c_res[i][k]; k+=1
+    obj.max_cell_faceid = c_res[i][k]; k+=1
+    obj.max_face_nodeid = c_res[i][k]; k+=1
+    obj.max_node_haloid = c_res[i][k]; k+=1
+    obj.max_cell_halonid = c_res[i][k]; k+=1
+    obj.dim = dim
+    obj.float_precision = float_precision
+    list_local_domains.append(obj)
+
+  return list_local_domains
 
 # def compile(func):
 #   #return func
 #   return numba.jit(nopython=True, fastmath=True, cache=True)(func)
 
 # private
-_binary_search = compile(_binary_search)
-_intersect_nodes = compile(_intersect_nodes)
-_get_max_info = compile(_get_max_info)
-_create_tables = compile(_create_tables)
-_create_locals = compile(_create_locals)
-_create_phyid_send = compile(_create_phyid_send)
-_create_sub_domains = compile(_create_sub_domains)
-_create_partition_tables = compile(_create_partition_tables)
 
 # public
-create_local_domains = compile(_create_local_domains)
+# create_local_domains = compile(_create_local_domains)
+create_local_domains = _create_local_domains
