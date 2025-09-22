@@ -1,5 +1,8 @@
+#define PY_ARRAY_UNIQUE_SYMBOL MYPACKAGE_ARRAY_API
+#include <numpy/arrayobject.h>
 #include "manapy_part.h"
 
+// TODO check leaks
 
 /* Graph representation in compressed Sparse Row (CSR) format
  * graph a 2D int32 numpy array of size (number of cells, max cell neighbors)
@@ -68,8 +71,6 @@ static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_
 }
 
 
-
-
 static int make_n_part_graph_k_way(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     idx_t *xadj;
     idx_t *adjncy;
@@ -117,6 +118,7 @@ static int make_n_part_graph_k_way(PyArrayObject *graph, idx_t nb_part, idx_t **
     *part_vert = part_idx;
     return 0;
 }
+
 
 static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_common, idx_t **part_vert) {
     idx_t *eptr;
@@ -180,6 +182,7 @@ static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_co
     return 0;
 }
 
+
 static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **part_vert) {
     idx_t *eptr;
     idx_t *eind;
@@ -240,10 +243,6 @@ static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **p
     *part_vert = part_idx;
     return 0;
 }
-
-
-
-
 
 
 static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
@@ -373,7 +372,6 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
 }
 
 static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
-    // TODO check numpy type and dimension
     PyObject *part_vert_obj = nullptr;
     PyObject *node_cellid_obj = nullptr;
     PyObject *node_phyid_obj = nullptr;
@@ -397,64 +395,73 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         Need it aligned and C-contiguous.
         Want NumPy to copy if necessary and handle the details for you.
      */
-    PyArrayObject *part_vert = (PyArrayObject *)PyArray_FROM_OTF(part_vert_obj, int_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *node_cellid = (PyArrayObject *)PyArray_FROM_OTF(node_cellid_obj, int_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *node_phyid = (PyArrayObject *)PyArray_FROM_OTF(node_phyid_obj, int_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, int_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *cells_type = (PyArrayObject *)PyArray_FROM_OTF(cells_type_obj, int_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, float_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *phy_faces = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_obj, int_type, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *phy_faces_name = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_name_obj, int_type, NPY_ARRAY_IN_ARRAY);
 
-    print_instant("0. Create PyArray Tables\n");
+    PyArrayObject *part_vert = (PyArrayObject *)PyArray_FROM_OTF(part_vert_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *node_cellid = (PyArrayObject *)PyArray_FROM_OTF(node_cellid_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *node_phyid = (PyArrayObject *)PyArray_FROM_OTF(node_phyid_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *cells_type = (PyArrayObject *)PyArray_FROM_OTF(cells_type_obj, NPY_INT8, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, NPY_FLOAT64, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *phy_faces = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *phy_faces_name = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_name_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    auto *local_domains = new(std::nothrow) LocalDomainStruct[nb_parts];
 
-    auto py_part_vert =  PyArray<int32_t, 1>(part_vert);
-    auto py_node_cellid =  PyArray<int32_t, 2> (node_cellid);
-    auto py_node_phyid =  PyArray<int32_t, 2> (node_phyid);
-    auto py_cells =  PyArray<int32_t, 2> (cells);
-    auto py_cells_type =  PyArray<int8_t, 1> (cells_type);
-    auto py_nodes =  PyArray<double, 2> (nodes);
-    auto py_phy_faces =  PyArray<int32_t, 2> (phy_faces);
-    auto py_phy_faces_name =  PyArray<int32_t, 1> (phy_faces_name);
+    const auto free_tables = [&]() {
+        Py_XDECREF(part_vert); part_vert = nullptr;
+        Py_XDECREF(node_cellid); node_cellid = nullptr;
+        Py_XDECREF(node_phyid); node_phyid = nullptr;
+        Py_XDECREF(cells); cells = nullptr;
+        Py_XDECREF(cells_type); cells_type = nullptr;
+        Py_XDECREF(nodes); nodes = nullptr;
+        Py_XDECREF(phy_faces); phy_faces = nullptr;
+        Py_XDECREF(phy_faces_name); phy_faces_name = nullptr;
+        delete []local_domains; local_domains = nullptr;
+    };
 
-    PyObject *py_list_result = create_local_domains(
-      &py_part_vert,
-      &py_node_cellid,
-      &py_node_phyid,
-      &py_cells,
-      &py_cells_type,
-      &py_nodes,
-      &py_phy_faces,
-      &py_phy_faces_name,
-      nb_parts
-    );
+    if (!part_vert || !node_cellid || !node_phyid || !cells || !cells_type || !nodes || !phy_faces || !phy_faces_name || !local_domains) {
+        free_tables();
+        return nullptr;
+    }
 
-    return py_list_result;
+
+
+    try {
+        PyArray<int32_t, 1> py_part_vert(part_vert);
+        PyArray<int32_t, 2> py_node_cellid(node_cellid);
+        PyArray<int32_t, 2> py_node_phyid(node_phyid);
+        PyArray<int32_t, 2> py_cells(cells);
+        PyArray<int8_t, 1> py_cells_type(cells_type);
+        PyArray<double, 2> py_nodes(nodes);
+        PyArray<int32_t, 2> py_phy_faces(phy_faces);
+        PyArray<int32_t, 1> py_phy_faces_name(phy_faces_name);
+
+        PyObject *py_list_result = create_local_domains(
+          local_domains,
+          &py_part_vert,
+          &py_node_cellid,
+          &py_node_phyid,
+          &py_cells,
+          &py_cells_type,
+          &py_nodes,
+          &py_phy_faces,
+          &py_phy_faces_name,
+          nb_parts
+        );
+
+        // Free resources and return
+        free_tables();
+        return py_list_result;
+    } catch (std::exception &e) {
+        print_instant("%s", e.what());
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+
+        // Free resources
+        free_tables();
+        return nullptr;
+    }
+
 }
 
-static PyObject *py_test_fun(PyObject *self, PyObject *args) {
-    PyObject *cells_obj = nullptr;
-
-    if (!PyArg_ParseTuple(args, "O", &cells_obj))
-        return nullptr;
-
-
-    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_FLOAT64, NPY_ARRAY_IN_ARRAY);
-    if (!cells)
-        return nullptr;
-
-    PyArray<double, 2> a(cells);
-
-    auto b = a.sub_array(0);
-
-    print_instant("%d %lf\n", b.valueType, b.get(1));
-
-
-
-    a.ref_holder = nullptr;
-    PyObject *ret_data = Py_BuildValue("O", cells);
-    return ret_data;
-}
 
 /* -------- module definition --------------------------------------- */
 // ----------------- Method Table -----------------------
@@ -514,7 +521,6 @@ static PyMethodDef ManapyMethods[] = {
     { "make_n_part_mesh_dual", py_make_n_part_mesh_dual, METH_VARARGS, doc_make_n_part_mesh_dual },
     { "make_n_part_mesh_nodal", py_make_n_part_mesh_nodal, METH_VARARGS, doc_make_n_part_mesh_nodal },
     { "create_local_domains", py_create_local_domains, METH_VARARGS, nullptr },
-    { "test_fun", py_test_fun, METH_VARARGS, nullptr },
     { NULL, NULL, 0, NULL }
 };
 

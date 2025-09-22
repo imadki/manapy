@@ -1,164 +1,12 @@
+#define PY_ARRAY_UNIQUE_SYMBOL MYPACKAGE_ARRAY_API
+#define NO_IMPORT_ARRAY
+#include <numpy/arrayobject.h>
 #include "manapy_part.h"
+#include "LocalDomainStruct.h"
 
-struct LocalDomainStruct {
-    PyArray<double, 2> *nodes = nullptr; // float64[:, :] [[node x, y, z]]
-    PyArray<int32_t, 2> *cells = nullptr; // int32[:, :] [[cells nodes]]
-    PyArray<int8_t, 1> *cells_type = nullptr; // int8[:] [cell type]
-    PyArray<int32_t, 2> *phy_faces = nullptr; // int32[:, :] [[physical face nodes]]
-    PyArray<int32_t, 1> *phy_faces_name = nullptr; // int32[:] [physical face name]
-    PyArray<int32_t, 1> *cell_loctoglob = nullptr; // int32[:] [cell global index]
-    PyArray<int32_t, 1> *node_loctoglob = nullptr; // int32[:] [node global index]
-    PyArray<int32_t, 1> *node_oldname = nullptr; // int32[:] [node old name, ...]
-    PyArray<int32_t, 2> *halo_neighsub = nullptr; // int32[:, :] [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
-    PyArray<int32_t, 1> *node_halos = nullptr; // int32[:] [node1, number of halos, halocell index in halo_halosext, node2, number of halos, ....] shape=(2*nb_nodes + nb_halos)
-    PyArray<int32_t, 2> *node_halophyid = nullptr; // int32[:, :] [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
-    PyArray<int32_t, 2> *halo_halosext = nullptr; // int32[:, :] [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
-    PyArray<int32_t, 1> *halo_halosint = nullptr; // int32[:] [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
-    PyArray<double, 2> *halo_centvol = nullptr; // float64[:, :] [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
-    PyArray<int32_t, 1> *phyid_recv = nullptr; // int32[:] [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"
-    PyArray<int32_t, 1> *phyid_recv_part_size = nullptr; // int32[:] [boundary faces part, size]
-    PyArray<int32_t, 1> *phyid_send = nullptr;  // int32[:] self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
-    PyObject *tuple_res = nullptr;
-
-    // Scalars
-    int max_cell_nodeid = 0;
-    int max_cell_faceid = 0;
-    int max_face_nodeid = 0;
-    int max_node_haloid = 0;
-    int max_cell_halonid = 0;
-
-    // Temporary members used to generate the above tables and scalars
-    int max_node_halophyid = 0;
-    int max_phy_face_nodeid = 0;
-    int nb_node_halos = 0;
-
-    std::map<int, int> map_cells;
-    std::map<int, int> map_phy_faces;
-    std::map<int, int> map_nodes;
-    std::map<int, int> map_halos;
-    std::set<int> set_phyids;
-    std::set<int> set_halo_phyid_neighsub;
-    std::map<int, std::vector<int> > map_halo_neighsub;
-    std::map<int, std::vector<int> > map_halo_int;
-    std::vector<int> vec_phyids;
-    std::map<int, int> map_phyids;
-    std::vector<int> list_phyid_send;
-
-    void _create_tables(PyArray<double, 2> *nodes, std::vector<int32_t> &part_phyid) {
-        // #########################################################
-        // vec_phyids, map_phyids, nb_halos_int
-        // #########################################################
-
-        const auto &set_phyids = this->set_phyids;
-        this->map_phyids = std::map<int32_t, int32_t>();
-        this->vec_phyids = std::vector<int32_t>(set_phyids.size());
-
-        auto &vec_phyids = this->vec_phyids;
-        auto &map_phyids = this->map_phyids;
-        int32_t nb_halos_int = 0;
-
-        int32_t counter = 0;
-        for (const auto item : set_phyids) {
-            vec_phyids[counter] = item;
-            counter += 1;
-        }
-        // Sort vec_phyids by comparing part_phyid[phyid]
-        std::sort(vec_phyids.begin(), vec_phyids.end(),[&part_phyid](const int a, const int b) {
-            return part_phyid[a] < part_phyid[b];
-        });
-
-        for (int32_t i = 0; i < vec_phyids.size(); i++) {
-            const int32_t item = vec_phyids[i];
-            map_phyids[item] = i;
-        }
-
-        for (const auto &item : this->map_halo_int) {
-            nb_halos_int += (int32_t)this->map_halo_int[item.first].size();
-        }
-        // #########################################################
-        // Tables
-        // #########################################################
-
-        // this->map_phyids = map_phyids; assigned above
-        // this->vec_phyids = vec_phyids; assigned above
-        this->nodes = new PyArray<double, 2>(make_npy_dims(this->map_nodes.size(), nodes->shape[1]));
-        this->cells = new PyArray<int32_t, 2>(make_npy_dims(this->map_cells.size(), this->max_cell_nodeid + 1));
-        this->cells_type = new PyArray<int8_t, 1>(make_npy_dims(this->map_cells.size()));
-        this->phy_faces = new PyArray<int32_t, 2>(make_npy_dims(this->map_phy_faces.size(), this->max_phy_face_nodeid + 1));
-        this->phy_faces_name = new PyArray<int32_t, 1>(make_npy_dims(this->map_phy_faces.size()));
-        this->cell_loctoglob = new PyArray<int32_t, 1>(make_npy_dims(this->map_cells.size()));
-        this->node_loctoglob = new PyArray<int32_t, 1>(make_npy_dims(this->map_nodes.size()));
-        this->node_oldname = new PyArray<int32_t, 1>(make_npy_dims(this->map_nodes.size()));
-        this->halo_neighsub = new PyArray<int32_t, 2>(make_npy_dims(2, this->map_halo_int.size()));
-        this->node_halos = new PyArray<int32_t, 1>(make_npy_dims(this->nb_node_halos));
-        this->node_halophyid = new PyArray<int32_t, 2>(make_npy_dims(this->map_nodes.size(), this->max_node_halophyid + 1));
-        this->phyid_recv = new PyArray<int32_t, 1>(make_npy_dims(this->vec_phyids.size()));
-        this->phyid_recv_part_size = new PyArray<int32_t, 1>(make_npy_dims(this->set_halo_phyid_neighsub.size() * 2 + 2));
-        // this->phyid_send -> created at _create_phyid_send
-        this->halo_halosext = new PyArray<int32_t, 2>(make_npy_dims(this->map_halos.size(), this->max_cell_nodeid + 2));
-        this->halo_halosint = new PyArray<int32_t, 1>(make_npy_dims(nb_halos_int));
-    }
-
-    void    free_tables() {
-        // all these tables are created using this->_create_tables
-        delete this->nodes; this->nodes = nullptr;
-        delete this->cells; this->cells = nullptr;
-        delete this->cells_type; this->cells_type = nullptr;
-        delete this->phy_faces; this->phy_faces = nullptr;
-        delete this->phy_faces_name; this->phy_faces_name = nullptr;
-        delete this->cell_loctoglob; this->cell_loctoglob = nullptr;
-        delete this->node_loctoglob; this->node_loctoglob = nullptr;
-        delete this->node_oldname; this->node_oldname = nullptr;
-        delete this->halo_neighsub; this->halo_neighsub = nullptr;
-        delete this->node_halos; this->node_halos = nullptr;
-        delete this->node_halophyid; this->node_halophyid = nullptr;
-        delete this->phyid_recv; this->phyid_recv = nullptr;
-        delete this->phyid_recv_part_size; this->phyid_recv_part_size = nullptr;
-        delete this->phyid_send; this->phyid_send = nullptr;
-        delete this->halo_halosext; this->halo_halosext = nullptr;
-        delete this->halo_halosint; this->halo_halosint = nullptr;
-    }
-
-    int create_tuple() {
-        PyObject *tuple = Py_BuildValue("(OOOOOOOOOOOOOOOOiiiii)",
-            this->nodes->ref_holder,
-            this->cells->ref_holder,
-            this->cells_type->ref_holder,
-            this->phy_faces->ref_holder,
-            this->phy_faces_name->ref_holder,
-            this->cell_loctoglob->ref_holder,
-            this->node_loctoglob->ref_holder,
-            this->node_oldname->ref_holder,
-            this->halo_neighsub->ref_holder,
-            this->node_halos->ref_holder,
-            this->node_halophyid->ref_holder,
-            this->phyid_recv->ref_holder,
-            this->phyid_recv_part_size->ref_holder,
-            this->phyid_send->ref_holder,
-            this->halo_halosext->ref_holder,
-            this->halo_halosint->ref_holder,
-            this->max_cell_nodeid,
-            this->max_cell_faceid,
-            this->max_face_nodeid,
-            this->max_node_haloid,
-            this->max_cell_halonid);
-        if (!tuple) {
-            throw std::runtime_error("create_tuple() failed");
-        }
-
-        // tuple hold references now
-        this->free_tables();
-        this->tuple_res = tuple;
-
-        return 0;
-    }
-
-    ~LocalDomainStruct() {
-        this->free_tables();
-        Py_XDECREF(this->tuple_res);
-        this->tuple_res = nullptr;
-    }
-};
+// #################################################################
+// 1. _create_sub_domains
+// #################################################################
 
 static int32_t _binary_search(const PyArray<int32_t, 1> &arr, const int32_t item) {
     const int32_t size = arr.last();
@@ -221,6 +69,7 @@ static std::vector<int32_t> _get_max_info(const int32_t cell_type) {
     return {0, 0, 0};
 }
 
+
 static void _create_sub_domains(
     PyArray<int32_t, 1> *part_vert,
     PyArray<int32_t, 2> *node_cellid,
@@ -239,6 +88,7 @@ static void _create_sub_domains(
     // #########################################################
     // Create Physical faces And node old name, boundary_cells
     // #########################################################
+    print_instant("\t2.1. Create Physical faces And node old name, boundary_cells\n");
 
     int total_nb_phyfaces = 0;
     for (idx_t i = 0; i < phy_faces->shape[0]; i++) {
@@ -246,10 +96,11 @@ static void _create_sub_domains(
         const idx_t name = phy_faces_name->get(i);
         const idx_t size = phy_face.last();
         _intersect_arr(node_cellid, &phy_face, size, intersect_cell);
-        if (intersect_cell[0] == -1) {
+        if (intersect_cell[0] != -1) {
             const int32_t p = part_vert->get(intersect_cell[0]);
             local_domains[p].max_phy_face_nodeid = std::max(size, local_domains[p].max_phy_face_nodeid);
             local_domains[p].map_phy_faces[i] = (int32_t)local_domains[p].map_phy_faces.size();
+            boundary_cells[total_nb_phyfaces] = intersect_cell[0];
             total_nb_phyfaces++;
         }
         for (int32_t j = 0; j < size; j++) {
@@ -258,16 +109,20 @@ static void _create_sub_domains(
                 vec_node_oldname[nodeid] = name;
         }
     }
+
     if (total_nb_phyfaces != phy_faces->shape[0]) {
-        std::stringstream ss;
-        ss << "Error: not all the physical faces match the domain faces ! ";
-        ss << total_nb_phyfaces << " " << phy_faces->shape[0] << "\n";
-        throw std::runtime_error(ss.str().c_str());
+        char msg[256];
+        snprintf(msg, sizeof(msg),
+            "Warning: not all the physical faces match the domain faces !! %d "
+            "where the number of physical faces is %ld",
+            total_nb_phyfaces, phy_faces->shape[0]);
+        throw std::runtime_error(msg);
     }
 
     // #########################################################
     // Create part_phyid
     // #########################################################
+    print_instant("\t2.2. Create part_phyid\n");
 
     for (int32_t phyid = 0; phyid < boundary_cells.size(); phyid++) {
         const int32_t cell_id = boundary_cells[phyid];
@@ -278,6 +133,7 @@ static void _create_sub_domains(
     // map_cells, map_nodes, map_halos, map_halo_int, set_phyid, set_halo_phyid_neighsub
     // max_cell_faceid, max_face_nodeid, max_cell_nodeid, max_cell_halonid, nb_node_halos, max_node_halophyid
     // #########################################################
+    print_instant("\t2.3. map_cells, map_nodes, map_halos, map_halo_int, set_phyid, set_halo_phyid_neighsub\n");
 
     for (int32_t i = 0; i < cells->shape[0]; i++) {
         const int32_t p = part_vert->get(i);
@@ -363,6 +219,13 @@ static void _create_sub_domains(
         local_domains[p].max_cell_halonid = std::max(nb_cell_halonid, local_domains[p].max_cell_halonid);
     }
 }
+
+
+
+
+// #################################################################
+// 2. _create_partition_tables
+// #################################################################
 
 static void _create_locals(const int32_t p,
 PyArray<int32_t, 2> *cells,
@@ -557,6 +420,7 @@ LocalDomainStruct &local_domain) {
     }
 }
 
+
 static void _create_phyid_send(LocalDomainStruct *local_domains, const int32_t n) {
     // #########################################################
     // phyid_send => [partition_id, size, indices point to phyid_recv_part_size, ...]
@@ -614,7 +478,29 @@ const int32_t n) {
     _create_phyid_send(local_domains, n);
 }
 
+// #################################################################
+// 3. Return
+// #################################################################
+
+static PyObject *get_result_as_py_list(LocalDomainStruct *local_domains, const int32_t nb_parts) {
+    PyObject *py_list_result = PyList_New(nb_parts);
+    if (!py_list_result) {
+        throw std::bad_alloc();
+    }
+    for (int i = 0; i < nb_parts; i++) {
+        local_domains[i].create_tuple(); // create local_domains[i].tuple_res
+        PyList_SET_ITEM(py_list_result, i, local_domains[i].tuple_res);
+
+        // The ownership transferred to the list.
+        local_domains[i].tuple_res = nullptr;
+    }
+
+    return py_list_result;
+}
+
+
 PyObject * create_local_domains(
+LocalDomainStruct *local_domains,
 PyArray<int32_t, 1> *part_vert,
 PyArray<int32_t, 2> *node_cellid,
 PyArray<int32_t, 2> *node_phyid,
@@ -624,35 +510,20 @@ PyArray<double, 2> *nodes,
 PyArray<int32_t, 2> *phy_faces,
 PyArray<int32_t, 1> *phy_faces_name,
 const int32_t nb_parts) {
-    auto *local_domains = new LocalDomainStruct[nb_parts];
-
-    print_instant("1. Start creating local Domains\n");
-
     std::vector<int32_t> i_visited(cells->shape[0], -1);
     std::vector<int32_t> vec_node_oldname(nodes->shape[0]);
     std::vector<int32_t> intersect_cell(2);
     std::vector<int32_t> boundary_cells(phy_faces->shape[0]); //cells that has at least one physical face attached to it
     std::vector<int32_t> part_phyid(phy_faces->shape[0]);
 
-    print_instant("2. _create_sub_domains\n");
+    print_instant("1. _create_sub_domains\n");
     _create_sub_domains(part_vert, node_cellid, node_phyid, cells, cells_type, phy_faces, phy_faces_name, local_domains, i_visited, vec_node_oldname, intersect_cell, boundary_cells, part_phyid);
 
-    print_instant("3. _create_partition_tables\n");
+    print_instant("2. _create_partition_tables\n");
     _create_partition_tables(local_domains, cells, nodes, cells_type, node_cellid, node_phyid, part_phyid, phy_faces, phy_faces_name, part_vert, vec_node_oldname, nb_parts);
 
-    print_instant("4. Return\n");
-    PyObject *py_list_result = PyList_New(nb_parts);
-    if (!py_list_result) {
-        throw std::bad_alloc();
-    }
-    for (int i = 0; i < nb_parts; i++) {
-        local_domains->create_tuple(); // create local_domains[i].tuple_res
-        PyList_SET_ITEM(py_list_result, i, local_domains[i].tuple_res);
+    print_instant("3. Return\n");
+    PyObject *py_list_result = get_result_as_py_list(local_domains, nb_parts);
 
-        // The ownership transferred to the list.
-        local_domains[i].tuple_res = nullptr;
-    }
-
-    delete[] local_domains;
     return py_list_result;
 }
