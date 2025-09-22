@@ -2,17 +2,20 @@
 #define MANAPY_PART_H
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
+
 #include <iostream>
 #include <tuple>
 #include <vector>
 #include <Python.h>
-#include <numpy/arrayobject.h>
+
 #include <metis.h>
 #include <map>
 #include <set>
 #include <algorithm>
 #include <stdarg.h>
 #include "PyArray.h"
+#include "LocalDomainStruct.h"
 
 #ifndef MODULE_NAME
 # define MODULE_NAME "manapy_part32"
@@ -48,7 +51,9 @@ int binary_search(const idx_t *array, idx_t item, idx_t size);
 void    intersect_nodes(const idx_t *face_nodes, const idx_t nb_face_nodes, PyArrayObject *node_cellid,  idx_t *intersect);
 void print_instant(const char *fmt, ...);
 
+
 PyObject * create_local_domains(
+LocalDomainStruct *local_domains,
 PyArray<int32_t, 1> *part_vert,
 PyArray<int32_t, 2> *node_cellid,
 PyArray<int32_t, 2> *node_phyid,

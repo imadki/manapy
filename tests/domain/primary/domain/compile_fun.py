@@ -3,7 +3,6 @@ import inspect
 from numba import cuda
 import numpy as np
 import hashlib
-from LocalDomainStructData import LocalDomainStructDataType, ListLocalDomainStructDataType
 
 # TODO float_type const
 FLOAT_TYPE = "float32"
@@ -52,14 +51,13 @@ def get_arg_types(func):
     if isinstance(anno, str):
       t = get_type(anno)
       arg_types.append(t)
-    elif anno in [LocalDomainStructDataType, ListLocalDomainStructDataType]:
-      arg_types.append(anno)
     else:
       raise ValueError(f"Unsupported annotation type: {anno}")
   return tuple(arg_types)
 
 
 def compile(func, backend="numba", parallel=False, skip_on_error=False):
+  # return func
   if backend == "python":
     return func
 

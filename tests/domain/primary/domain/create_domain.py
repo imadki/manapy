@@ -288,6 +288,7 @@ class Partitioning(GlobalDomain):
     nb_parts = len(unique_vals)
 
     log_step(f"-> create_local_domains {nb_parts}")
+    print(f"-> create_local_domains {nb_parts}")
     local_domains = create_local_domains(
       part_vert,
       node_cellid,
@@ -344,35 +345,35 @@ class Partitioning(GlobalDomain):
 
     # ########################
     # Testing
-    part_vert = np.ones(shape=len(self.cells), dtype=np.int32)
-    part_vert[::2] = 2
-    part_vert[::3] = 3
-    print("### This step is just for caching ###")
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
-    print("End #################################### End")
+    # part_vert = np.ones(shape=len(self.cells), dtype=np.int32)
+    # part_vert[::2] = 2
+    # part_vert[::3] = 3
+    # print("### This step is just for caching ###")
+    # local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
+    # print("End #################################### End")
 
     # ################################
     # ################################
     # ################################
-    print("\n")
-    log_step("cell_cellfid and make_n_part_graph_k_way")
-    #log_step("metis cell_cellfid")
-    cell_cellfid = self._create_cellfid(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
-                                     self.max_face_nodeid)
-    #log_step()
-    #log_step("metis make_n_part")
-    part_vert = manapy_domain32.make_n_part_graph_k_way(cell_cellfid, nb_parts)
-    log_step()
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
+    # print("\n")
+    # log_step("cell_cellfid and make_n_part_graph_k_way")
+    # #log_step("metis cell_cellfid")
+    # cell_cellfid = self._create_cellfid(self.cells, node_cellid, self.cells_type, self.max_cell_faceid,
+    #                                  self.max_face_nodeid)
+    # #log_step()
+    # #log_step("metis make_n_part")
+    # part_vert = manapy_domain32.make_n_part_graph_k_way(cell_cellfid, nb_parts)
+    # log_step()
+    # local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
 
     # ################################
     # ################################
     # ################################
-    print("\n")
-    log_step("metis make_n_part_mesh_dual")
-    part_vert = manapy_domain32.make_n_part_mesh_dual(self.cells, nb_parts, 3) # 3 => testing with tetra (has face with 3 nodes)
-    log_step()
-    local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
+    # print("\n")
+    # log_step("metis make_n_part_mesh_dual")
+    # part_vert = manapy_domain32.make_n_part_mesh_dual(self.cells, nb_parts, 3) # 3 => testing with tetra (has face with 3 nodes)
+    # log_step()
+    # local_domains = self._create_local_domains(node_cellid, node_phyid, part_vert)
 
     # ################################
     # ################################
@@ -806,9 +807,9 @@ class LocalDomain:
 
   def _create_bf_cellid(self, phy_faces, phyid_recv, phyid_recv_part_size, node_cellid, phyid_to_faceid, cell_faceid, rank):
     """
-    bf_cellid need to create shared_ghost_info correctlly
-    bf_cellid => [[cell_id, face_index in cell_id]] for every boundary cell_id
-    the order of boundary cells in bf_cellid must follow the same order of physical faces in phyid_recv
+    bf_cellid needed to create shared_ghost_info correctly
+    bf_cellid => [[cell_id, face_index in cell_id]] for every local physical face id
+    the order of boundary cells in bf_cellid follows the same order of physical faces in phyid_recv
     phyid_recv store all physical faces need by this partition either its own or of the other partitions
     phyid_recv store physical faces of this partition by its local index and for the other partitions by global index
     """

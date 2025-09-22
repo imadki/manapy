@@ -1,0 +1,80 @@
+//
+// Created by aben-ham on 9/22/25.
+//
+
+#ifndef LOCALDOMAINSTRUCT_H
+#define LOCALDOMAINSTRUCT_H
+
+#include "PyArray.h"
+#include <map>
+#include <set>
+#include <vector>
+
+
+struct LocalDomainStruct {
+    LocalDomainStruct(const LocalDomainStruct&) = delete;                   // delete copy constructor
+    LocalDomainStruct& operator=(const LocalDomainStruct&) = delete;        // delete copy assignment
+    LocalDomainStruct()= default;
+
+
+    PyArray<double, 2> *nodes = nullptr; // float64[:, :] [[node x, y, z]]
+    PyArray<int32_t, 2> *cells = nullptr; // int32[:, :] [[cells nodes]]
+    PyArray<int8_t, 1> *cells_type = nullptr; // int8[:] [cell type]
+    PyArray<int32_t, 2> *phy_faces = nullptr; // int32[:, :] [[physical face nodes]]
+    PyArray<int32_t, 1> *phy_faces_name = nullptr; // int32[:] [physical face name]
+    PyArray<int32_t, 1> *cell_loctoglob = nullptr; // int32[:] [cell global index]
+    PyArray<int32_t, 1> *node_loctoglob = nullptr; // int32[:] [node global index]
+    PyArray<int32_t, 1> *node_oldname = nullptr; // int32[:] [node old name, ...]
+    PyArray<int32_t, 2> *halo_neighsub = nullptr; // int32[:, :] [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
+    PyArray<int32_t, 1> *node_halos = nullptr; // int32[:] [node1, number of halos, halocell index in halo_halosext, node2, number of halos, ....] shape=(2*nb_nodes + nb_halos)
+    PyArray<int32_t, 2> *node_halophyid = nullptr; // int32[:, :] [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
+    PyArray<int32_t, 2> *halo_halosext = nullptr; // int32[:, :] [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
+    PyArray<int32_t, 1> *halo_halosint = nullptr; // int32[:] [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
+    PyArray<double, 2> *halo_centvol = nullptr; // float64[:, :] [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
+    PyArray<int32_t, 1> *phyid_recv = nullptr; // int32[:] [boundary faces global index, ...] description="store physical faces of this partition by its local index and for the other partitions by global index, all other tables that will use boundary faces must point to this table"
+    PyArray<int32_t, 1> *phyid_recv_part_size = nullptr; // int32[:] [boundary faces partId, size]
+    PyArray<int32_t, 1> *phyid_send = nullptr;  // int32[:] self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
+    PyObject *tuple_res = nullptr;
+
+    // Scalars
+    int max_cell_nodeid = 0;
+    int max_cell_faceid = 0;
+    int max_face_nodeid = 0;
+    int max_node_haloid = 0;
+    int max_cell_halonid = 0;
+
+    // Temporary members used to generate the above tables and scalars
+    int max_node_halophyid = 0;
+    int max_phy_face_nodeid = 0;
+    int nb_node_halos = 0;
+
+    std::map<int, int> map_cells;
+    std::map<int, int> map_phy_faces;
+    std::map<int, int> map_nodes;
+    std::map<int, int> map_halos;
+    std::set<int> set_phyids;
+    std::set<int> set_halo_phyid_neighsub;
+    std::map<int, std::vector<int> > map_halo_neighsub;
+    std::map<int, std::vector<int> > map_halo_int;
+    std::vector<int> vec_phyids;
+    std::map<int, int> map_phyids;
+    std::vector<int> list_phyid_send;
+
+    ~LocalDomainStruct();
+
+
+public:
+    void _create_tables(PyArray<double, 2> *nodes, std::vector<int32_t> &part_phyid);
+
+    void create_tuple();
+
+private:
+
+    void    free_tables();
+
+};
+
+
+
+
+#endif //LOCALDOMAINSTRUCT_H

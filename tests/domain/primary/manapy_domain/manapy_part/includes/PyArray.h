@@ -1,9 +1,12 @@
-#include "manapy_part.h"
-#include <sstream>
+#include <numpy/arrayobject.h>
 #include <array>
+#include <sstream>
 
 #ifndef PYARRAY_H
 #define PYARRAY_H
+
+
+PyArrayObject *py_array_new(int size, const npy_intp *shape, int typenum);
 
 template <class... Ints>
 constexpr auto make_npy_dims(Ints... ns)
@@ -17,6 +20,7 @@ struct PyArrayType {
     static_assert(true, "Type error.");
 };
 
+
 template <>
 struct PyArrayType<int32_t> {
     static constexpr int valueType = NPY_INT32;
@@ -26,6 +30,7 @@ template <>
 struct PyArrayType<int8_t> {
     static constexpr int valueType = NPY_INT8;
 };
+
 
 template <>
 struct PyArrayType<float> {
@@ -38,7 +43,6 @@ struct PyArrayType<double> {
 };
 
 
-
 template <typename Type, int Dim>
 class PyArray {
 public:
@@ -46,22 +50,22 @@ public:
     npy_intp *strides;
     npy_intp *shape;
     int nd;
-    PyArrayObject *ref_holder; // reference to free the object
+    PyArrayObject *ref_holder; // reference to free the pyarray object create by the class itself
 
     static constexpr int valueType = PyArrayType<Type>::valueType;
 
 public:
+    // delete these construct to prevent double free on ref_holder
+    PyArray(const PyArray&) = delete;                   // delete copy constructor
+    PyArray& operator=(const PyArray&) = delete;        // delete copy assignment
 
-    PyArray() {
-        this->data = nullptr;
-        this->strides = nullptr;
-        this->shape = nullptr;
-        this->nd = 0;
-        this->ref_holder = nullptr;
-    }
+    // no need of default constructor
+    PyArray() = delete;
 
-    PyArray(const std::array<npy_intp, Dim> &shape) {
+
+    explicit PyArray(const std::array<npy_intp, Dim> &shape) {
         auto *new_array = (PyArrayObject *)PyArray_SimpleNew(Dim, shape.data(), PyArray::valueType);
+        //auto *new_array = py_array_new(Dim, shape.data(), PyArray::valueType);
         if (!new_array) {
             throw std::bad_alloc();
         }
@@ -73,35 +77,27 @@ public:
     }
 
 
-    explicit PyArray(PyArrayObject *arr_obj) {
-        if (!arr_obj)
-            throw std::runtime_error("Error in PyArray constructor");
-        this->data = ((PyArrayObject_fields *)arr_obj)->data;
-        this->strides = ((PyArrayObject_fields *)arr_obj)->strides;
-        this->shape = ((PyArrayObject_fields *)arr_obj)->dimensions;
-        this->nd = ((PyArrayObject_fields *)arr_obj)->nd;
-        this->ref_holder = arr_obj;
+    explicit PyArray(PyArrayObject *arr_obj):
+        data(((PyArrayObject_fields *)arr_obj)->data),
+        strides(((PyArrayObject_fields *)arr_obj)->strides),
+        shape(((PyArrayObject_fields *)arr_obj)->dimensions),
+        nd(((PyArrayObject_fields *)arr_obj)->nd),
+        ref_holder(nullptr)
+    {
 
         if (nd != Dim || PyArray_TYPE(arr_obj) != PyArray::valueType || !PyArray_ISCONTIGUOUS(arr_obj)) {
-            throw std::runtime_error("Error in PyArray constructor");
+            throw std::runtime_error("Error in PyArray constructor (different Dimension, type or alignement type)");
         }
     }
 
-    // PyArray &operator=(PyArray &&other) noexcept {
-    //     PyArrayObject *tmp = other.ref_holder;
-    //
-    //     other.ref_holder = nullptr;
-    //
-    //     this->data = other.data;
-    //     this->strides = other.strides;
-    //     this->shape = other.shape;
-    //     this->nd = other.nd;
-    //     this->ref_holder = tmp;
-    //
-    //
-    //
-    //     return *this;
-    // }
+    // called only by sub_array
+    PyArray(char *data, npy_intp *strides, npy_intp *shape):
+        data(data),
+        strides(strides),
+        shape(shape),
+        nd(Dim),
+        ref_holder(nullptr)
+    {}
 
     ~PyArray() {
         Py_XDECREF(this->ref_holder);
@@ -110,25 +106,21 @@ public:
 
 
 
-    PyArray<Type, Dim - 1> sub_array(npy_intp index) const {
-        PyArray<Type, Dim - 1> ret;
+    PyArray<Type, Dim - 1> sub_array(npy_intp index) const noexcept {
+        static_assert(Dim - 1 > 0, "Can't construct sub array with zero dimension");
 
-        if (this->nd <= 1)
-            throw std::runtime_error("Cannot access non-array with shape 0");
-        ret.data = this->data + index * this->strides[0];
-        ret.strides = this->strides + 1;
-        ret.shape = this->shape + 1;
-        ret.nd -= 1;
-        ret.ref_holder = nullptr;
-
-        return ret;
+        return PyArray<Type, Dim - 1>(
+            this->data + index * this->strides[0],
+            this->strides + 1,
+            this->shape + 1
+            );
     }
 
-    Type &last() const {
+    Type &last() const noexcept {
         return *(Type *)(this->data + (this->shape[0] - 1) * this->strides[0]);
     }
 
-    Type &get(const idx_t index) const {
+    Type &get(const int32_t index) const noexcept {
         return *(Type *)(this->data + index * this->strides[0]);
     }
 

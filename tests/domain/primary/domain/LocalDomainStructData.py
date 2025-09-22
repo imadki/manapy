@@ -1,43 +1,10 @@
 import numpy as np
-from numba import int32, float64, boolean, int8
-from numba.experimental import jitclass
 from numba.typed import Dict, List
-from numba import types
-from numba import njit
 import h5py
 
-spec = [
-  ('nodes', float64[:, :]), # can't use dynamic float type => use float64
-  ('cells', int32[:, :]),
-  ('cells_type', int8[:]),
-  ('phy_faces', int32[:, :]),
-  ('phy_faces_name', int32[:]),
-  ('cell_loctoglob', int32[:]),
-  ('node_loctoglob', int32[:]),
-  ('node_oldname', int32[:]),
-  ('halo_neighsub', int32[:, :]),
-  ('node_halos', int32[:]),
-  ('node_halophyid', int32[:, :]),
-  ('halo_halosext', int32[:, :]),
-  ('halo_halosint', int32[:]),
-  ('halo_centvol', float64[:, :]),
-  ('phyid_recv', int32[:]),
-  ('phyid_recv_part_size', int32[:]),
-  ('phyid_send', int32[:]),
-
-  ('max_cell_nodeid', int32),
-  ('max_cell_faceid', int32),
-  ('max_face_nodeid', int32),
-  ('max_node_haloid', int32),
-  ('max_cell_halonid', int32),
-  ('float_precision', int32),
-  ('dim', int32),
-]
-
-@jitclass(spec)
 class LocalDomainStructData:
   def __init__(self):
-    # Arrays: use zeros(1) as placeholder (cannot be None)
+    # Arrays: use zeros(1) as placeholder
     # Returned tables and Scalars
     self.nodes = np.zeros((1, 1), dtype=np.float64) # [[node x, y, z]]
     self.cells = np.zeros((1, 1), dtype=np.int32) # [[cells nodes]]
@@ -66,12 +33,9 @@ class LocalDomainStructData:
     self.float_precision = 0 # 32 or 64
     self.dim = 0 # 2 or 3
 
-LocalDomainStructDataType = LocalDomainStructData.class_type.instance_type
-ListLocalDomainStructDataType = types.ListType(LocalDomainStructDataType)
 
-@njit(fastmath=True)
 def new_local_domains(nb):
-  list_local_domains = List.empty_list(LocalDomainStructDataType)
+  list_local_domains = []
   for i in range(nb):
     obj = LocalDomainStructData()
     list_local_domains.append(obj)
