@@ -1,7 +1,6 @@
 #include "manapy_part.h"
 
 
-
 # define PRINT_DEBUG false
 void print_instant(const char *fmt, ...) {
 #ifdef PRINT_DEBUG

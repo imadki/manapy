@@ -24,6 +24,7 @@ partitioning = Partitioning(mesh, float_precision)
 nb_parts = 4
 local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
 
+print(local_domains[0].nodes)
 
 # ld = LocalDomain1Cpu.create_local_domains(local_domains)
 
