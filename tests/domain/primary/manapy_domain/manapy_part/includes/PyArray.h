@@ -56,8 +56,8 @@ public:
 
 public:
     // delete these construct to prevent double free on ref_holder
-    PyArray(const PyArray&) = delete;                   // delete copy constructor
-    PyArray& operator=(const PyArray&) = delete;        // delete copy assignment
+    // PyArray(const PyArray&) = delete;                   // delete copy constructor
+    // PyArray& operator=(const PyArray&) = delete;        // delete copy assignment
 
     // no need of default constructor
     PyArray() = delete;
