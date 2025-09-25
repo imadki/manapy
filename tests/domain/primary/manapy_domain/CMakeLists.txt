@@ -24,4 +24,5 @@ add_executable(manapy_domain
         manapy_part/includes/PyArray.h
         manapy_part/src/LocalDomainStruct.cpp
         manapy_part/includes/LocalDomainStruct.h
+        manapy_part/src/tmp_partitioning.cpp
 )
