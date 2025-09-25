@@ -31,7 +31,7 @@ ext_modules = [
         include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
-        # extra_compile_args=["-O3"],
+        extra_compile_args=["-O3"],
         define_macros=[
             ("MODULE_NAME", "manapy_domain32"),
             ("FDX_T", "npy_float32"),
