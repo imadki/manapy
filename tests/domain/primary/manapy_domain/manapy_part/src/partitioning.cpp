@@ -151,6 +151,7 @@ static void _create_sub_domains(
         auto &set_halo_phyid_neighsub = local_domains[p].set_halo_phyid_neighsub;
 
         // local cells
+
         map_cells[i] = (int32_t)map_cells.size();
 
         // Determine max_cell_halonid, Create HaloCellMap, Create halo_interior_map, nb_node_halos
