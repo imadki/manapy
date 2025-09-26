@@ -21,7 +21,7 @@ home_folder = os.path.expanduser("~")
 # Allow users to point to non‑standard METIS paths via env‑vars
 METIS_INCLUDE = os.getenv("METIS_INCLUDE_DIR", f"{home_folder}/local/include")
 METIS_LIB_DIR = os.getenv("METIS_LIB_DIR", f"{home_folder}/local/lib")
-SOURCE = ["src/py_manapy_part.cpp", "src/partitioning.cpp", "src/utils.cpp", "src/LocalDomainStruct.cpp"]
+SOURCE = ["src/py_manapy_part.cpp", "src/partitioning.cpp", "src/utils.cpp", "src/LocalDomainStruct.cpp", "src/tmp_partitioning.cpp"]
 
 
 ext_modules = [

@@ -10,7 +10,7 @@ def create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node
 
   print("C -> Create local domains", nodes.dtype)
   c_res = manapy_domain.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts)
-
+  return
   print("C -> End Create local domains")
 
   list_local_domains = new_local_domains(nb_parts)
