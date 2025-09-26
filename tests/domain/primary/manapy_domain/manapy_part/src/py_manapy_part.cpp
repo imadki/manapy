@@ -435,6 +435,9 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         PyArray<int32_t, 2> py_phy_faces(phy_faces);
         PyArray<int32_t, 1> py_phy_faces_name(phy_faces_name);
 
+        devide(&py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, nb_parts);
+
+        time_it("");
         PyObject *py_list_result = create_local_domains(
           local_domains,
           &py_part_vert,
@@ -447,6 +450,7 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
           &py_phy_faces_name,
           nb_parts
         );
+        time_it("create_local_domains");
 
         // Free resources and return
         free_tables();

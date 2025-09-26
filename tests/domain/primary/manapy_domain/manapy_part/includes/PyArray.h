@@ -63,8 +63,13 @@ public:
     PyArray() = delete;
 
 
-    explicit PyArray(const std::array<npy_intp, Dim> &shape) {
-        auto *new_array = (PyArrayObject *)PyArray_SimpleNew(Dim, shape.data(), PyArray::valueType);
+    explicit PyArray(const std::array<npy_intp, Dim> &shape, const bool init_with_zeros = false) {
+        PyArrayObject *new_array = nullptr;
+        if (init_with_zeros) {
+            new_array = (PyArrayObject *)PyArray_ZEROS(Dim, shape.data(), PyArray::valueType, 0);
+        } else {
+            new_array = (PyArrayObject *)PyArray_SimpleNew(Dim, shape.data(), PyArray::valueType);
+        }
         //auto *new_array = py_array_new(Dim, shape.data(), PyArray::valueType);
         if (!new_array) {
             throw std::bad_alloc();
