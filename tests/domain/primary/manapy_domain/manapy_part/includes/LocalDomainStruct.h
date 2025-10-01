@@ -43,17 +43,19 @@ struct LocalDomainStruct {
     int max_node_haloid = 0;
     int max_cell_halonid = 0;
 
+
+
     // Temporary members used to generate the above tables and scalars
     int max_node_halophyid = 0;
     int max_phy_face_nodeid = 0;
     int nb_node_halos = 0;
-
-    std::map<int, int> map_cells;
+    //
     std::map<int, int> map_phy_faces;
-    std::map<int, int> map_nodes;
-    std::map<int, int> map_halos;
     std::set<int> set_phyids;
     std::set<int> set_halo_phyid_neighsub;
+    std::map<int, int> map_cells;
+    std::map<int, int> map_nodes;
+    std::map<int, int> map_halos;
     std::map<int, std::vector<int> > map_halo_neighsub;
     std::map<int, std::vector<int> > map_halo_int;
     std::vector<int> vec_phyids;
