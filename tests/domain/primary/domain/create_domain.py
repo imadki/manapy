@@ -302,7 +302,6 @@ class Partitioning(GlobalDomain):
       32 if self.float_precision == 'float32' else 64,
       self.dim
     )
-    return
     for i in range(nb_parts):
       nodes = self.nodes.astype(self.float_precision)
       halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, nodes)

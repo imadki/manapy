@@ -435,26 +435,26 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         PyArray<int32_t, 2> py_phy_faces(phy_faces);
         PyArray<int32_t, 1> py_phy_faces_name(phy_faces_name);
 
-        devide(&py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, nb_parts);
+        PyObject *py_list_result_tmp = devide(&py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, &py_phy_faces, &py_phy_faces_name, &py_node_phyid, nb_parts);
 
-        time_it("");
-        PyObject *py_list_result = create_local_domains(
-          local_domains,
-          &py_part_vert,
-          &py_node_cellid,
-          &py_node_phyid,
-          &py_cells,
-          &py_cells_type,
-          &py_nodes,
-          &py_phy_faces,
-          &py_phy_faces_name,
-          nb_parts
-        );
-        time_it("create_local_domains");
+        // time_it("");
+        // PyObject *py_list_result = create_local_domains(
+        //   local_domains,
+        //   &py_part_vert,
+        //   &py_node_cellid,
+        //   &py_node_phyid,
+        //   &py_cells,
+        //   &py_cells_type,
+        //   &py_nodes,
+        //   &py_phy_faces,
+        //   &py_phy_faces_name,
+        //   nb_parts
+        // );
+        // time_it("create_local_domains");
 
         // Free resources and return
         free_tables();
-        return py_list_result;
+        return py_list_result_tmp;
     } catch (std::exception &e) {
         print_instant("%s", e.what());
         PyErr_SetString(PyExc_RuntimeError, e.what());
@@ -463,7 +463,6 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         free_tables();
         return nullptr;
     }
-
 }
 
 
