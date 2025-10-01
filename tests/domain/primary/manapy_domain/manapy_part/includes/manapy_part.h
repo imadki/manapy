@@ -46,9 +46,9 @@ enum CELL_TYPE {
     Pyramid = 5
 };
 
-std::vector<idx_t>    get_max_info(const idx_t cell_type) ;
-int binary_search(const idx_t *array, idx_t item, idx_t size);
-void    intersect_nodes(const idx_t *face_nodes, const idx_t nb_face_nodes, PyArrayObject *node_cellid,  idx_t *intersect);
+// std::vector<idx_t>    get_max_info(const idx_t cell_type) ;
+// int binary_search(const idx_t *array, idx_t item, idx_t size);
+// void    intersect_nodes(const idx_t *face_nodes, const idx_t nb_face_nodes, PyArrayObject *node_cellid,  idx_t *intersect);
 void print_instant(const char *fmt, ...);
 void time_it(const std::string &);
 
@@ -64,12 +64,15 @@ PyArray<int32_t, 2> *phy_faces,
 PyArray<int32_t, 1> *phy_faces_name,
 int32_t nb_parts);
 
-void devide(
+PyObject * devide(
     PyArray<int32_t, 1> *part_vert,
     PyArray<int32_t, 2> *node_cellid,
     PyArray<double, 2> *nodes,
     PyArray<int32_t, 2> *cells,
     PyArray<int8_t, 1> *cells_type,
+    PyArray<int32_t, 2> *phy_faces,
+    PyArray<int32_t, 1> *phy_faces_name,
+    PyArray<int32_t, 2> *node_phyid,
     int32_t nb_parts
     );
 

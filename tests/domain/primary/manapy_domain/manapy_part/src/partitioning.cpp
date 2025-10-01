@@ -332,7 +332,7 @@ LocalDomainStruct &local_domain) {
             const int32_t neighbor_phyid = the_node_phyid.get(j);
             const int32_t neighbor_part = part_phyid[neighbor_phyid];
             if (p != neighbor_part) {
-                the_l_node_halophyid.get(counter) = map_phyids[neighbor_phyid];
+                the_l_node_halophyid.get(counter) = map_phyids.at(neighbor_phyid);
                 counter++;
             }
         }
