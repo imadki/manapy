@@ -34,6 +34,7 @@ def create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node
     obj.phyid_send = c_res[i][k]; k+=1
     obj.halo_halosext = c_res[i][k]; k+=1
     obj.halo_halosint = c_res[i][k]; k+=1
+    obj.halo_centvol = c_res[i][k]; k+=1
     obj.max_cell_nodeid = c_res[i][k]; k+=1
     obj.max_cell_faceid = c_res[i][k]; k+=1
     obj.max_face_nodeid = c_res[i][k]; k+=1

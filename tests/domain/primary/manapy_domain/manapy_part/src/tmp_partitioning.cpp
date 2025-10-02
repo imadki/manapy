@@ -23,6 +23,7 @@ struct TmpLocalDomainStruct {
     PyArray<int32_t, 2> *node_halophyid = nullptr; // int32[:, :] [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
     PyArray<int32_t, 2> *halo_halosext = nullptr; // int32[:, :] [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
     PyArray<int32_t, 1> *halo_halosint = nullptr; // int32[:] [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
+    PyArray<double, 2> *halo_centvol = nullptr; // float64[:, :] [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
     PyArray<int32_t, 1> *phyid_recv = nullptr; // int32[:] [boundary faces global index, ...] description="store physical faces of this partition by its local index and for the other partitions by global index, all other tables that will use boundary faces must point to this table"
     PyArray<int32_t, 1> *phyid_recv_part_size = nullptr; // int32[:] [boundary faces partId, size]
     PyArray<int32_t, 1> *phyid_send = nullptr;  // int32[:] self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
@@ -73,7 +74,7 @@ TmpLocalDomainStruct::~TmpLocalDomainStruct() {
 }
 
 void TmpLocalDomainStruct::create_tuple() {
-    PyObject *tuple = Py_BuildValue("(OOOOOOOOOOOOOOOOiiiii)",
+    PyObject *tuple = Py_BuildValue("(OOOOOOOOOOOOOOOOOiiiii)",
         this->nodes->ref_holder,
         this->cells->ref_holder,
         this->cells_type->ref_holder,
@@ -90,6 +91,7 @@ void TmpLocalDomainStruct::create_tuple() {
         this->phyid_send->ref_holder,
         this->halo_halosext->ref_holder,
         this->halo_halosint->ref_holder,
+        this->halo_centvol->ref_holder,
         this->max_cell_nodeid,
         this->max_cell_faceid,
         this->max_face_nodeid,
@@ -124,6 +126,7 @@ void TmpLocalDomainStruct::free_tables() {
     delete this->phyid_send; this->phyid_send = nullptr;
     delete this->halo_halosext; this->halo_halosext = nullptr;
     delete this->halo_halosint; this->halo_halosint = nullptr;
+    delete this->halo_centvol; this->halo_centvol = nullptr;
 }
 
 static int32_t binary_search(const PyArray<int32_t, 1> &arr, const int32_t item) {
@@ -188,6 +191,234 @@ static std::vector<int32_t> _get_max_info(const int32_t cell_type) {
     return {0, 0, 0};
 }
 
+// #################################################
+// #################################################
+// Compute Cell Center And Volume.
+// #################################################
+// #################################################
+
+void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> *halo_halosext, PyArray<double, 2> *nodes, PyArray<double, 2> *halo_centvol) {
+    // ** This code is the same as compute_cell_center_area_2d any change to this function may imply also changing the latter function ** //
+    //Area using shoelace formula (also called Gauss’s area formula or the surveyors' formula).
+    //Area = 1/2 * | Σ (x_i * y_{i+1} − x_{i+1} * y_i)
+
+    double p[4][2]; //2D square, triangle
+    double area = 0.0;
+
+    for (int32_t i = 0; i <halo_halosext->shape[0]; i++) {
+        const int32_t nb_vertex = halo_halosext->last2(i) - 1;  //skipping cell_id in halo_halosext[i]
+
+        // copy vertices
+        for (int32_t j = 0; j < nb_vertex; j++) {
+            const int32_t node_id = halo_halosext->get2(i, j + 1); //skipping cell_id in halo_halosext[i]
+            p[j][0] = nodes->get2(node_id, 0);
+            p[j][1] = nodes->get2(node_id, 1);
+        }
+
+        if (nb_vertex == 3) { // triangle
+            //## Center
+            halo_centvol->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0]) / 3.0;
+            halo_centvol->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1]) / 3.0;
+
+            //#Area (polygon_area_2d)
+            area += p[0][0] * p[1][1] - p[1][0] * p[0][1];
+            area += p[1][0] * p[2][1] - p[2][0] * p[1][1];
+            area += p[2][0] * p[0][1] - p[0][0] * p[2][1];
+            area = std::abs(area) / 2.0;
+        } else if (nb_vertex == 4) { // square
+            //## Center
+            halo_centvol->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4.0;
+            halo_centvol->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4.0;
+
+            //#Area
+            area += p[0][0] * p[1][1] - p[1][0] * p[0][1];
+            area += p[1][0] * p[2][1] - p[2][0] * p[1][1];
+            area += p[2][0] * p[3][1] - p[3][0] * p[2][1];
+            area += p[3][0] * p[0][1] - p[0][0] * p[3][1];
+            area = std::abs(area) / 2.0;
+        }
+        halo_centvol->get2(i, 2) = area;
+    }
+}
+
+void compute_halo_cell_center_volume_3d(PyArray<int32_t, 2> *halo_halosext, PyArray<double, 2> *nodes, PyArray<double, 2> *halo_centvol) {
+    // ** This code is the same as compute_cell_center_volume_3d any change to this function may imply also changing the latter function ** //
+    double p[8][3]; //3D Tetrahedron Hexahedron Pyramid
+
+    const auto _tetrahedron_volume = [](const double *a, const double *b, const double *c, const double *d) {
+        // compute det[b - a, c - a, d - a] / 6
+        return ((b[0]-a[0])*((c[1]-a[1])*(d[2]-a[2]) - (c[2]-a[2])*(d[1]-a[1]))
+              + (b[1]-a[1])*((c[2]-a[2])*(d[0]-a[0]) - (c[0]-a[0])*(d[2]-a[2]))
+              + (b[2]-a[2])*((c[0]-a[0])*(d[1]-a[1]) - (c[1]-a[1])*(d[0]-a[0])))/6.0;
+    };
+
+    for (int32_t i = 0; i <halo_halosext->shape[0]; i++) {
+        const int32_t nb_vertex = halo_halosext->last2(i) - 1; //skipping cell_id in halo_halosext[i]
+
+        // copy vertices
+        for (int32_t j = 0; j < nb_vertex; j++) {
+            const int32_t node_id = halo_halosext->get2(i, j + 1); //skipping cell_id in halo_halosext[i]
+            p[j][0] = nodes->get2(node_id, 0);
+            p[j][1] = nodes->get2(node_id, 1);
+            p[j][2] = nodes->get2(node_id, 2);
+        }
+
+        //Calculate Center and Volume
+        double vol = 0.0;
+        if (nb_vertex == 4) { // Tetrahedron
+            //## Center
+            halo_centvol->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4.0;
+            halo_centvol->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4.0;
+            halo_centvol->get2(i, 2) = (p[0][2] + p[1][2] + p[2][2] + p[3][2]) / 4.0;
+
+            //## Volume
+            vol += _tetrahedron_volume(p[0], p[1], p[2], p[3]);
+        } else if (nb_vertex == 8) { // Hexahedron
+            //## Center
+            halo_centvol->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0] + p[4][0] + p[5][0] + p[6][0] + p[7][0]) / 8.0;
+            halo_centvol->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1] + p[4][1] + p[5][1] + p[6][1] + p[7][1]) / 8.0;
+            halo_centvol->get2(i, 2) = (p[0][2] + p[1][2] + p[2][2] + p[3][2] + p[4][2] + p[5][2] + p[6][2] + p[7][2]) / 8.0;
+
+            //## Volume
+            // [0, 1, 3, 4], # 1 tetra
+            // [1, 3, 4, 5], # 2 tetra
+            // [4, 5, 3, 7], # 3 tetra
+            // [1, 3, 5, 2], # 4 tetra
+            // [3, 7, 5, 2], # 5 tetra
+            // [5, 7, 6, 2]  # 6 tetra
+            vol += _tetrahedron_volume(p[0], p[1], p[3], p[4]);
+            vol += _tetrahedron_volume(p[1], p[3], p[4], p[5]);
+            vol += _tetrahedron_volume(p[4], p[5], p[3], p[7]);
+            vol += _tetrahedron_volume(p[1], p[3], p[5], p[2]);
+            vol += _tetrahedron_volume(p[3], p[7], p[5], p[2]);
+            vol += _tetrahedron_volume(p[5], p[7], p[6], p[2]);
+        } else if (nb_vertex == 5) { // Pyramid
+            halo_centvol->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0] + p[4][0]) / 5.0;
+            halo_centvol->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1] + p[4][1]) / 5.0;
+            halo_centvol->get2(i, 2) = (p[0][2] + p[1][2] + p[2][2] + p[3][2] + p[4][2]) / 5.0;
+            // [0, 1, 2, 4],  # 1 tetra
+            // [0, 2, 3, 4],  # 2 tetra
+            vol += _tetrahedron_volume(p[0], p[1], p[2], p[4]);
+            vol += _tetrahedron_volume(p[0], p[2], p[3], p[4]);
+        }
+        halo_centvol->get2(i, 3) = vol;
+    }
+}
+
+void compute_cell_center_area_2d(PyArray<int32_t, 2> *cells, PyArray<fdx_t, 2> *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center) {
+    // ** This code is the same as compute_halo_cell_center_volume_3d any change to this function may imply also changing the latter function ** //
+    //Area using shoelace formula (also called Gauss’s area formula or the surveyors' formula).
+    //Area = 1/2 * | Σ (x_i * y_{i+1} − x_{i+1} * y_i)
+
+    double p[4][2]; //2D square, triangle
+    double area = 0.0;
+
+    for (int32_t i = 0; i <cells->shape[0]; i++) {
+        const int32_t nb_vertex = cells->last2(i);
+
+        // copy vertices
+        for (int32_t j = 0; j < nb_vertex; j++) {
+            const int32_t node_id = cells->get2(i, j);
+            p[j][0] = nodes->get2(node_id, 0);
+            p[j][1] = nodes->get2(node_id, 1);
+        }
+
+        if (nb_vertex == 3) { // triangle
+            //## Center
+            cell_center->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0]) / 3.0;
+            cell_center->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1]) / 3.0;
+
+            //#Area (polygon_area_2d)
+            area += p[0][0] * p[1][1] - p[1][0] * p[0][1];
+            area += p[1][0] * p[2][1] - p[2][0] * p[1][1];
+            area += p[2][0] * p[0][1] - p[0][0] * p[2][1];
+            area = std::abs(area) / 2.0;
+        } else if (nb_vertex == 4) { // square
+            //## Center
+            cell_center->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4.0;
+            cell_center->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4.0;
+
+            //#Area
+            area += p[0][0] * p[1][1] - p[1][0] * p[0][1];
+            area += p[1][0] * p[2][1] - p[2][0] * p[1][1];
+            area += p[2][0] * p[3][1] - p[3][0] * p[2][1];
+            area += p[3][0] * p[0][1] - p[0][0] * p[3][1];
+            area = std::abs(area) / 2.0;
+        }
+        cell_area->get(i) = area;
+    }
+}
+
+void compute_cell_center_volume_3d(PyArray<int32_t, 2> *cells, PyArray<fdx_t, 2> *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center) {
+    // ** This code is the same as compute_halo_cell_center_volume_3d any change to this function may imply also changing the latter function ** //
+    double p[8][3]; //3D Tetrahedron Hexahedron Pyramid
+
+    const auto _tetrahedron_volume = [](const double *a, const double *b, const double *c, const double *d) {
+        // compute det[b - a, c - a, d - a] / 6
+        return ((b[0]-a[0])*((c[1]-a[1])*(d[2]-a[2]) - (c[2]-a[2])*(d[1]-a[1]))
+              + (b[1]-a[1])*((c[2]-a[2])*(d[0]-a[0]) - (c[0]-a[0])*(d[2]-a[2]))
+              + (b[2]-a[2])*((c[0]-a[0])*(d[1]-a[1]) - (c[1]-a[1])*(d[0]-a[0])))/6.0;
+    };
+
+    for (int32_t i = 0; i <cells->shape[0]; i++) {
+        const int32_t nb_vertex = cells->last2(i);
+
+        // copy vertices
+        for (int32_t j = 0; j < nb_vertex; j++) {
+            const int32_t node_id = cells->get2(i, j);
+            p[j][0] = nodes->get2(node_id, 0);
+            p[j][1] = nodes->get2(node_id, 1);
+            p[j][2] = nodes->get2(node_id, 2);
+        }
+
+        //Calculate Center and Volume
+        double vol = 0.0;
+        if (nb_vertex == 4) { // Tetrahedron
+            //## Center
+            cell_center->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4.0;
+            cell_center->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4.0;
+            cell_center->get2(i, 2) = (p[0][2] + p[1][2] + p[2][2] + p[3][2]) / 4.0;
+
+            //## Volume
+            vol += _tetrahedron_volume(p[0], p[1], p[2], p[3]);
+        } else if (nb_vertex == 8) { // Hexahedron
+            //## Center
+            cell_center->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0] + p[4][0] + p[5][0] + p[6][0] + p[7][0]) / 8.0;
+            cell_center->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1] + p[4][1] + p[5][1] + p[6][1] + p[7][1]) / 8.0;
+            cell_center->get2(i, 2) = (p[0][2] + p[1][2] + p[2][2] + p[3][2] + p[4][2] + p[5][2] + p[6][2] + p[7][2]) / 8.0;
+
+            //## Volume
+            // [0, 1, 3, 4], # 1 tetra
+            // [1, 3, 4, 5], # 2 tetra
+            // [4, 5, 3, 7], # 3 tetra
+            // [1, 3, 5, 2], # 4 tetra
+            // [3, 7, 5, 2], # 5 tetra
+            // [5, 7, 6, 2]  # 6 tetra
+            vol += _tetrahedron_volume(p[0], p[1], p[3], p[4]);
+            vol += _tetrahedron_volume(p[1], p[3], p[4], p[5]);
+            vol += _tetrahedron_volume(p[4], p[5], p[3], p[7]);
+            vol += _tetrahedron_volume(p[1], p[3], p[5], p[2]);
+            vol += _tetrahedron_volume(p[3], p[7], p[5], p[2]);
+            vol += _tetrahedron_volume(p[5], p[7], p[6], p[2]);
+        } else if (nb_vertex == 5) { // Pyramid
+            cell_center->get2(i, 0) = (p[0][0] + p[1][0] + p[2][0] + p[3][0] + p[4][0]) / 5.0;
+            cell_center->get2(i, 1) = (p[0][1] + p[1][1] + p[2][1] + p[3][1] + p[4][1]) / 5.0;
+            cell_center->get2(i, 2) = (p[0][2] + p[1][2] + p[2][2] + p[3][2] + p[4][2]) / 5.0;
+            // [0, 1, 2, 4],  # 1 tetra
+            // [0, 2, 3, 4],  # 2 tetra
+            vol += _tetrahedron_volume(p[0], p[1], p[2], p[4]);
+            vol += _tetrahedron_volume(p[0], p[2], p[3], p[4]);
+        }
+        cell_volume->get(i) = vol;
+    }
+}
+
+// #################################################
+// #################################################
+// End Compute Cell Center And Volume.
+// #################################################
+// #################################################
+
 // #################################################################
 // 1. _create_sub_domains
 // #################################################################
@@ -196,6 +427,7 @@ static void create_halos(
     TmpLocalDomainStruct *ld,
     PyArray<int32_t, 1> *part_vert,
     PyArray<int32_t, 2> *cells,
+    PyArray<double, 2> *nodes,
     PyArray<int32_t, 2> *node_cellid,
     const int32_t p) {
 
@@ -208,7 +440,6 @@ static void create_halos(
     // #########################################################
     // max_node_haloid, l_node_halos
     // #########################################################
-    // TODO check if nb_node_halos is accurate
     ld[p].node_halos = new PyArray<int32_t, 1>(make_npy_dims(l_nb_node_halos));
     const auto l_node_halos = ld[p].node_halos;
 
@@ -303,6 +534,13 @@ static void create_halos(
             halosint_counter += 1;
         }
     }
+
+    const auto dim = static_cast<int32_t>(nodes->shape[1]);
+    ld[p].halo_centvol = new PyArray<double, 2>(make_npy_dims(map_halos.size(), dim + 1));
+    if (dim == 2)
+        compute_halo_cell_center_area_2d(ld[p].halo_halosext, nodes, ld[p].halo_centvol);
+    else if (dim == 3)
+        compute_halo_cell_center_volume_3d(ld[p].halo_halosext, nodes, ld[p].halo_centvol);
 }
 
 void    phy_p(
@@ -391,7 +629,6 @@ void    phy_p(
     auto l_node_oldname = ld[p].node_oldname;
     auto l_node_halophyid = ld[p].node_halophyid;
 
-    // TODO max_node_haloid already calculated
     for (int32_t l_id = 0; l_id < l_nb_nodes; l_id++) {
         const int32_t g_id = l_node_loctoglob->get(l_id);
 
@@ -662,6 +899,7 @@ void    devid_phy(
 }
 
 // TODO try vector of LocalDomain Vs LocalDomain of vect
+// try get2 instead of sub
 
 void    devid_cells(
 TmpLocalDomainStruct *ld,
@@ -822,7 +1060,7 @@ PyObject *devide(
     print_instant("Create Locals\n");
     for (int32_t p = 0; p < nb_parts; p++) {
         time_it("");
-        create_halos(ld, part_vert, cells, node_cellid, p);
+        create_halos(ld, part_vert, cells, nodes, node_cellid, p);
         phy_p(ld, p, node_phyid, phy_faces_name, phy_faces, part_phyid, vec_node_oldname, vec_map_nodes);
         time_it("create_halos");
     }

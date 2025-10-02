@@ -232,25 +232,26 @@ class GlobalDomain:
 
     return node_oldname
 
-  def _create_halocentvol(self, halo_halosext, nodes):
-    halo_cells = halo_halosext[:, 1:] # exclude cellid and keep nodeids and size
-    halo_cells[:, -1] -= 1
-
-    nb_halo_cells = len(halo_cells)
-    cell_volume = np.zeros(shape=nb_halo_cells, dtype=self.float_precision)
-    cell_center = np.zeros(shape=(nb_halo_cells, self.dim), dtype=self.float_precision)
-    halo_centvol = np.zeros(shape=(nb_halo_cells, 4), dtype=self.float_precision)
-    if self.dim == 2:
-      compute_cell_center_volume_2d(halo_cells, nodes, cell_volume, cell_center)
-      halo_centvol[:, 0:2] = cell_center
-      halo_centvol[:, 3] = cell_volume
-    else:
-      compute_cell_center_volume_3d(halo_cells, nodes, cell_volume, cell_center)
-      halo_centvol[:, 0:3] = cell_center
-      halo_centvol[:, 3] = cell_volume
-
-    halo_cells[:, -1] += 1 # this is a view and we need to reverse the change above
-    return halo_centvol
+  # TODO remove this function
+  # def _create_halocentvol(self, halo_halosext, nodes):
+  #   halo_cells = halo_halosext[:, 1:] # exclude cellid and keep nodeids and size
+  #   halo_cells[:, -1] -= 1
+  #
+  #   nb_halo_cells = len(halo_cells)
+  #   cell_volume = np.zeros(shape=nb_halo_cells, dtype=self.float_precision)
+  #   cell_center = np.zeros(shape=(nb_halo_cells, self.dim), dtype=self.float_precision)
+  #   halo_centvol = np.zeros(shape=(nb_halo_cells, 4), dtype=self.float_precision)
+  #   if self.dim == 2:
+  #     compute_cell_center_volume_2d(halo_cells, nodes, cell_volume, cell_center)
+  #     halo_centvol[:, 0:2] = cell_center
+  #     halo_centvol[:, 3] = cell_volume
+  #   else:
+  #     compute_cell_center_volume_3d(halo_cells, nodes, cell_volume, cell_center)
+  #     halo_centvol[:, 0:3] = cell_center
+  #     halo_centvol[:, 3] = cell_volume
+  #
+  #   halo_cells[:, -1] += 1 # this is a view and we need to reverse the change above
+  #   return halo_centvol
 
 
 
@@ -287,8 +288,7 @@ class Partitioning(GlobalDomain):
       # )
     nb_parts = len(unique_vals)
 
-    log_step(f"-> create_local_domains {nb_parts}")
-    print(f"-> create_local_domains {nb_parts}")
+    log_step(f"-> create_local_domains part 1 {nb_parts}")
     local_domains = create_local_domains(
       part_vert,
       node_cellid,
@@ -302,11 +302,14 @@ class Partitioning(GlobalDomain):
       32 if self.float_precision == 'float32' else 64,
       self.dim
     )
-    for i in range(nb_parts):
-      nodes = self.nodes.astype(self.float_precision)
-      halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, nodes)
-      local_domains[i].halo_centvol = halocentvol.astype(np.float64)
     log_step()
+
+    # log_step(f"-> create_local_domains part 2 {nb_parts}")
+    # for i in range(nb_parts):
+    #   nodes = self.nodes.astype(self.float_precision)
+    #   halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, nodes)
+    #   local_domains[i].halo_centvol = halocentvol.astype(np.float64)
+    # log_step()
 
     # TODO REMOVE
     arr = np.array([0, 0, 0, 0, 0, 0, 2**32, 2**32, 2**32, 0, 0, 2**32], dtype=np.float64)

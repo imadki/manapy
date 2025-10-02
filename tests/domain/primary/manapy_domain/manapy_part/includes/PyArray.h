@@ -125,8 +125,24 @@ public:
         return *(Type *)(this->data + (this->shape[0] - 1) * this->strides[0]);
     }
 
-    Type &get(const int32_t index) const noexcept {
-        return *(Type *)(this->data + index * this->strides[0]);
+    Type &last2(const int32_t i) const noexcept {
+        return *(Type *)(this->data + i * this->strides[0] + (this->shape[1] - 1) * this->strides[1]);
+    }
+
+    Type &last3(const int32_t i, const int32_t j) const noexcept {
+        return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1] + (this->shape[2] - 1) * this->strides[2]);
+    }
+
+    Type &get(const int32_t i) const noexcept {
+        return *(Type *)(this->data + i * this->strides[0]);
+    }
+
+    Type &get2(const int32_t i, const int32_t j) const noexcept {
+        return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1]);
+    }
+
+    Type &get3(const int32_t i, const int32_t j, const int32_t k) const noexcept {
+        return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1] + k * this->strides[2]);
     }
 
 
