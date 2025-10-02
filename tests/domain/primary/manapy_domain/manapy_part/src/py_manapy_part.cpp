@@ -256,7 +256,7 @@ static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
         return nullptr;
     }
 
-    PyArrayObject *graph = (PyArrayObject *)PyArray_FROM_OTF(graph_obj, NPY_INT64, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *graph = (PyArrayObject *)PyArray_FROM_OTF(graph_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     if (!graph)
         return nullptr;
 
@@ -298,7 +298,7 @@ static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
         return nullptr;
     }
 
-    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT64, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     if (!cells)
         return nullptr;
 
@@ -340,7 +340,7 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
         return nullptr;
     }
 
-    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT64, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     if (!cells)
         return nullptr;
 
@@ -465,6 +465,59 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
     }
 }
 
+static PyObject *py_compute_cell_center_area_volume_general(PyObject *self, PyObject *args, const int32_t dim) {
+    PyObject *cells_obj = nullptr;
+    PyObject *nodes_obj = nullptr;
+    PyObject *cell_area_obj = nullptr;
+    PyObject *cell_center_obj = nullptr;
+
+    if (!PyArg_ParseTuple(args, "OOOO", &cells_obj, &nodes_obj, &cell_area_obj, &cell_center_obj))
+        return nullptr;
+
+    PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);// read only and c-contiguous
+    PyArrayObject *cell_area = (PyArrayObject *)PyArray_FROM_OTF(cell_area_obj, FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY); //read, write and c-contiguous
+    PyArrayObject *cell_center = (PyArrayObject *)PyArray_FROM_OTF(cell_center_obj, FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY);
+    if (!cells || !nodes || !cell_area || !cell_center)
+        return nullptr;
+
+    const auto free_tables = [&]() {
+        Py_XDECREF(cells); cells = nullptr;
+        Py_XDECREF(nodes); nodes = nullptr;
+        Py_XDECREF(cell_area); cell_area = nullptr;
+        Py_XDECREF(cell_center); cell_center = nullptr;
+    };
+
+    auto const py_cells = new PyArray<int32_t, 2>(cells);
+    auto const py_nodes = new PyArray<fdx_t, 2>(nodes);
+    auto const py_cell_area = new PyArray<fdx_t, 1>(cell_area);
+    auto const py_cell_center = new PyArray<fdx_t, 2>(cell_center);
+
+    // call a worker function
+    if (dim == 2) {
+        compute_cell_center_area_2d(py_cells, py_nodes, py_cell_area, py_cell_center);
+    } else if (dim == 3) {
+        compute_cell_center_volume_3d(py_cells, py_nodes, py_cell_area, py_cell_center);
+    }
+
+    // If a copy was made, write it back
+    if (PyArray_ResolveWritebackIfCopy(cell_area) < 0 || PyArray_ResolveWritebackIfCopy(cell_center) < 0) {
+        free_tables();
+        return nullptr;
+    }
+
+    // return NULL
+    free_tables();
+    return PyFloat_FromDouble(Py_NAN);
+}
+
+static PyObject *py_compute_cell_center_area_2d(PyObject *self, PyObject *args) {
+    return py_compute_cell_center_area_volume_general(self, args, 2);
+}
+
+static PyObject *py_compute_cell_center_volume_3d(PyObject *self, PyObject *args) {
+    return py_compute_cell_center_area_volume_general(self, args, 3);
+}
 
 /* -------- module definition --------------------------------------- */
 // ----------------- Method Table -----------------------
@@ -524,6 +577,8 @@ static PyMethodDef ManapyMethods[] = {
     { "make_n_part_mesh_dual", py_make_n_part_mesh_dual, METH_VARARGS, doc_make_n_part_mesh_dual },
     { "make_n_part_mesh_nodal", py_make_n_part_mesh_nodal, METH_VARARGS, doc_make_n_part_mesh_nodal },
     { "create_local_domains", py_create_local_domains, METH_VARARGS, nullptr },
+    { "compute_cell_center_area_2d", py_compute_cell_center_area_2d, METH_VARARGS, nullptr },
+    { "compute_cell_center_volume_3d", py_compute_cell_center_volume_3d, METH_VARARGS, nullptr },
     { NULL, NULL, 0, NULL }
 };
 
@@ -537,7 +592,7 @@ static struct PyModuleDef manapy_module = {
 };
 
 // ----------------- Dynamic Init Function -----------------------
-#define INIT_FUNC_NAME(module) PyInit_##module
+#define INIT_FUNC_NAME(module) PyInit_## module
 #define MAKE_INIT_FUNC(module) INIT_FUNC_NAME(module)
 
 PyMODINIT_FUNC MAKE_INIT_FUNC(MODULE_NAME)(void)

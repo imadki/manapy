@@ -30,7 +30,7 @@
 #endif
 
 #ifndef FDX_T
-  #define FDX_T npy_float32
+  #define FDX_T float
 #endif
 
 typedef FDX_T fdx_t;
@@ -51,6 +51,9 @@ enum CELL_TYPE {
 // void    intersect_nodes(const idx_t *face_nodes, const idx_t nb_face_nodes, PyArrayObject *node_cellid,  idx_t *intersect);
 void print_instant(const char *fmt, ...);
 void time_it(const std::string &);
+
+void compute_cell_center_area_2d(PyArray<int32_t, 2> *cells, PyArray<fdx_t, 2> *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center);
+void compute_cell_center_volume_3d(PyArray<int32_t, 2> *cells, PyArray<fdx_t, 2> *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center);
 
 PyObject * create_local_domains(
 LocalDomainStruct *local_domains,

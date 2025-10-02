@@ -14,7 +14,7 @@ mesh_list = [
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
-dim, mesh_path = mesh_list[4] # also modify dim variable accordingly
+dim, mesh_path = mesh_list[3] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
 
