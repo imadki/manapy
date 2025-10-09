@@ -28,7 +28,7 @@ def mem_usage():
   return f"{mem_mb:.2f}MB"
 
 
-if len(sys.argv) != 2:
+if len(sys.argv) != 3:
   print("wrong Usage")
   sys.exit(1)
 
@@ -45,8 +45,17 @@ dim, mesh_path = mesh_list[0] # also modify dim variable accordingly
 
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh, float_precision)
-nb_parts = 2048*2*2
+
+
+nb_cells = len(partitioning.cells)
+nb_parts = 2**int(sys.argv[2])
+if nb_cells / nb_parts < 10:
+  exit(0)
+start = time.time()
 local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
-print(mem_usage())
+end = time.time() - start
+print(f">>> nbcells [{nb_cells}] nb_parts [{nb_parts}] [{end:.4f}]s")
+print(f">>> [{mem_usage()}]")
+
 
 
