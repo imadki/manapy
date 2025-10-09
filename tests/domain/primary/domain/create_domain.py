@@ -150,7 +150,7 @@ class GlobalDomain:
     if float_precision != 'float32' and float_precision != 'float64':
       raise ValueError('Invalid float precision argument')
 
-    self.nodes = np.array(mesh.points[:, 0:mesh.dim])
+    self.nodes = np.array(mesh.points[:, 0:mesh.dim], dtype=float_precision)
     self.cells = mesh.cells
     self.cells_type = mesh.cells_type
     self.max_cell_nodeid = np.int32(mesh.max_cell_nodeid)
@@ -288,7 +288,7 @@ class Partitioning(GlobalDomain):
       # )
     nb_parts = len(unique_vals)
 
-    log_step(f"-> create_local_domains part 1 {nb_parts}")
+    log_step(f"-> create_local_domains {nb_parts}")
     local_domains = create_local_domains(
       part_vert,
       node_cellid,
@@ -303,36 +303,6 @@ class Partitioning(GlobalDomain):
       self.dim
     )
     log_step()
-
-    # log_step(f"-> create_local_domains part 2 {nb_parts}")
-    # for i in range(nb_parts):
-    #   nodes = self.nodes.astype(self.float_precision)
-    #   halocentvol = self._create_halocentvol(local_domains[i].halo_halosext, nodes)
-    #   local_domains[i].halo_centvol = halocentvol.astype(np.float64)
-    # log_step()
-
-    # TODO REMOVE
-    arr = np.array([0, 0, 0, 0, 0, 0, 2**32, 2**32, 2**32, 0, 0, 2**32], dtype=np.float64)
-    for item in local_domains:
-      arr[0] += len(item.node_halos)
-      arr[1] += len(item.halo_halosext)
-      arr[2] += len(item.halo_halosint)
-      arr[3] = max(len(item.node_halos), arr[3])
-      arr[4] = max(len(item.halo_halosext), arr[4])
-      arr[5] = max(len(item.halo_halosint), arr[5])
-      arr[6] = min(len(item.node_halos), arr[6])
-      arr[7] = min(len(item.halo_halosext), arr[7])
-      arr[8] = min(len(item.halo_halosint), arr[8])
-      arr[9] += len(item.halo_neighsub[0])
-      arr[10] = max(len(item.halo_neighsub[0]), arr[10])
-      arr[11] = min(len(item.halo_neighsub[0]), arr[11])
-    arr[[0, 1, 2, 9]] /= len(local_domains)
-
-    print(f"{'Type':<20}{'Min':>14}{'Max':>14}{'Avg':>14}")
-    print(f"{'Node halos':<20}{arr[6]:14.2f}{arr[3]:14.2f}{arr[0]:14.2f}")
-    print(f"{'HalosExt':<20}{arr[7]:14.2f}{arr[4]:14.2f}{arr[1]:14.2f}")
-    print(f"{'HalosInt':<20}{arr[8]:14.2f}{arr[5]:14.2f}{arr[2]:14.2f}")
-    print(f"{'NeighborDomain':<20}{arr[11]:14.2f}{arr[10]:14.2f}{arr[9]:14.2f}")
 
     return local_domains
 

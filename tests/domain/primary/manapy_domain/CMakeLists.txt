@@ -25,4 +25,6 @@ add_executable(manapy_domain
         manapy_part/src/LocalDomainStruct.cpp
         manapy_part/includes/LocalDomainStruct.h
         manapy_part/src/tmp_partitioning.cpp
+        manapy_part/includes/Types.h
+        manapy_part/src/compute_cell_center_volume.cpp
 )
