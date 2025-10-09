@@ -3,39 +3,19 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
-
 #include <iostream>
 #include <tuple>
 #include <vector>
 #include <Python.h>
-
 #include <metis.h>
 #include <map>
 #include <set>
 #include <algorithm>
 #include <stdarg.h>
+#include <thread>
 #include "PyArray.h"
 #include "LocalDomainStruct.h"
-
-#ifndef MODULE_NAME
-# define MODULE_NAME "manapy_part32"
-#endif
-
-// Convert macro to string
-#define _STR(x) #x
-#define STR(x) _STR(x)
-
-#ifndef FLOAT_TYPE
-  #define FLOAT_TYPE NPY_FLOAT32
-#endif
-
-#ifndef FDX_T
-  #define FDX_T float
-#endif
-
-typedef FDX_T fdx_t;
-const int float_type = FLOAT_TYPE;
-const int int_type = NPY_INT32;
+#include "Types.h"
 
 
 enum CELL_TYPE {
@@ -46,31 +26,25 @@ enum CELL_TYPE {
     Pyramid = 5
 };
 
-// std::vector<idx_t>    get_max_info(const idx_t cell_type) ;
-// int binary_search(const idx_t *array, idx_t item, idx_t size);
-// void    intersect_nodes(const idx_t *face_nodes, const idx_t nb_face_nodes, PyArrayObject *node_cellid,  idx_t *intersect);
+//utils.cpp
+int32_t binary_search(const PyArray<int32_t, 1> &arr, int32_t item);
+void intersect_arr(PyArray<int32_t, 2> *arr, PyArray<int32_t, 1> *indices, int32_t size, std::vector<int32_t> &intersect_arr);
+std::vector<int32_t> get_max_info(int32_t cell_type);
 void print_instant(const char *fmt, ...);
 void time_it(const std::string &);
 
-void compute_cell_center_area_2d(PyArray<int32_t, 2> *cells, PyArray<fdx_t, 2> *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center);
-void compute_cell_center_volume_3d(PyArray<int32_t, 2> *cells, PyArray<fdx_t, 2> *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center);
+//compute_cell_center_volume.cpp
+void compute_cell_center_area_2d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center);
+void compute_cell_center_volume_3d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center);
+void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol);
+void compute_halo_cell_center_volume_3d(PyArray<int32_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol);
 
-PyObject * create_local_domains(
-LocalDomainStruct *local_domains,
-PyArray<int32_t, 1> *part_vert,
-PyArray<int32_t, 2> *node_cellid,
-PyArray<int32_t, 2> *node_phyid,
-PyArray<int32_t, 2> *cells,
-PyArray<int8_t, 1> *cells_type,
-PyArray<double, 2> *nodes,
-PyArray<int32_t, 2> *phy_faces,
-PyArray<int32_t, 1> *phy_faces_name,
-int32_t nb_parts);
-
-PyObject * devide(
+//partitioning.cpp
+PyObject * create_sub_domains(
+    LocalDomainStruct *ld,
     PyArray<int32_t, 1> *part_vert,
     PyArray<int32_t, 2> *node_cellid,
-    PyArray<double, 2> *nodes,
+    PyArray<fdx_t, 2> *nodes,
     PyArray<int32_t, 2> *cells,
     PyArray<int8_t, 1> *cells_type,
     PyArray<int32_t, 2> *phy_faces,

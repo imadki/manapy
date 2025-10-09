@@ -2,8 +2,6 @@
 #include <numpy/arrayobject.h>
 #include "manapy_part.h"
 
-// TODO check leaks
-
 /* Graph representation in compressed Sparse Row (CSR) format
  * graph a 2D int32 numpy array of size (number of cells, max cell neighbors)
  * Example (4 vertices):
@@ -271,10 +269,9 @@ static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
 
 
     const npy_intp dims[1] = { PyArray_DIMS(graph)[0] };
-    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, int_type, part_vert);
+    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, NPY_INT32, part_vert);
     if (!part_array) {
         Py_DECREF(graph);
-        free(part_array);
         return nullptr;
     }
     PyArray_ENABLEFLAGS((PyArrayObject *)part_array, NPY_ARRAY_OWNDATA);
@@ -314,10 +311,9 @@ static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
 
 
     const npy_intp dims[1] = { PyArray_DIMS(cells)[0] };
-    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, int_type, part_vert);
+    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, NPY_INT32, part_vert);
     if (!part_array) {
         Py_DECREF(cells);
-        free(part_array);
         return nullptr;
     }
     PyArray_ENABLEFLAGS((PyArrayObject *)part_array, NPY_ARRAY_OWNDATA);
@@ -356,7 +352,7 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
 
 
     const npy_intp dims[1] = { PyArray_DIMS(cells)[0] };
-    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, int_type, part_vert);
+    PyObject *part_array = PyArray_SimpleNewFromData(1, dims, NPY_INT32, part_vert);
     if (!part_array) {
         Py_DECREF(cells);
         free(part_array);
@@ -401,7 +397,7 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
     PyArrayObject *node_phyid = (PyArrayObject *)PyArray_FROM_OTF(node_phyid_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *cells_type = (PyArrayObject *)PyArray_FROM_OTF(cells_type_obj, NPY_INT8, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, NPY_FLOAT64, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *phy_faces = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *phy_faces_name = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_name_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     auto *local_domains = new(std::nothrow) LocalDomainStruct[nb_parts];
@@ -431,34 +427,19 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         PyArray<int32_t, 2> py_node_phyid(node_phyid);
         PyArray<int32_t, 2> py_cells(cells);
         PyArray<int8_t, 1> py_cells_type(cells_type);
-        PyArray<double, 2> py_nodes(nodes);
+        PyArray<fdx_t, 2> py_nodes(nodes);
         PyArray<int32_t, 2> py_phy_faces(phy_faces);
         PyArray<int32_t, 1> py_phy_faces_name(phy_faces_name);
 
-        PyObject *py_list_result_tmp = devide(&py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, &py_phy_faces, &py_phy_faces_name, &py_node_phyid, nb_parts);
+        PyObject *py_list_result_tmp = create_sub_domains(local_domains, &py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, &py_phy_faces, &py_phy_faces_name, &py_node_phyid, nb_parts);
 
-        // time_it("");
-        // PyObject *py_list_result = create_local_domains(
-        //   local_domains,
-        //   &py_part_vert,
-        //   &py_node_cellid,
-        //   &py_node_phyid,
-        //   &py_cells,
-        //   &py_cells_type,
-        //   &py_nodes,
-        //   &py_phy_faces,
-        //   &py_phy_faces_name,
-        //   nb_parts
-        // );
-        // time_it("create_local_domains");
+
 
         // Free resources and return
         free_tables();
         return py_list_result_tmp;
     } catch (std::exception &e) {
-        print_instant("%s", e.what());
         PyErr_SetString(PyExc_RuntimeError, e.what());
-
         // Free resources
         free_tables();
         return nullptr;
@@ -478,8 +459,6 @@ static PyObject *py_compute_cell_center_area_volume_general(PyObject *self, PyOb
     PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);// read only and c-contiguous
     PyArrayObject *cell_area = (PyArrayObject *)PyArray_FROM_OTF(cell_area_obj, FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY); //read, write and c-contiguous
     PyArrayObject *cell_center = (PyArrayObject *)PyArray_FROM_OTF(cell_center_obj, FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY);
-    if (!cells || !nodes || !cell_area || !cell_center)
-        return nullptr;
 
     const auto free_tables = [&]() {
         Py_XDECREF(cells); cells = nullptr;
@@ -488,16 +467,22 @@ static PyObject *py_compute_cell_center_area_volume_general(PyObject *self, PyOb
         Py_XDECREF(cell_center); cell_center = nullptr;
     };
 
-    auto const py_cells = new PyArray<int32_t, 2>(cells);
-    auto const py_nodes = new PyArray<fdx_t, 2>(nodes);
-    auto const py_cell_area = new PyArray<fdx_t, 1>(cell_area);
-    auto const py_cell_center = new PyArray<fdx_t, 2>(cell_center);
+    if (!cells || !nodes || !cell_area || !cell_center) {
+        free_tables();
+        return nullptr;
+    }
+
+
+    auto const py_cells = PyArray<int32_t, 2>(cells);
+    auto py_nodes = PyArray<fdx_t, 2>(nodes);
+    auto py_cell_area = PyArray<fdx_t, 1>(cell_area);
+    auto py_cell_center = PyArray<fdx_t, 2>(cell_center);
 
     // call a worker function
     if (dim == 2) {
-        compute_cell_center_area_2d(py_cells, py_nodes, py_cell_area, py_cell_center);
-    } else if (dim == 3) {
-        compute_cell_center_volume_3d(py_cells, py_nodes, py_cell_area, py_cell_center);
+        compute_cell_center_area_2d(&py_cells, &py_nodes, &py_cell_area, &py_cell_center);
+    } else {
+        compute_cell_center_volume_3d(&py_cells, &py_nodes, &py_cell_area, &py_cell_center);
     }
 
     // If a copy was made, write it back

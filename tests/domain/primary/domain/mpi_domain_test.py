@@ -18,7 +18,7 @@ mesh_list = [
 ]
 float_precision = 'float32' # the test does not support float64 or int64 yet
 root_file = os.getcwd()
-dim, mesh_path = mesh_list[0] # also modify dim variable accordingly
+dim, mesh_path = mesh_list[3] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/primary/mesh
 
 
@@ -29,31 +29,31 @@ def create_original_domain(recreate=True):
 
   running_conf = Struct(backend="numba", signature=True, cache=True, float_precision=float_precision)
   if recreate:
-    MeshPartition(mesh_path, dim=dim, conf=running_conf, periodic=[0,0,0])
+    MeshPartition(mesh_path, dim=dim, conf=running_conf, periodic=[0,0,0], forced_size=100)
 
-  return Domain(dim=dim, conf=running_conf)
+  #return Domain(dim=dim, conf=running_conf)
 
 import time
-if rank == 0:
-  start = time.time()
+# if rank == 0:
+start = time.time()
 
-try:
-  #raise RuntimeError("dsfsdfs")
-  domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
-  log_step.print_resutls()
-except Exception as e:
-  traceback.print_exc()
-  sys.stderr.flush()
-  #print(traceback.format_exc())
-  MPI.COMM_WORLD.Abort(1)
+# try:
+#   #raise RuntimeError("dsfsdfs")
+#   domain = Domain.create_domain(mesh_path, dim, float_precision, recreate=True)
+#   log_step.print_resutls()
+# except Exception as e:
+#   traceback.print_exc()
+#   sys.stderr.flush()
+#   #print(traceback.format_exc())
+#   MPI.COMM_WORLD.Abort(1)
 
 
-# domain = create_original_domain(recreate=False)
+domain = create_original_domain(recreate=True)
 
-MPI.COMM_WORLD.Barrier()
-time.sleep(1)
-if rank == 0:
-  print(f"END:: Execution time: {time.time() - start:.6f} seconds")
+# MPI.COMM_WORLD.Barrier()
+# time.sleep(1)
+# if rank == 0:
+print(f"END:: Execution time: {time.time() - start:.6f} seconds")
 
 """
 Tetra 6000 4

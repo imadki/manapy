@@ -4,7 +4,7 @@ import manapy_domain32
 import manapy_domain64
 
 
-def create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float64[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
+def create_local_domains(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
 
   manapy_domain = manapy_domain64 if float_precision == 64 else manapy_domain32
 

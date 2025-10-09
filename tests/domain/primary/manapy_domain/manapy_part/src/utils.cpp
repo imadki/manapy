@@ -12,7 +12,6 @@ double	get_time(void)
 }
 
 
-
 static std::string get_time_as_string(double time) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(3);
@@ -29,6 +28,68 @@ static std::string get_time_as_string(double time) {
     }
 
     return oss.str();
+}
+
+int32_t binary_search(const PyArray<int32_t, 1> &arr, const int32_t item) {
+    const int32_t size = arr.last();
+    int32_t left = 0;
+    int32_t right = size - 1;
+    while (left <= right) {
+        const int32_t mid = (left + right) / 2;
+        const int32_t mid_val = arr.get(mid);
+        if (mid_val == item) {
+            return mid;
+        } else if (mid_val < item) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    return -1;
+}
+
+void intersect_arr(PyArray<int32_t, 2> *arr, PyArray<int32_t, 1> *indices, const int32_t size, std::vector<int32_t> &intersect_arr) {
+    int32_t counter = 0;
+
+    intersect_arr[0] = -1;
+    intersect_arr[1] = -1;
+
+    auto arr1 = arr->sub_array(indices->get(0));
+    for (int32_t i = 0; i < arr1.last(); i++) {
+        intersect_arr[counter] = arr1.get(i);
+        for (int32_t j = 1; j < size; j++) {
+            auto arr2 = arr->sub_array(indices->get(j));
+            if (binary_search(arr2, arr1.get(i)) == -1){
+                intersect_arr[counter] = -1;
+                break;
+            }
+        }
+        if (intersect_arr[counter] != -1)
+            counter++;
+        if (counter >= 2)
+            break;
+    }
+}
+
+
+std::vector<int32_t> get_max_info(const int32_t cell_type) {
+    if (cell_type == CELL_TYPE::Triangle) {
+        return {3, 2, 3};
+    }
+    else if (cell_type == CELL_TYPE::Quad) {
+        return {4, 2, 4};
+    }
+    else if (cell_type == CELL_TYPE::Tetra) {
+        return {4, 3, 4};
+    }
+    else if (cell_type == CELL_TYPE::Hexahedron) {
+        return {6, 4, 8};
+    }
+    else if (cell_type == CELL_TYPE::Pyramid) {
+        return {5, 4, 5};
+    }
+    return {0, 0, 0};
 }
 
 # define PRINT_DEBUG false
