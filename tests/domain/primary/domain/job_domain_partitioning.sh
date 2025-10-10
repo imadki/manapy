@@ -20,4 +20,4 @@ export OMPI_MCA_btl=self,tcp
 
 echo "Starting job on $(hostname)"
 bash ./node_info.sh > node_info.txt
-bash benchmark_new_domain.sh ~/work/meshes 2> /dev/null
+bash benchmark_nb_parts.sh ~/work/meshes 2> /dev/null

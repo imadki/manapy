@@ -3,14 +3,24 @@
 #include <numpy/arrayobject.h>
 #include "manapy_part.h"
 
-//TODO map halos
+/*
+ * public functions:
+ * create_sub_domains
+ *
+ * private:
+ * create_halos
+ * create_phy
+ * create_phyid_send
+ * loop_through_nodes
+ * loop_through_physical_faces
+ * loop_through_cells
+ * get_result_as_py_list
+ */
 
 static void create_halos(
     LocalDomainStruct *ld,
-    PyArray<int32_t, 1> *part_vert,
     PyArray<int32_t, 2> *cells,
     PyArray<fdx_t, 2> *nodes,
-    PyArray<int32_t, 2> *node_cellid,
     const int32_t p) {
 
     /*
@@ -24,12 +34,11 @@ static void create_halos(
      */
 
     //variables needed as read only
-    auto l_node_loctoglob = ld[p].node_loctoglob;
     auto l_map_int_halos = ld[p].map_int_halos;
-    auto &l_b_nodes = ld[p].b_nodes;
     auto &vec_halos = ld[p].vec_halos;
+    auto &vec_node_halos = ld[p].vec_node_halos;
     const int32_t l_max_cell_nodeid = ld[p].max_cell_nodeid;
-    const int32_t l_nb_node_halos = ld[p].nb_node_halos;
+    const int32_t nb_nodes = static_cast<int32_t>(ld[p].nodes->shape[0]);
 
     //write
     int32_t &l_max_node_haloid = ld[p].max_node_haloid;
@@ -38,49 +47,17 @@ static void create_halos(
     // #########################################################
     // local_max_node_haloid, local_node_halos
     // #########################################################
-    ld[p].node_halos = new PyArray<int32_t, 1>(make_npy_dims(l_nb_node_halos));
+    std::vector<int32_t> vec_max(nb_nodes, 0);
+    ld[p].node_halos = new PyArray<int32_t, 1>(make_npy_dims(vec_node_halos.size()));
     const auto l_node_halos = ld[p].node_halos;
 
-    // std::map<int32_t, int32_t> map_halos;
-    int32_t halos_counter = 0;
-    for (const int32_t local_node_id : l_b_nodes) {
-        const int32_t g_index = l_node_loctoglob->get(local_node_id);
-        auto sub_node_cellid = node_cellid->sub_array(g_index);
-
-        int32_t node_counter = -1;
-        for (int32_t i = 0; i < sub_node_cellid.last(); i++) {
-            const int32_t neighbor_cell = sub_node_cellid.get(i);
-            const int32_t neighbor_part = part_vert->get(neighbor_cell);
-            if (neighbor_part != p) {
-
-                // get next halos
-                // if (map_halos.find(neighbor_cell) == map_halos.end()) {
-                //     map_halos[neighbor_cell] = (int32_t)map_halos.size();
-                // }
-
-                //*** start node_halos
-                if (node_counter == -1) {
-                    // set [nodeid, size=0] and node_counter index
-                    l_node_halos->get(halos_counter) = local_node_id;
-                    l_node_halos->get(halos_counter + 1) = 0;
-                    node_counter = halos_counter + 1;
-                    halos_counter += 2;
-                }
-                // append node_halos
-                l_node_halos->get(halos_counter) = 0;
-                halos_counter += 1;
-                l_node_halos->get(node_counter) += 1; // [nodeid, size++]
-                //*** end node_halos
-
-            }
-        }
-
-        //*** assign max_node_haloid
-        if (node_counter != -1) {
-            l_max_node_haloid = std::max(l_node_halos->get(node_counter), l_max_node_haloid);
-        }
+    //*** node_halos, max_node_haloid
+    for (int32_t i = 0; i < vec_node_halos.size(); ++i) {
+        l_node_halos->get(i) = vec_node_halos[i];
     }
-
+    for (int32_t i = 0; i < vec_node_halos.size(); i=i+2) {
+        l_max_node_haloid = std::max(l_max_node_haloid, ++vec_max[vec_node_halos[i]]);
+    }
 
     // #########################################################
     // l_halo_halosext
@@ -140,7 +117,7 @@ static void create_halos(
     // #########################################################
     //*** start halo_centvol
     const auto dim = static_cast<int32_t>(nodes->shape[1]);
-    ld[p].halo_centvol = new PyArray<fdx_t, 2>(make_npy_dims(vec_halos.size(), dim + 1));
+    ld[p].halo_centvol = new PyArray<fdx_t, 2>(make_npy_dims(vec_halos.size(), 4)); // legacy code
     if (dim == 2)
         compute_halo_cell_center_area_2d(ld[p].halo_halosext, nodes, ld[p].halo_centvol);
     else if (dim == 3)
@@ -354,8 +331,6 @@ static void loop_through_nodes(
      * RETURN: (description at LocalDomainStruct.h)
      * ld[x].nodes
      * ld[x].node_loctoglob
-     * ld[x].b_nodes
-     * ld[x].nb_node_halos
      *
      * RETURN ALSO: (description at partitioning.cpp::create_sub_domains)
      * node_is_boundary
@@ -368,7 +343,6 @@ static void loop_through_nodes(
     std::vector<int32_t> parts; // temporarily vector to store node neighboring parts ID
     std::vector<int32_t> parts_counter(nb_parts, 0); // for a fixed node `i` determine the number of neighbors for each part
     std::vector<int32_t> local_nodes_counter(nb_parts, 0); // determine the number of nodes for each parts
-    std::vector<int32_t> local_boundary_nodes_counter(nb_parts, 0); // determine the number of boundary nodes for each parts
 
     //to prevent multiple allocation
     parts.reserve(100);
@@ -393,11 +367,6 @@ static void loop_through_nodes(
             // count the number of nodes for every sub_domain
             local_nodes_counter[part]++;
 
-            if (parts.size() > 1) {
-                // this is a boundary node
-                local_boundary_nodes_counter[part]++;
-            }
-
             // reset parts_counter
             parts[j] = 0;
             parts_counter[part] = 0;
@@ -412,11 +381,9 @@ static void loop_through_nodes(
     // #########################################################
     for (int32_t i = 0; i < nb_parts; i++) {
         const int32_t nb_nodes = local_nodes_counter[i];
-        const int32_t nb_b_nodes = local_boundary_nodes_counter[i];
 
         ld[i].nodes = new PyArray<fdx_t, 2>(make_npy_dims(nb_nodes, nodes->shape[1]));
         ld[i].node_loctoglob = new PyArray<int32_t, 1>(make_npy_dims(nb_nodes));
-        ld[i].b_nodes.resize(nb_b_nodes);
 
     }
 
@@ -425,7 +392,6 @@ static void loop_through_nodes(
     // #########################################################
     std::fill(parts_counter.begin(), parts_counter.end(), 0);
     std::fill(local_nodes_counter.begin(), local_nodes_counter.end(), 0);
-    std::fill(local_boundary_nodes_counter.begin(), local_boundary_nodes_counter.end(), 0);
     for (int32_t i = 0; i < node_cellid->shape[0]; i++) {
         auto sub_node_cellid = node_cellid->sub_array(i);
         const auto sub_nodes = nodes->sub_array(i);
@@ -460,20 +426,10 @@ static void loop_through_nodes(
             if (parts.size() > 1) {
                 // this is a boundary node
 
-                const int32_t local_nodeid = local_nodes_counter[part];
-                int32_t &counter = local_boundary_nodes_counter[part];
-
-                //*** assign b_nodes
-                ld[part].b_nodes[counter] = local_nodeid;
-                counter++;
-
                 //*** assign nodes_is_boundary
                 node_is_boundary[i] = true;
 
-                //*** assign nb_node_halos (increment only if the node is halo parts.size() > 1)
-                const int32_t nb_part_halos = sub_node_cellid.last() - parts_counter[part];
-                ld[part].nb_node_halos += 2; // increment for node, increment for size [nodeid, size]
-                ld[part].nb_node_halos += nb_part_halos; // increment for node halos [nodeid, size, halos...]
+
             }
 
             // count the number of nodes for every sub_domain
@@ -569,6 +525,8 @@ const int32_t nb_parts
      * ld[x].set_phyid
      * ld[x].set_halo_phyid_neighsub
      * ld[x].map_int_halos
+     * ld[x].vec_halos
+     * ld[x].vec_node_halos
      */
 
     std::vector<int32_t> local_nb_cells(nb_parts, 0); // for every local domain count the number of local cells
@@ -644,22 +602,31 @@ const int32_t nb_parts
                         if (map_int_halos.find(neighbor_part) == map_int_halos.end()) {
                             map_int_halos[neighbor_part] = std::vector<int32_t>();
                         }
-                        auto &set_int_halos = map_int_halos[neighbor_part];
-                        if (set_int_halos.empty() or set_int_halos.back() != g_id) {
-                            set_int_halos.push_back(g_id);
+                        auto &vec_int_halos = map_int_halos[neighbor_part];
+                        if (vec_int_halos.empty() or vec_int_halos.back() != g_id) {
+                            vec_int_halos.push_back(g_id);
                         }
                         //*** end map_int_halos
 
-                        //TODO
+
+                    }
+
+
+                    if (neighbor_part != part) {
+                        //*** vec_halos, vec_node_halos
                         auto &vec_halos = ld[neighbor_part].vec_halos;
                         if (vec_halos.empty() or vec_halos.back() != g_id) {
-                            const int32_t old_size = static_cast<int32_t>(vec_halos.size());
-                            const int32_t l_nodeid = vec_map_nodes[nodeid].at(neighbor_part);
-                            auto &vec_node_halos = ld[neighbor_part].vec_node_halos;
-                            vec_halos.push_back(g_id);
-                            vec_node_halos.push_back(l_nodeid);
-                            vec_node_halos.push_back(old_size);
+                            vec_halos.push_back(g_id); // global ID of the halo cell
                         }
+                        const int32_t halo_id = static_cast<int32_t>(vec_halos.size()) - 1;
+                        const int32_t l_nodeid = vec_map_nodes[nodeid].at(neighbor_part);
+                        auto &vec_node_halos = ld[neighbor_part].vec_node_halos;
+                        const size_t size = vec_node_halos.size();
+                        if (size == 0 or vec_node_halos[size - 1] != halo_id or vec_node_halos[size - 2] != l_nodeid) { // to prevent duplication
+                            vec_node_halos.push_back(l_nodeid); // local_nodeid
+                            vec_node_halos.push_back(halo_id); // index of the halo cell in vec_halos
+                        }
+                        //*** end vec_halos, vec_node_halos
                     }
                 }
             }
@@ -720,6 +687,7 @@ PyObject *create_sub_domains(
     const int32_t nb_parts
     ) {
 
+
     std::vector<int32_t> vec_node_oldname(nodes->shape[0]); // store the node oldname
     std::vector<int32_t> part_phyid(phy_faces->shape[0]); // store the physical face partition ID
     std::vector<bool> node_is_boundary(nodes->shape[0], false); // for every g_node assign True if g_node has neighboring cells form different parts.
@@ -734,11 +702,11 @@ PyObject *create_sub_domains(
     //part2
     time_it("");
     for (int32_t p = 0; p < nb_parts; p++) {
-        create_halos(ld, part_vert, cells, nodes, node_cellid, p);
+        create_halos(ld, cells, nodes, p);
         create_phy(ld, p, node_phyid, phy_faces_name, phy_faces, part_phyid, vec_node_oldname, vec_map_nodes);
     }
-    time_it("create_halos - create_phy");
     create_phyid_send(ld, nb_parts);
+    time_it("create_halos, create_phy, create_phyid_send");
 
     return get_result_as_py_list(ld, nb_parts);
 }
