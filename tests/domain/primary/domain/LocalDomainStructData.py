@@ -15,7 +15,7 @@ class LocalDomainStructData:
     self.node_loctoglob = np.zeros(1, dtype=np.int32) # [node global index]
     self.node_oldname = np.zeros(1, dtype=np.int32) # [node old name, ...]
     self.halo_neighsub = np.zeros((1, 1), dtype=np.int32) # [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
-    self.node_halos = np.zeros(1, dtype=np.int32) # [node1, number of halos, halocell index in halo_halosext, node2, number of halos, ....] shape=(2*nb_nodes + nb_halos)
+    self.node_halos = np.zeros(1, dtype=np.int32) # int32[:] [NodiId, haloId, ...] shape=(2 * nb_halos) couple (NodeId, haloId) for each exthalo, HaloId is an index point to halo_halosext, nodeId is the local nodeId.
     self.node_halophyid = np.zeros((1, 1), dtype=np.int32) # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
     self.halo_halosext = np.zeros((1, 1), dtype=np.int32) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
     self.halo_halosint = np.zeros(1, dtype=np.int32) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
