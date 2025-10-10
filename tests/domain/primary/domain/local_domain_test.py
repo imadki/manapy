@@ -21,10 +21,11 @@ mesh_path = os.path.join(root_file, '..', 'mesh', mesh_path) #tests/domain/prima
 
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh, float_precision)
-nb_parts = 1000
+nb_parts = 100
 local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
 
-print(local_domains[0].nodes)
+# print(len(local_domains[1].nodes), local_domains[1].nodes)
+
 
 # ld = LocalDomain1Cpu.create_local_domains(local_domains)
 

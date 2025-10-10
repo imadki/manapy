@@ -9,9 +9,9 @@ void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, 
     //Area = 1/2 * | Σ (x_i * y_{i+1} − x_{i+1} * y_i)
 
     double p[4][2]; //2D square, triangle
-    double area = 0.0;
 
     for (int32_t i = 0; i <halo_halosext->shape[0]; i++) {
+        double area = 0.0;
         const int32_t nb_vertex = halo_halosext->last2(i) - 1;  //skipping cell_id in halo_halosext[i]
 
         // copy vertices
@@ -25,6 +25,7 @@ void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, 
             //## Center
             halo_centvol->get2(i, 0) = static_cast<fdx_t>((p[0][0] + p[1][0] + p[2][0]) / 3.0);
             halo_centvol->get2(i, 1) = static_cast<fdx_t>((p[0][1] + p[1][1] + p[2][1]) / 3.0);
+            halo_centvol->get2(i, 2) = 0.0; // ??
 
             //#Area (polygon_area_2d)
             area += p[0][0] * p[1][1] - p[1][0] * p[0][1];
@@ -35,6 +36,7 @@ void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, 
             //## Center
             halo_centvol->get2(i, 0) = static_cast<fdx_t>((p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4.0);
             halo_centvol->get2(i, 1) = static_cast<fdx_t>((p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4.0);
+            halo_centvol->get2(i, 2) = 0.0; // ??
 
             //#Area
             area += p[0][0] * p[1][1] - p[1][0] * p[0][1];
@@ -43,7 +45,7 @@ void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, 
             area += p[3][0] * p[0][1] - p[0][0] * p[3][1];
             area = std::abs(area) / 2.0;
         }
-        halo_centvol->get2(i, 2) = static_cast<fdx_t>(area);
+        halo_centvol->get2(i, 3) = static_cast<fdx_t>(area);
     }
 }
 
@@ -117,9 +119,9 @@ void compute_cell_center_area_2d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t
     //Area = 1/2 * | Σ (x_i * y_{i+1} − x_{i+1} * y_i)
 
     double p[4][2]; //2D square, triangle
-    double area = 0.0;
 
     for (int32_t i = 0; i <cells->shape[0]; i++) {
+        double area = 0.0;
         const int32_t nb_vertex = cells->last2(i);
 
         // copy vertices

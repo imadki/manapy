@@ -1143,14 +1143,12 @@ def _create_halo_cells(cells: 'int32[:, :]', faces: 'int32[:, :]', node_halos: '
   nb_faces = len(faces)
   intersect_cell = np.zeros(shape=1, dtype=np.int32)
 
-  i = 0
-  while i < len(node_halos):
-    n = node_halos[i]
-    c = node_halos[i + 1]
-    for j in range(c):
-      node_haloid[n, j] = node_halos[i + j + 2]
-    node_haloid[n, -1] = c
-    i += c + 2
+  for i in range(0, len(node_halos), 2):
+    node_id = node_halos[i]
+    halo_id = node_halos[i + 1]
+    size = node_haloid[node_id, -1]
+    node_haloid[node_id, size] = halo_id
+    node_haloid[node_id, -1] += 1
 
   for i in range(nb_faces):
     nb_nodes = np.int8(faces[i, -1])
