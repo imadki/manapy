@@ -1,141 +1,123 @@
-import os
-import sys
-sys.path.append(os.path.join(os.getcwd()))
-sys.path.append(os.path.join(os.getcwd(), 'domain'))
-from domain.create_domain import Domain, Mesh, GlobalDomain, LocalDomain, Partitioning
-from domain.local_domain_1cpu_testing import LocalDomain1Cpu, SingleCoreDomainTables
+from mpi4py import MPI
+from manapy.partitions import MeshPartition
+from manapy.ddm import Domain
+from manapy.base.base import Struct
+from manapy.domain import Domain as AltDomain
 import numpy as np
+import os
 
 
-def Cube():
-  # Cube
-  import importlib
-
-  module = importlib.import_module("helpers.TablesTestHexa3D")
-  importlib.reload(module)
-  TestTablesRect2D = getattr(module, "TablesTestHexa3D")
-
-  module = importlib.import_module("helpers.Checker3D")
-  importlib.reload(module)
-  Checker3D = getattr(module, "Checker3D")
-
-  d_cell_loctoglob = domain_tables.d_cell_loctoglob
-  g_cell_nodeid = unified_domain.d_cell_nodeid[0]
-  test_tables = TestTablesRect2D(float_precision, d_cell_loctoglob, g_cell_nodeid)
-  test_tables.init()
-
-  checker = Checker3D(decimal_precision=4, domain_tables=domain_tables, unified_domain=unified_domain,
-                      test_tables=test_tables)
-  checker.test_cell_info()
-  checker.test_face_info()
-  checker.test_node_info()
-  checker.test_halo_info()
-  checker.summary()
-
-
-def Rectangle():
-  # Rectangle
-  import importlib
-
-  module = importlib.import_module("helpers.TablesTestRect2D")
-  importlib.reload(module)
-  TestTablesRect2D = getattr(module, "TablesTestRect2D")
-
-  module = importlib.import_module("helpers.Checker2D")
-  importlib.reload(module)
-  Checker2D = getattr(module, "Checker2D")
-
-  d_cell_loctoglob = domain_tables.d_cell_loctoglob
-  g_cell_nodeid = unified_domain.d_cell_nodeid[0]
-  test_tables = TestTablesRect2D(float_precision, d_cell_loctoglob, g_cell_nodeid)
-  test_tables.init()
-
-  checker = Checker2D(decimal_precision=4, domain_tables=domain_tables, unified_domain=unified_domain,
-                      test_tables=test_tables)
-  checker.test_cell_info()
-  checker.test_face_info()
-  checker.test_node_info()
-  checker.test_halo_info()
-  checker.summary()
-
-
-def Triangle():
-  # Triangle
-  import importlib
-
-  module = importlib.import_module("helpers.TablesTestTriangles2D")
-  importlib.reload(module)
-  TestTablesTriangles2D = getattr(module, "TablesTestTriangles2D")
-
-  module = importlib.import_module("helpers.Checker2D")
-  importlib.reload(module)
-  Checker2D = getattr(module, "Checker2D")
-
-  d_cell_loctoglob = domain_tables.d_cell_loctoglob
-  g_cell_nodeid = unified_domain.d_cell_nodeid[0]
-  test_tables = TestTablesTriangles2D(float_precision, d_cell_loctoglob, g_cell_nodeid)
-  test_tables.init()
-
-  checker = Checker2D(decimal_precision=4, domain_tables=domain_tables, unified_domain=unified_domain,
-                      test_tables=test_tables)
-  checker.test_cell_info()
-  checker.test_face_info()
-  checker.test_node_info()
-  checker.test_halo_info()
-  checker.summary()
-
-
-def Tetra():
-  # Tetra
-  import importlib
-
-  module = importlib.import_module("helpers.TablesTestTetra3D")
-  importlib.reload(module)
-  TablesTestTetra3D = getattr(module, "TablesTestTetra3D")
-
-  module = importlib.import_module("helpers.TetraChecker3D")
-  importlib.reload(module)
-  TetraChecker3D = getattr(module, "TetraChecker3D")
-
-  d_cell_loctoglob = domain_tables.d_cell_loctoglob
-  g_cell_nodeid = unified_domain.d_cell_nodeid[0]
-  test_tables = TablesTestTetra3D(float_precision, d_cell_loctoglob, g_cell_nodeid)
-  test_tables.init()
-
-  checker = TetraChecker3D(decimal_precision=4, domain_tables=domain_tables, unified_domain=unified_domain,
-                           test_tables=test_tables)
-  checker.test_cell_info()
-  checker.test_node_info()
-  checker.test_face_info()
-  checker.test_halo_info()
-  checker.summary()
-
+COMM = MPI.COMM_WORLD
+SIZE = COMM.Get_size()
+RANK = COMM.Get_rank()
 
 
 mesh_list = [
-  (2, 'rectangles.msh', Rectangle),
-  (2, 'triangles.msh', Triangle),
-  (3, 'cube.msh', Cube),
-  (3, 'tetrahedron.msh', Tetra),
-  (3, 'tetrahedron_big.msh', None),
+  (2, 'rectangles.msh'),
+  (2, 'triangles.msh'),
+  (3, 'cube.msh'),
+  (3, 'tetrahedron.msh'),
+  (3, 'tetrahedron_big.msh'),
 ]
-float_precision = 'float32' # the test does not support float64 or int64 yet
-root_file = os.getcwd()
-dim, mesh_path, test_function = mesh_list[2] # also modify dim variable accordingly
-mesh_path = os.path.join(root_file, 'mesh', mesh_path) #tests/domain/primary/mesh
 
-def create_domain(nb_parts):
-  mesh = Mesh(mesh_path, dim)
-  partitioning = Partitioning(mesh, float_precision)
-  local_domain_data = partitioning.create_sub_domains(nb_parts=nb_parts)
-
-  local_domains = LocalDomain1Cpu.create_local_domains(local_domain_data)
-  domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
-
-  return domains, SingleCoreDomainTables(domains, float_precision)
-
-l_domains, domain_tables = create_domain(100)
-g_domains, unified_domain = create_domain(1)
+dim, mesh_name = mesh_list[0]
+filename = "/home/aben-ham/Desktop/work/manapy/manapy/tests/meshes/" + mesh_name
 
 
-test_function()
+running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="double")
+mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0, 0, 0])
+domain = Domain(dim=dim, conf=running_conf)
+
+
+local_domain = AltDomain.create_domain(filename, dim, recreate=True)
+
+# if RANK == 0:
+# print(RANK, len(domain.cells.nodeid), len(local_domain.cells.nodeid))
+if RANK == 0:
+  cells = [
+    "_nbcells",
+    "_nodeid",
+    "_faceid",
+    "_cellfid",
+    "_cellnid",
+    "_halonid",
+    "_ghostnid",
+    "_haloghostnid",
+    "_haloghostcenter",
+    "_center",
+    "_volume",
+    "_nf",
+    "_loctoglob",
+    "_tc",
+    "_periodicfid",
+    "_shift",
+  ]
+  nodes = [
+    "_nbnodes",
+    "_vertex",
+    "_name",
+    "_oldname",
+    "_cellid",
+    "_ghostid",
+    "_haloghostid",
+    "_ghostcenter",
+    "_haloghostcenter",
+    "_ghostfaceinfo",
+    "_haloghostfaceinfo",
+    "_loctoglob",
+    "_halonid",
+    "_nparts",
+    "_periodicid",
+    "_R_x",
+    "_R_y",
+    "_R_z",
+    "_number",
+    "_lambda_x",
+    "_lambda_y",
+    "_lambda_z",
+  ]
+  faces = [
+    "_nbfaces",
+    "_nodeid",
+    "_cellid",
+    "_name",
+    "_oldname",
+    "_normal",
+    "_mesure",
+    "_center",
+    "_dist_ortho",
+    "_ghostcenter",
+    "_oppnodeid",
+    "_halofid",
+    "_param1",
+    "_param2",
+    "_param3",
+    "_param4",
+    "_f_1",
+    "_f_2",
+    "_f_3",
+    "_f_4",
+    "_airDiamond",
+    "_tangent",
+    "_binormal",
+  ]
+  halos = [
+    "_halosext",
+    "_neigh",
+    "_halosint",
+    "_centvol",
+    "_sizehaloghost",
+    "_faces",
+    "_nodes",
+  ]
+  for item in nodes:
+    try:
+      s1 = np.array(domain.nodes.__getattribute__(item))
+      s2 = np.array(local_domain.nodes.__getattribute__(item))
+      if s1.shape != s2.shape:
+        print(RANK, item, s1.shape, s2.shape)
+    except AttributeError:
+      print(RANK, item)
+
+
+print(local_domain.halos.centvol)

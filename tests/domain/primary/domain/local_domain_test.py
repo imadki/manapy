@@ -27,6 +27,6 @@ local_domains = partitioning.create_sub_domains(nb_parts=nb_parts)
 # print(len(local_domains[1].nodes), local_domains[1].nodes)
 
 
-# ld = LocalDomain1Cpu.create_local_domains(local_domains)
+ld = LocalDomain1Cpu.create_local_domains(local_domains)
 
 
