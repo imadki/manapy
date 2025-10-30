@@ -166,7 +166,7 @@ class DomainTables:
 
 class LocalDomain1Cpu(LocalDomain):
   def __int__(self):
-    print('cjo;d')
+    pass
 
   @staticmethod
   def create_local_domains(local_domain_structs: 'LocalDomainStruct[:]'):
@@ -210,22 +210,23 @@ class LocalDomain1Cpu(LocalDomain):
       self.nb_nodes = np.int32(len(self.nodes))
       self.nb_cells = np.int32(len(self.cells))
       self.nb_phy_faces = np.int32(len(self.phy_faces))
+      self.test = True
 
       self.start = time.time()
 
-      log_step("bounds")
+      log_step.log("bounds")
       self.bounds = self._define_bounds(self.nodes)
-      log_step()
+      log_step.out()
 
-      log_step("node_cellid")
+      log_step.log("node_cellid")
       self.node_cellid = self._create_node_cellid(self.cells, self.nb_nodes)
-      log_step()
+      log_step.out()
 
-      log_step("cell_cellnid")
+      log_step.log("cell_cellnid")
       self.cell_cellnid = self._create_cell_cellnid(self.cells, self.node_cellid)
-      log_step()
+      log_step.out()
 
-      log_step("_create_info")
+      log_step.log("_create_info")
       (
         self.faces,
         self.cell_faceid,
@@ -233,16 +234,16 @@ class LocalDomain1Cpu(LocalDomain):
         self.cell_cellfid
       ) = self._create_info(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
       self.nb_faces = len(self.faces)
-      log_step()
+      log_step.out()
 
-      log_step("Create cell volume and center")
+      log_step.log("Create cell volume and center")
       (
         self.cell_volume,
         self.cell_center
       ) = self._create_cell_info(self.cells, self.nodes)
-      log_step()
+      log_step.out()
 
-      log_step("Face measure face center face normal")
+      log_step.log("Face measure face center face normal")
       (
         self.face_measure,
         self.face_center,
@@ -250,17 +251,17 @@ class LocalDomain1Cpu(LocalDomain):
         self.face_tangent,  # only in 3D, shape is 0 in 2D
         self.face_binormal  # only in 3D, shape is 0 in 2D
       ) = self._create_face_info(self.faces, self.nodes, self.face_cellid, self.cell_center)
-      log_step()
+      log_step.out()
 
-      log_step("cell_halonid, face_haloid, node_haloid")
+      log_step.log("cell_halonid, face_haloid, node_haloid")
       (
         self.cell_halonid,
         self.face_haloid,
         self.node_haloid
       ) = self._create_halo_cells(self.cells, self.faces, self.nodes, self.node_halos, self.halo_halosext)
-      log_step()
+      log_step.out()
 
-      log_step("Create face and node names")
+      log_step.log("Create face and node names")
       (
         self.face_oldname,
         self.face_name,
@@ -268,25 +269,25 @@ class LocalDomain1Cpu(LocalDomain):
         self.phyid_to_faceid
       ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces, self.face_haloid,
                                           self.node_haloid, self.node_oldname)
-      log_step()
+      log_step.out()
 
 
-      log_step("create_bf_cellid")
+      log_step.log("create_bf_cellid")
       (
         self.ghost_part_size,
         self.bf_cellid
       ) = self._create_bf_cellid(self.phy_faces, self.phyid_recv, self.phyid_recv_part_size, self.node_cellid,
                                  self.phyid_to_faceid, self.cell_faceid, self.rank)
-      log_step()
+      log_step.out()
 
-      log_step("Create shared_ghost_info")
+      log_step.log("_create_shared_ghost_info")
       self.shared_ghost_info = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center,
                                                               self.cell_faceid, self.cell_loctoglob, self.face_oldname,
                                                               self.face_normal, self.face_center, self.face_measure,
                                                               len(self.phyid_recv))
-      log_step()
+      log_step.out()
 
-      log_step("Create shared_ghost_info")
+      log_step.log("_create_ghost_tables")
       (
         self.node_ghostid,
         self.cell_ghostnid,
@@ -295,7 +296,7 @@ class LocalDomain1Cpu(LocalDomain):
         self.node_ghostfaceinfo
       ) = self._create_ghost_tables(self.shared_ghost_info, self.cells, self.faces, self.cell_faceid,
                                     self.ghost_part_size)
-      log_step()
+      log_step.out()
 
     # ------------------------------------------------------------------
     # Share
@@ -308,7 +309,7 @@ class LocalDomain1Cpu(LocalDomain):
     for rank in range(size):
       self = local_domain_objs[rank]
 
-      log_step("_create_halo_ghost_tables")
+      log_step.log("_create_halo_ghost_tables")
       (
         self.cell_haloghostnid,
         self.cell_haloghostcenter,
@@ -319,7 +320,7 @@ class LocalDomain1Cpu(LocalDomain):
       ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.phy_faces, self.node_cellid,
                                          self.node_halophyid, self.node_haloid, self.halo_halosext,
                                          self.ghost_part_size, self.node_oldname)
-      log_step()
+      log_step.out()
 
       ## TODO the use of this tables !?
       self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=np.int32)
@@ -327,7 +328,7 @@ class LocalDomain1Cpu(LocalDomain):
       self.cell_periodicfid = np.zeros(self.nb_cells, dtype=np.int32)
       self.cell_shift = np.zeros((self.nb_cells, 3), dtype=self.float_precision)
 
-      log_step("face_gradient_info")
+      log_step.log("face_gradient_info")
       (
         self.face_air_diamond,
         self.face_param1,
@@ -341,9 +342,9 @@ class LocalDomain1Cpu(LocalDomain):
       ) = self._face_gradient_info(self.face_cellid, self.faces, self.face_ghostcenter, self.face_name,
                                    self.face_normal, self.cell_center, self.halo_centvol, self.face_haloid, self.nodes,
                                    self.cell_shift)
-      log_step()
+      log_step.out()
 
-      log_step("_variables")
+      log_step.log("_variables")
       (
         self.node_R_x,
         self.node_R_y,
@@ -355,9 +356,9 @@ class LocalDomain1Cpu(LocalDomain):
       ) = self._variables(self.cell_center, self.node_cellid, self.node_haloid, self.node_ghostid,
                           self.node_haloghostid, self.node_periodicid, self.nodes, self.node_oldname,
                           self.face_ghostcenter, self.cell_haloghostcenter, self.halo_centvol, self.cell_shift)
-      log_step()
+      log_step.out()
 
-      log_step("_update_boundaries")
+      log_step.log("_update_boundaries")
       (
         self.innerfaces,
         self.infaces,
@@ -392,21 +393,21 @@ class LocalDomain1Cpu(LocalDomain):
         self.periodicfrontnodes,  # only in 3D, shape is 0 in 2D
         self.periodicbacknodes,  # only in 3D, shape is 0 in 2D
       ) = self._update_boundaries(self.face_name, self.node_name)
-      log_step()
+      log_step.out()
 
-      log_step("_define_BCs")
+      log_step.log("_define_BCs")
       self.BCs = self._define_BCs(self.periodicinfaces, self.periodicupperfaces, self.periodicfrontfaces)
-      log_step()
+      log_step.out()
 
-      log_step("_create_normal_face_of_cell_2d")
+      log_step.log("_create_normal_face_of_cell_2d")
       self.cell_nf = self._create_normal_face_of_cell(self.cell_center, self.face_center, self.cell_faceid,
                                                          self.face_normal)
-      log_step()
+      log_step.out()
 
-      log_step("_dist_ortho_function_2d")
+      log_step.log("_dist_ortho_function_2d")
       # only in 2D, shape is 0 in 3D
       self.face_dist_ortho = self._dist_ortho_function_2d(self.innerfaces, self.boundaryfaces, self.face_cellid,
                                                           self.cell_center, self.face_center, self.face_normal)
-      log_step()
+      log_step.out()
 
     return local_domain_objs

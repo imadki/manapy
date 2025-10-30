@@ -67,7 +67,7 @@ class CPUBackend(Backend):
                 nb.config.THREADING_LAYER = multithread
     
     def compile(self, func, signature=False, forcedbackend=None, outer=False):
-        
+        return func
         backend = self.backend
         if forcedbackend is not None:
             backend = forcedbackend

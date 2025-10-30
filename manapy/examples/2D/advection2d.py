@@ -26,19 +26,29 @@ import os
 
 start = timeit.default_timer()
 # ... get the mesh directory
-try:
-    MESH_DIR = os.environ['MESH_DIR']
- 
-except:
-    BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-    BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
-    MESH_DIR = os.path.join(BASE_DIR, 'mesh')
- 
-filename = "carre.msh"
+# try:
+#     MESH_DIR = os.environ['MESH_DIR']
+#
+# except:
+#     BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+#     BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
+#     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
+#
+# filename = "carre.msh"
 
 #File name
-filename = os.path.join(MESH_DIR, filename)
-dim = 2
+mesh_list = [
+  (2, 'rectangles.msh'),
+  (2, 'triangles.msh'),
+  (3, 'cube.msh'),
+  (3, 'tetrahedron.msh'),
+  (3, 'tetrahedron_big.msh'),
+]
+
+dim, mesh_name = mesh_list[0]
+filename = "/home/aben-ham/Desktop/work/manapy/mesh/carre.msh"
+# filename = os.path.join(MESH_DIR, filename)
+# dim = 2
 
 ###Config###
 #backend numba or python

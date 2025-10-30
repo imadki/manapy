@@ -122,8 +122,8 @@ class Variable():
         self.BCneumannNH = []
         
         
-        valueface = np.zeros(self.domain._nbfaces, dtype=self.float_precision)
-        valuenode = np.zeros(self.domain._nbnodes, dtype=self.float_precision)
+        valueface = np.zeros(self.domain.nbfaces, dtype=self.float_precision)
+        valuenode = np.zeros(self.domain.nbnodes, dtype=self.float_precision)
         valuehalo = np.zeros(self.domain.halos.sizehaloghost, dtype=self.float_precision)
         
         if self._BC is None:
@@ -432,7 +432,7 @@ class Variable():
         # self.update_ghost_value()
         Variable._func_interp(self.cell, self.ghost, self.halo, self.haloghost, self.domain.cells.center, self.domain.halos.centvol, 
                           self.domain.nodes.cellid, self.domain.nodes.ghostid, self.domain.nodes.haloghostid,
-                          self.domain.nodes.periodicid, self.domain.nodes.halonid, self.domain.nodes.vertex, 
+                          self.domain.nodes.periodicid, self.domain.nodes.halonid, self.domain.nodes.vertex, self.domain.nodes.oldname,
                           self.domain.faces.ghostcenter, self.domain.cells.haloghostcenter, 
                           self.domain.nodes.R_x, self.domain.nodes.R_y, self.domain.nodes.R_z, self.domain.nodes.lambda_x, 
                           self.domain.nodes.lambda_y, self.domain.nodes.lambda_z,
