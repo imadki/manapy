@@ -44,7 +44,7 @@ def explicitscheme_convective_2d(rez_w:'float[:]', w_c:'float[:]', w_ghost:'floa
     r_l = np.zeros(2)
     r_r = np.zeros(2)
    
-    normal = np.zeros(3)
+    normal = np.zeros(normalf.shape[1]) #TODO 2 or 3
     flux_w = np.zeros(1)    
    
     rez_w[:] = 0.

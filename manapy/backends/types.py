@@ -1,6 +1,33 @@
 # -*- coding: utf-8 -*-
 from mpi4py import MPI
-    
+
+FLOAT_TYPE = "float32"
+INT_TYPE = "int32"
+
+if FLOAT_TYPE not in ["float32", "float64"]:
+    raise ValueError("Unknown float type")
+if INT_TYPE not in ["int32"]: # TODO handle int64
+    raise ValueError("Unknown int type")
+
+# TODO used it inside mesh class
+class MeshCell:
+    ALLOWED_2D = ['quad', 'triangle']
+    ALLOWED_3D = ['pyramid', 'hexahedron', 'tetra']
+
+    TRIANGLE = 1
+    QUAD = 2
+    TETRA = 3
+    HEXAHEDRON = 4
+    PYRAMID = 5
+
+    DIC = {
+      "triangle": TRIANGLE,
+      "quad": QUAD,
+      "tetra": TETRA,
+      "hexahedron": HEXAHEDRON,
+      "pyramid": PYRAMID,
+    }
+
 
 class ArrayBank:
     """
