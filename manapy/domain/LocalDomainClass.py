@@ -445,6 +445,7 @@ class LocalDomain:
     # cell_ghostnid
     # ------------------------------------------------------------------
 
+    # TODO check why self.nb_faces
     ghost_i_visited = np.ones(shape=self.nb_faces, dtype=np.int32) * -1
     cell_ghostnid_size = np.zeros(shape=self.nb_cells, dtype=np.int32)
     compute.get_cell_ghostnid_size(cells, node_ghostid, ghost_i_visited, cell_ghostnid_size)
@@ -649,7 +650,7 @@ class LocalDomain:
 
         compute.create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
 
-    halo_sizehaloghost = np.sum(node_haloghostid[:, -1])
+    halo_sizehaloghost = np.sum(node_haloghostid[:, -1]) # Two nodes in the same partition can't have the same haloghostId
     return (
       cell_haloghostnid,
       cell_haloghostcenter,

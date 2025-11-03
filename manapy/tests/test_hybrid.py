@@ -22,7 +22,7 @@ def Hybrid():
   checker = HybridChecker(decimal_precision=4, domain_tables=domain_tables, unified_domain=unified_domain,
                       test_tables=test_tables)
   checker.test_cell_info()
-  # checker.test_face_info()
+  checker.test_face_info()
   # checker.test_node_info()
   # checker.test_halo_info()
   checker.summary()

@@ -551,6 +551,8 @@ def _get_bf_recv_part_info(phyid_recv_part_size: 'int32[:]', rank: 'int32', part
 def _create_bf_cellid(phy_faces: 'int32[:, :]', phyid_recv: 'int32[:]', node_cellid: 'int32[:, :]',
                       phyid_to_faceid: 'int32[:]', cell_faceid: 'int32[:, :]', intersect: 'int32[:]', start: 'int32',
                       end: 'int32', bf_cellid: 'int32[:, :]'):
+  #! Here a boundary cell is cell that is connected to a physical face.
+  #! It is different from a boundary cell that has a node that has at least one neighbor physical face.
   counter = 0
   for i in range(start, end):
     phyid = phyid_recv[i]
@@ -767,6 +769,8 @@ def _create_ghost_tables_3d(ghost_info: 'float[:, :]', faces: 'int32[:, :]', cel
 
 def _get_cell_ghostnid_size(cells: 'int32[:, :]', node_ghostid: 'int32[:, :]', ghost_i_visited: 'int32[:]',
                             cell_ghostnid_size: 'int32[:]'):
+  # TODO try to loop only on the boundary cells (boundary cell is a cell that has a node that has at least halo neighbor phyid)
+  # TODO you can remove cell_ghostnid_size table and replace it a variable
   for i in range(len(cells)):
     for j in range(cells[i, -1]):
       nid = cells[i, j]
@@ -882,7 +886,7 @@ def _create_halo_ghost_tables_2d(ghost_info: 'float[:, :]', bcell_halobfid: 'int
                                  node_haloghostid: 'int32[:, :]', node_haloghostcenter: 'float[:, :, :]',
                                  node_haloghostfaceinfo: 'float[:, :, :]'):
   """
-  * cell_haloghostcenter [[g_x, g_y, unused g_y]]
+  * cell_haloghostcenter [[g_x, g_y, unused g_z]]
   * cell_haloghostnid [[indices point to cell_haloghostcenter]]
   * node_haloghostid [[indices point to cell_haloghostcenter]]
   * node_haloghostcenter [[[g_x, g_y, (halo_cell)index point to halosext, face_old_name, index point to cell_haloghostcenter]]]
