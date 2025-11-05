@@ -21,7 +21,9 @@ static void create_halos(
     LocalDomainStruct *ld,
     PyArray<int32_t, 2> *cells,
     PyArray<fdx_t, 2> *nodes,
-    const int32_t p) {
+    const int32_t p,
+    const int32_t dim
+    ) {
 
     /*
      * RETURN: (description at LocalDomainStruct.h)
@@ -116,8 +118,7 @@ static void create_halos(
     // l_halo_centvol
     // #########################################################
     //*** start halo_centvol
-    const auto dim = static_cast<int32_t>(nodes->shape[1]);
-    ld[p].halo_centvol = new PyArray<fdx_t, 2>(make_npy_dims(vec_halos.size(), 4)); // legacy code
+    ld[p].halo_centvol = new PyArray<fdx_t, 2>(make_npy_dims(vec_halos.size(), 4)); // x, y, z, area
     if (dim == 2)
         compute_halo_cell_center_area_2d(ld[p].halo_halosext, nodes, ld[p].halo_centvol);
     else if (dim == 3)
@@ -686,7 +687,8 @@ PyObject *create_sub_domains(
     PyArray<int32_t, 2> *phy_faces,
     PyArray<int32_t, 1> *phy_faces_name,
     PyArray<int32_t, 2> *node_phyid,
-    const int32_t nb_parts
+    const int32_t nb_parts,
+    const int32_t dim
     ) {
 
 
@@ -704,7 +706,7 @@ PyObject *create_sub_domains(
     //part2
     DEBUG_TIME_IT("");
     for (int32_t p = 0; p < nb_parts; p++) {
-        create_halos(ld, cells, nodes, p);
+        create_halos(ld, cells, nodes, p, dim);
         create_phy(ld, p, node_phyid, phy_faces_name, phy_faces, part_phyid, vec_node_oldname, vec_map_nodes);
     }
     create_phyid_send(ld, nb_parts);

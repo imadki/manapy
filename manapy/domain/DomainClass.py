@@ -316,9 +316,9 @@ class Domain:
       nbOfTriangles = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 3])
       nbOfQuad = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 4])
 
-      if nbOfTriangles != 0:
-        typeOfCells["quad"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 4][:, :4]
       if nbOfQuad != 0:
+        typeOfCells["quad"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 4][:, :4]
+      if nbOfTriangles != 0:
         typeOfCells["triangle"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 3][:, :3]
 
       # self._maxfacenid = 2
@@ -495,6 +495,7 @@ class Domain:
       print("Iteration = ", niter, "time = ", time, "time step = ", dt)
       print("max" + variables[0] + " =", integral_maxw[0])
 
+    print(points, elements)
     meshio.write_points_cells("results/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
                               points, elements, point_data=data, file_format=file_format)
 

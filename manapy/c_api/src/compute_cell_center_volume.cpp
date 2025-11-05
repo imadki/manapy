@@ -36,7 +36,7 @@ void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, 
             //## Center
             halo_centvol->get2(i, 0) = static_cast<fdx_t>((p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4.0);
             halo_centvol->get2(i, 1) = static_cast<fdx_t>((p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4.0);
-            halo_centvol->get2(i, 2) = 0.0; // ??
+            halo_centvol->get2(i, 2) = 0.0; // z axis not used
 
             //#Area
             area += p[0][0] * p[1][1] - p[1][0] * p[0][1];

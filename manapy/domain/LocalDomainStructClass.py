@@ -2,6 +2,7 @@ import numpy as np
 from numba.typed import Dict, List
 import h5py
 
+# Created inside PartitioningClass
 class LocalDomainStruct:
   def __init__(self):
     # Arrays: use zeros(1) as placeholder
