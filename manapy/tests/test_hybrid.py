@@ -23,8 +23,8 @@ def Hybrid():
                       test_tables=test_tables)
   checker.test_cell_info()
   checker.test_face_info()
-  # checker.test_node_info()
-  # checker.test_halo_info()
+  checker.test_node_info()
+  checker.test_halo_info()
   checker.summary()
 
 
@@ -36,7 +36,7 @@ mesh_list = [
   (3, 'tetrahedron_big.msh', Hybrid),
 ]
 root_file = os.getcwd()
-dim, mesh_path, test_function = mesh_list[0] # also modify dim variable accordingly
+dim, mesh_path, test_function = mesh_list[3] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, 'meshes', mesh_path) #tests/domain/primary/mesh
 
 def create_domain(nb_parts):

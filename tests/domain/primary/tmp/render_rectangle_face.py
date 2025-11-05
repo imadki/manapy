@@ -11,31 +11,38 @@ sys.path.append("/home/aben-ham/Desktop/work/manapy/tests/domain/primary/")
 import subprocess
 import os
 import numpy as np
-from helpers.DomainTables import DomainTables
+from manapy.domain import Domain, Mesh, Partitioning
+from manapy.tests import LocalDomain1Cpu, SingleCoreDomainTables
+from manapy.backends.types import FLOAT_TYPE
 
 mpi_exec = "/usr/bin/mpirun"
 python_exec = "/home/aben-ham/anaconda3/envs/work/bin/python3"
 float_precision = 'float32'
-dim=2
-mesh_name = 'rectangles.msh'
+
+mesh_list = [
+  (2, 'rectangles.msh'),
+  (2, 'triangles.msh')
+]
+
+root_file = '/home/aben-ham/Desktop/work/manapy/manapy/tests'
+dim, mesh_path = mesh_list[0] # also modify dim variable accordingly
+mesh_path = os.path.join(root_file, 'meshes', mesh_path) #tests/domain/primary/mesh
 
 
+def create_domain(nb_parts):
+  mesh = Mesh(mesh_path, dim)
+  partitioning = Partitioning(mesh)
+  local_domain_data = partitioning.create_sub_domains(nb_parts=nb_parts)
 
+  local_domains = LocalDomain1Cpu.create_local_domains(local_domain_data)
+  domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
 
-def create_partitions(nb_partitions, mesh_name, float_precision, dim):
-  root_file = os.getcwd()
-  mesh_file_path = os.path.join(root_file, '..', 'mesh', mesh_name)
-  script_path = os.path.join(root_file, '..', 'helpers', 'create_partitions_mpi_worker.py')
-  cmd = [mpi_exec, "-n", str(nb_partitions), "--oversubscribe", python_exec, script_path, mesh_file_path, float_precision, str(dim)]
+  return domains, SingleCoreDomainTables(domains, FLOAT_TYPE), local_domains
 
-  result = subprocess.run(cmd, env=os.environ.copy(), stderr=subprocess.PIPE)
-  if result.returncode != 0:
-    print(result.__str__(), os.getcwd())
-    raise SystemExit(result.returncode)
+size = 4
+l_domains, domain_tables, local_domain = create_domain(size)
+g_domains, unified_domain, global_domain = create_domain(1)
 
-domain_tables = DomainTables(nb_partitions=4, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
-unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
-size = domain_tables.nb_partitions
 
 # Create the window
 root = tk.Tk()

@@ -377,11 +377,16 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
     PyObject *phy_faces_obj = nullptr;
     PyObject *phy_faces_name_obj = nullptr;
     idx_t nb_parts = 0;
+    idx_t dim;
 
-    if (!PyArg_ParseTuple(args, "OOOOOOOOi", &part_vert_obj, &node_cellid_obj, &node_phyid_obj, &cells_obj, &cells_type_obj, &nodes_obj, &phy_faces_obj, &phy_faces_name_obj, &nb_parts))
+    if (!PyArg_ParseTuple(args, "OOOOOOOOii", &part_vert_obj, &node_cellid_obj, &node_phyid_obj, &cells_obj, &cells_type_obj, &nodes_obj, &phy_faces_obj, &phy_faces_name_obj, &nb_parts, &dim))
         return nullptr;
     if (nb_parts < 2) {
         PyErr_SetString(PyExc_ValueError, "nb_parts must be ≥ 2");
+        return nullptr;
+    }
+    if (dim != 2 and dim != 3) {
+        PyErr_SetString(PyExc_ValueError, "dim must be 2 or 3");
         return nullptr;
     }
 
@@ -431,7 +436,7 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         PyArray<int32_t, 2> py_phy_faces(phy_faces);
         PyArray<int32_t, 1> py_phy_faces_name(phy_faces_name);
 
-        PyObject *py_list_result_tmp = create_sub_domains(local_domains, &py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, &py_phy_faces, &py_phy_faces_name, &py_node_phyid, nb_parts);
+        PyObject *py_list_result_tmp = create_sub_domains(local_domains, &py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, &py_phy_faces, &py_phy_faces_name, &py_node_phyid, nb_parts, dim);
 
 
 

@@ -61,8 +61,8 @@ class PartitioningUtils:
     return node_oldname
 
   @staticmethod
-  def _create_local_domains_waper(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
-    c_res = manapy_c_api.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts)
+  def _create_local_domains_wrapper(part_vert: 'int32[:]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]', cells: 'int32[:, :]', cells_type: 'int8[:]', nodes: 'float[:, :]', phy_faces: 'int32[:, :]', phy_faces_name: 'int32[:]', nb_parts: 'int32', float_precision: 'int32', dim: 'int32'):
+    c_res = manapy_c_api.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, dim)
 
     list_local_domains = LocalDomainStruct.new_local_domains(nb_parts)
     for i in range(nb_parts):
@@ -120,7 +120,7 @@ class Partitioning(PartitioningUtils):
       )
     nb_parts = len(unique_vals)
 
-    local_domains = self._create_local_domains_waper(
+    local_domains = self._create_local_domains_wrapper(
       part_vert,
       node_cellid,
       node_phyid,
