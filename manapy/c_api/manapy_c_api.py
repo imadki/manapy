@@ -39,6 +39,7 @@ def create_local_domains(
     phy_faces,
     phy_faces_name,
     nb_parts,
+    dim,
 ):
     """Split the mesh into *nb_parts* local domains and return their data.
     Returns
@@ -76,6 +77,7 @@ def create_local_domains(
         phy_faces,
         phy_faces_name,
         nb_parts,
+        dim
     )
 
 

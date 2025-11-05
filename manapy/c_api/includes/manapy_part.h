@@ -33,7 +33,7 @@ std::vector<int32_t> get_max_info(int32_t cell_type);
 void print_instant(const char *fmt, ...);
 void time_it(const std::string &);
 
-// # define PRINT_DEBUG
+# define PRINT_DEBUG
 /* ------------------------------------------------------------------ */
 /*  Macros that are active ONLY in a debug build                       */
 /* ------------------------------------------------------------------ */
@@ -64,7 +64,8 @@ PyObject * create_sub_domains(
     PyArray<int32_t, 2> *phy_faces,
     PyArray<int32_t, 1> *phy_faces_name,
     PyArray<int32_t, 2> *node_phyid,
-    int32_t nb_parts
+    int32_t nb_parts,
+    int32_t dim
     );
 
 #endif //MANAPY_PART_H

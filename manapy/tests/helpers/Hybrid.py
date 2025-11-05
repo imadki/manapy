@@ -706,6 +706,7 @@ class Locals:
     self.cell_halofid = np.zeros(shape=(1, 1), dtype=np.int32)
     self.node_cellid = np.zeros(shape=(1, 1), dtype=np.int32)
     self.node_halonid = np.zeros(shape=(1, 1), dtype=np.int32)
+    self.node_name = np.zeros(shape=1, dtype=np.int32)
     self.halos_halosext = np.zeros(shape=1, dtype=np.int32)
     self.halos_halosint = {} # map(partition_id, int_cells)
     self.node_ghostnid = np.zeros(shape=(1, 1), dtype=np.int32)
@@ -759,7 +760,7 @@ class HybridTestTables:
     self.face_ghostid = self._create_face_to_phyid(self.phyid_to_faceid)
     self.ghost_info = self._create_ghost_info(self.phy_faces, self.node_cellid, self.phyid_to_faceid, self.cell_center, self.cell_faceid, self.face_oldname, self.face_normal, self.face_center, self.face_measure)
     self.nb_parts = max(self.part_vert) + 1
-    self.locals = self._create_local(self.part_vert, self.cells, self.cell_faceid, self.faces, self.nodes, self.nb_parts, self.ghost_info, self.face_cellid, self.cell_cellnid, self.cell_cellfid, self.node_cellid, self.node_ghostnid, self.cell_ghostnid, self.face_ghostid)
+    self.locals = self._create_local(self.part_vert, self.cells, self.cell_faceid, self.faces, self.nodes, self.nb_parts, self.ghost_info, self.face_cellid, self.cell_cellnid, self.cell_cellfid, self.node_cellid, self.node_ghostnid, self.node_oldname, self.cell_ghostnid, self.face_ghostid)
 
   def get_part_vert(self, cell_loctoglob):
     part_vert = np.zeros(shape=self.nb_cells, dtype=np.int32)
@@ -922,7 +923,7 @@ class HybridTestTables:
     return ghost_info
 
 
-  def _create_local(self, part_vert, cells, cell_faceid, faces, nodes, nb_parts, ghost_info, face_cellid, cell_cellnid, cell_cellfid, node_cellid, node_ghostnid, cell_ghostnid, face_ghostid):
+  def _create_local(self, part_vert, cells, cell_faceid, faces, nodes, nb_parts, ghost_info, face_cellid, cell_cellnid, cell_cellfid, node_cellid, node_ghostnid, node_oldname, cell_ghostnid, face_ghostid):
     l = [Locals() for _ in range(nb_parts)]
 
     for i in range(len(cells)):
@@ -938,7 +939,7 @@ class HybridTestTables:
           l[p].map_nodes[node_id] = len(l[p].map_nodes)
 
     for p in range(nb_parts):
-      nb_cells = len(l[p].map_nodes)
+      nb_cells = len(l[p].map_cells)
       nb_faces = len(l[p].map_faces)
       nb_nodes = len(l[p].map_nodes)
       l[p].nb_cells = nb_cells
@@ -1008,10 +1009,14 @@ class HybridTestTables:
       # node_halonid
       l[p].node_cellid = np.zeros(shape=(l[p].nb_nodes, node_cellid.shape[1]), dtype=np.int32)
       l[p].node_halonid = np.zeros(shape=(l[p].nb_nodes, node_cellid.shape[1]), dtype=np.int32)
+      l[p].node_name = np.zeros(shape=l[p].nb_nodes, dtype=np.int32)
       for i in range(l[p].nb_nodes):
         g_id = l[p].nodes_loctoglob[i]
         copy_lambda(l[p].node_cellid[i], node_cellid[g_id], lambda x: x if part_vert[x] == p else -1)
         copy_lambda(l[p].node_halonid[i], node_cellid[g_id], lambda x: x if part_vert[x] != p else -1)
+        l[p].node_name[i] = node_oldname[g_id]
+        if l[p].node_halonid[i, -1] != 0:
+          l[p].node_name[i] = 10
       # halos_halosext
       # halos_halosint => map(partition_id, int_cells)
       # halos_neigh (implicit -> halos_haloint)
@@ -1021,14 +1026,14 @@ class HybridTestTables:
       l[p].halos_halosint = {}
       for i in range(l[p].nb_cells):
         g_id = l[p].cells_loctoglob[i]
-        for j in range(l[p].cell_cellnid[i, -1]):
-          neighbor_cell = l[p].cell_cellnid[i, j]
+        for j in range(l[p].cell_halonid[i, -1]):
+          neighbor_cell = l[p].cell_halonid[i, j]
           neighbor_part = part_vert[neighbor_cell]
-          if neighbor_part != p:
-            l[p].halos_halosext.add(neighbor_cell)
-            if neighbor_part not in l[p].halos_halosint:
-              l[p].halos_halosint[neighbor_part] = set()
-            l[p].halos_halosint[neighbor_part].add(g_id)
+          # already neighbor_part != p
+          l[p].halos_halosext.add(neighbor_cell)
+          if neighbor_part not in l[p].halos_halosint:
+            l[p].halos_halosint[neighbor_part] = set()
+          l[p].halos_halosint[neighbor_part].add(g_id)
       l[p].halos_halosext = np.array(list(l[p].halos_halosext), dtype=np.int32)
       for key in l[p].halos_halosint:
         l[p].halos_halosint[key] = np.array(list(l[p].halos_halosint[key]), dtype=np.int32)
@@ -1044,9 +1049,7 @@ class HybridTestTables:
       l[p].cell_haloghostnid = np.zeros(shape=(l[p].nb_cells, cell_ghostnid.shape[1]), dtype=np.int32)
       l[p].face_ghostid = np.zeros(shape=l[p].nb_faces, dtype=np.int32)
       for g_id, l_id in l[p].map_nodes.items():
-        def tt(x):
-          return x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] == p else -1
-        copy_lambda(l[p].node_ghostnid[l_id], node_ghostnid[g_id], tt)
+        copy_lambda(l[p].node_ghostnid[l_id], node_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] == p else -1)
         copy_lambda(l[p].node_haloghostnid[l_id], node_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] != p else -1)
       for g_id, l_id in l[p].map_cells.items():
         copy_lambda(l[p].cell_ghostnid[l_id], cell_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] == p else -1)
