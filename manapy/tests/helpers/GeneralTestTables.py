@@ -587,15 +587,7 @@ def _define_face_name(
 # ##################################################
 # ##################################################
 
-def _get_ghost_tables_size(ghost_info: 'float[:, :]', faces: 'int32[:, :]', cell_faceid: 'int32[:, :]',
-                           node_nb_ghostid: 'int32[:]'):
-  for i in range(len(ghost_info)):
-    bc = _reinterpret_float32_as_int32(ghost_info[i, 0])
-    bf = _reinterpret_float32_as_int32(ghost_info[i, 1])
-    fid = cell_faceid[bc, bf]
-    for j in range(faces[fid, -1]):
-      nid = faces[fid, j]
-      node_nb_ghostid[nid] += 1
+
 
 def _create_bf_cellid(phy_faces: 'int32[:, :]', node_cellid: 'int32[:, :]',
                       phyid_to_faceid: 'int32[:]', cell_faceid: 'int32[:, :]', intersect: 'int32[:]', bf_cellid: 'int32[:, :]'):
@@ -715,7 +707,7 @@ class Locals:
     self.cell_haloghostnid = np.zeros(shape=(1, 1), dtype=np.int32)
     self.face_ghostid = np.zeros(shape=1, dtype=np.int32)
 
-class HybridTestTables:
+class GeneralTestTables:
   def __init__(self, cell_loctoglob, cells, nodes, phy_faces, phy_faces_name, cell_type, max_cell_faceid, max_face_nodeid, dim):
     self.dim = dim
     self.cell_type = cell_type
