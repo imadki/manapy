@@ -1,11 +1,11 @@
 import numpy as np
 from manapy.tests.helpers.TestLogger import TestLogger
-from manapy.tests.helpers.Hybrid import HybridTestTables
+from manapy.tests.helpers.GeneralTestTables import GeneralTestTables
 
 def _reinterpret_float32_as_int32(i):
   return np.float32(i).view(np.int32)
 
-class HybridChecker:
+class GeneralChecker:
 
   def __init__(self, decimal_precision, domain_tables, unified_domain, test_tables: 'HybridTestTables'):
 
@@ -538,7 +538,6 @@ class HybridChecker:
         d_halosext_nodes = d_halo_halosext[i, 1:d_halo_halosext[i, -1]]
 
         self.logger.testing("Halo Halosext", np.testing.assert_equal, halosext_nodes, d_halosext_nodes)
-
       # Halo: Halosint and halo_neigh
       start = 0
       for neigh in range(d_halo_neigh.shape[1]):

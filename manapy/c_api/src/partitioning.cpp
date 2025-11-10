@@ -39,7 +39,7 @@ static void create_halos(
     auto l_map_int_halos = ld[p].map_int_halos;
     auto &vec_halos = ld[p].vec_halos;
     auto &vec_node_halos = ld[p].vec_node_halos;
-    const int32_t l_max_cell_nodeid = ld[p].max_cell_nodeid;
+    const int32_t l_max_halo_cell_nodeid = ld[p].max_halo_cell_nodeid;
     const int32_t nb_nodes = static_cast<int32_t>(ld[p].nodes->shape[0]);
 
     //write
@@ -65,7 +65,8 @@ static void create_halos(
     // l_halo_halosext
     // #########################################################
 
-    ld[p].halo_halosext = new PyArray<int32_t, 2>(make_npy_dims(vec_halos.size(), l_max_cell_nodeid + 2));
+    ld[p].halo_halosext = new PyArray<int32_t, 2>(make_npy_dims(vec_halos.size(), l_max_halo_cell_nodeid + 2));
+    DEBUG_PRINT_INSTANT("p=%d , l_max_halo_cell_nodeid=%d\n", p, l_max_halo_cell_nodeid);
     const auto *l_halo_halosext = ld[p].halo_halosext;
 
     for (int32_t l_id = 0; l_id < vec_halos.size(); l_id++) {
@@ -522,6 +523,7 @@ const int32_t nb_parts
      * ld[x].max_cell_faceid
      * ld[x].max_face_nodeid
      * ld[x].max_cell_halonid
+     * ld[x].max_halo_cell_nodeid
      * ld[x].max_node_halophyid
      * ld[x].set_phyid
      * ld[x].set_halo_phyid_neighsub
@@ -594,8 +596,9 @@ const int32_t nb_parts
                 for (int32_t k = 0; k < sub_node_cellid.last(); k++) {
                     const int32_t neighbor_cell = sub_node_cellid.get(k);
                     const int32_t neighbor_part = part_vert->get(neighbor_cell);
+                    const int32_t nb_neighbor_cell_nodeid = cells->last2(neighbor_cell);
 
-                    //condition to get cell->cellnid only once
+                    //condition to get cell->halo_cellnid only once
                     if (neighbor_part != part and i_visited[neighbor_cell] != g_id) {
                         i_visited[neighbor_cell] = g_id;
                         nb_cell_halonid++;
@@ -630,6 +633,9 @@ const int32_t nb_parts
                             vec_node_halos.push_back(halo_id); // index of the halo cell in vec_halos
                         }
                         //*** end vec_halos, vec_node_halos
+
+                        //*** max_halo_cell_nodeid
+                        ld[part].max_halo_cell_nodeid = std::max(ld[part].max_halo_cell_nodeid, nb_neighbor_cell_nodeid);
                     }
                 }
             }
@@ -655,6 +661,7 @@ const int32_t nb_parts
 
         //*** assign local_max_cell_halonid
         ld[part].max_cell_halonid = std::max(ld[part].max_cell_halonid, nb_cell_halonid);
+
 
 
         local_nb_cells[part]++;

@@ -44,6 +44,7 @@ struct LocalDomainStruct {
     int max_face_nodeid = 0;
     int max_node_haloid = 0; // max neighbor halo cells across all nodes
     int max_cell_halonid = 0; // max neighbor halo cells across all cells
+    int max_halo_cell_nodeid = 0; // max nodeid of haloext
 
 
 
