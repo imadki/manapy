@@ -439,7 +439,6 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
         PyObject *py_list_result_tmp = create_sub_domains(local_domains, &py_part_vert, &py_node_cellid, &py_nodes, &py_cells, &py_cells_type, &py_phy_faces, &py_phy_faces_name, &py_node_phyid, nb_parts, dim);
 
 
-
         // Free resources and return
         free_tables();
         return py_list_result_tmp;

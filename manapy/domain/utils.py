@@ -20,7 +20,7 @@ def create_node_phyid(phy_faces: 'int[:, :]', nb_nodes: 'int'):
 
 def create_cell_cellnid(cells: 'int[:, :]', node_cellid: 'int[:, :]'):
   # Count max cell cellnid
-  i_visited = np.zeros(cells.shape[0], dtype=np.int32)
+  i_visited = np.ones(cells.shape[0], dtype=np.int32) * -1
   max_cell_cellnid = compute.count_max_cell_cellnid(cells, node_cellid, i_visited)
 
   # Create cell cellnid

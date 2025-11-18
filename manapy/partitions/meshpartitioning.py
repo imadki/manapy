@@ -200,7 +200,7 @@ class MeshPartition():
     def _make_partition(self):
         from mgmetis import metis
         from mgmetis.enums import OPTION
-        
+
         #Partitioning mesh
         opts = metis.get_default_options()
         opts[OPTION.MINCONN] = 1
@@ -212,14 +212,14 @@ class MeshPartition():
         import time
         start = time.time()
         elem = [item for sublist in self._elemetis.values() for item in sublist]
-        objval, self._epart, self._npart = metis.part_mesh_dual(self._size, elem, 
+        objval, self._epart, self._npart = metis.part_mesh_dual(self._size, elem,
                                                                 opts=options, nv=self._nbnodes)
         print("Elapsed time: {:.3f} s".format(time.time() - start))
-        
-        
-        
+
+
+
         self._cell_nodeid = self._convert_cons_to_array(*self._convert_args).astype(self.int_precision)
-        
+
         self._nbcells = len(self._cell_nodeid)
 
         self._npart, \

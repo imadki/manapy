@@ -1,47 +1,21 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Feb 16 09:13:21 2022
-
-@author: kissami
-"""
-
 from mpi4py import MPI
 import timeit
-
-import manapy.backends.types
-
-
-COMM = MPI.COMM_WORLD
-SIZE = COMM.Get_size()
-RANK = COMM.Get_rank()
-
-
+from manapy.domain import Domain
+from manapy.tests.meshes import get_mesh
 from manapy.solvers.advec.tools_utils import initialisation_gaussian_2d
 from manapy.solvers.advec import AdvectionSolver
 from manapy.ast import Variable
 from manapy.base.base import Struct
 import os
-from manapy.domain import Domain
 
-mesh_list = [
-  (2, 'rectangles.msh'),
-  (2, 'triangles.msh'),
-  (3, 'cube.msh'),
-  (3, 'tetrahedron.msh'),
-  (3, 'tetrahedron_big.msh'),
-]
-
-dim, mesh_name = mesh_list[0]
-mesh_path = "/home/aben-ham/Desktop/work/manapy/mesh/carre.msh"
-
-
-domain = Domain.create_domain(mesh_path, dim, recreate=True)
-
-
+COMM = MPI.COMM_WORLD
+SIZE = COMM.Get_size()
+RANK = COMM.Get_rank()
 start = timeit.default_timer()
 
 
+dim, mesh_path, mesh_name = get_mesh(3)
+domain = Domain.create_domain(mesh_path, dim, recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -60,7 +34,7 @@ if RANK == 0:
 # TODO tfinal
 if RANK == 0: print("Start Computation ...")
 time = 0
-tfinal = 0.25
+tfinal = .25
 miter = 0
 niter = 1
 Pinit = 2.
@@ -87,6 +61,14 @@ S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 ####Initialisation
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z: Pinit * (1. - x)
+
+ne.update_halo_value()
+for i in range(nbfaces):
+  if faces.name[i] == 10 and RANK == 7:
+    print("=<", ne.halo[faces.halofid[i]], faces.halofid[i])
+
+
+
 
 ts = MPI.Wtime()
 

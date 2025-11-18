@@ -1,31 +1,8 @@
 import tkinter as tk
 import numpy as np
-from manapy.domain import Domain, Mesh, Partitioning
-from manapy.tests import LocalDomain1Cpu, SingleCoreDomainTables
 from manapy.backends.types import FLOAT_TYPE
 from manapy.tests.meshes import get_mesh
-
-########################################################
-##### Create domain
-########################################################
-
-dim, mesh_path, mesh_name = get_mesh(3)
-
-
-def create_domain(nb_parts):
-  mesh = Mesh(mesh_path, dim)
-  partitioning = Partitioning(mesh)
-  partitioning.make_n_part_old(nb_parts)
-  local_domain_data = partitioning.create_sub_domains()
-
-  local_domains = LocalDomain1Cpu.create_local_domains(local_domain_data)
-  domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
-
-  return domains, local_domains
-
-size = 4
-l_domains, l = create_domain(size)
-g_domains, g = create_domain(1)
+from manapy.tests.helpers.DomainTables import DomainTables
 
 
 ########################################################
@@ -71,7 +48,6 @@ class   Renderer:
   def scale(self, p):
     p[0::2] = p[0::2] * self.x_scale + self.x_offset
     p[1::2] = p[1::2] * self.y_scale + self.y_offset
-    print(p)
 
   def get_font_size(self):
     return self.font_size
@@ -109,33 +85,40 @@ render = Renderer("Hybrid")
 def test():
   for k in range(size):
     # Mesh
-    for i in range(len(l[k].cells)):
-      cell_nodeid = l[k].cells[i][0:l[k].cells[i, -1]]
-      p = l[k].nodes[cell_nodeid][:, 0:2].flatten()
+    for i in range(len(l.d_cells[k])):
+      cell_nodeid = l.d_cells[k][i][0:l.d_cells[k][i, -1]]
+      p = l.d_nodes[k][cell_nodeid][:, 0:2].flatten()
       render.create_polygon(p, render.getColor(k))
 
-    # node global index
-    for i in range(len(l[k].nodes)):
-      p = l[k].nodes[i]
-      g_index = l[k].node_loctoglob[i] #d_node_loctoglob[i]
-      render.ft_put_item(p, f"{g_index}", render.getColor(0))
+    # # node global index
+    # for i in range(len(l[k].nodes)):
+    #   p = l[k].nodes[i]
+    #   g_index = l[k].node_loctoglob[i] #d_node_loctoglob[i]
+    #   render.ft_put_item(p, f"{g_index}", render.getColor(0))
 
-    # cell global index
-    for i in range(len(l[k].cells)):
-      g_index = l[k].cell_loctoglob[i]
-      p = l[k].cell_center[i]
-      render.ft_put_item(p, f"{k}, {g_index}", render.getColor(0))
-
-    for i in range(len(l[k].cell_haloghostcenter)):
-      p = l[k].cell_haloghostcenter[i][0:2]
+    for i in range(len(l.d_cell_haloghostcenter[k])):
+      p = l.d_cell_haloghostcenter[k][i][0:2]
       render.ft_put_item(p, f"{p}", render.getColor(k))
 
-    # for i in range(len(l[k].faces)):
-    #   p = l[k].face_center[i]
-    #   measure = l[k].face_measure[i]
+    # cell global index
+    for i in range(len(l.d_cells[k])):
+      g_index = l.d_cell_loctoglob[k][i]
+      p = l.d_cell_center[k][i]
+      render.ft_put_item(p, f"{k}, {g_index}", render.getColor(0))
+
+    # for i in range(len(l.d_faces[k])):
+    #   p = l.d_face_center[k][i]
+    #   measure = l.d_face_measure[k][i]
     #   render.ft_put_item(p, f"{measure:.2}", render.getColor(0))
 
-# print(np.max(l[0].node_halophyid[:, 1]))
+########################################################
+##### Create domain
+########################################################
 
-# test()
-# render.root.mainloop()
+dim, mesh_path, mesh_name = get_mesh(0)
+size = 4
+l = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
+g = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
+
+test()
+render.root.mainloop()

@@ -189,7 +189,7 @@ class TablesTestTetra3D:
           thus for the same neighboring cell `visited[neighbor_cell]` is already set by `cell_id`
           for the next cell `visited` will automatically reset because next_cell_id != all_old_cell_id
       """
-      visited = np.zeros(cells.shape[0], dtype=np.int32)
+      visited = np.ones(cells.shape[0], dtype=np.int32) * -1
 
       max_counter = 0
       for i in range(cells.shape[0]):
