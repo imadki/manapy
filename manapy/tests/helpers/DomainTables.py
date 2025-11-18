@@ -4,7 +4,7 @@ import h5py
 
 def create_partitions(nb_partitions, mesh_name, float_precision, dim):
   root_file = os.path.dirname(os.path.realpath(__file__))
-  mesh_file_path = os.path.join(root_file, '..', 'mesh', mesh_name)
+  mesh_file_path = os.path.join(root_file, '..', 'meshes', mesh_name)
   script_path = os.path.join(root_file, 'create_partitions_mpi_worker.py')
   cmd = ["mpirun", "--allow-run-as-root", "--use-hwthread-cpus", "-n", str(nb_partitions), "--oversubscribe", "python3", script_path, mesh_file_path, float_precision, str(dim)]
 
@@ -58,7 +58,8 @@ class DomainTables:
     "d_face_oldname",
     "d_face_cellid",
     "nb_partitions",
-    "float_precision"
+    "float_precision",
+    "d_node_periodicid"
   ]
 
   def __init__(self, nb_partitions, mesh_name, float_precision, dim, create_par_fun=create_partitions):

@@ -389,16 +389,17 @@ class LocalDomain:
 
 
 
-    if self.dim == 2:
-      shared_ghost_info_data_size = 11
-      shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
+    # if self.dim == 2:
+    #   shared_ghost_info_data_size = 11
+    #   shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
+    #
+    #   compute.create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
+    # else:
+    shared_ghost_info_data_size = 14
+    shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
 
-      compute.create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
-    else:
-      shared_ghost_info_data_size = 14
-      shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
-
-      compute.create_ghost_info_3d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
+    # TODO remove self
+    compute.create_ghost_info(bf_cellid, cell_center, cell_faceid, cell_loctoglob, self.faces, self.nodes, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, self.dim, ghost_part_size[0])
 
     return shared_ghost_info
 
@@ -424,20 +425,20 @@ class LocalDomain:
       node_ghostcenter_data_size = 5  # [ghost_center x.y, cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 3  # [ghost_center x.y, gamma]
       node_ghostfaceinfo_data_size = 4  # [face_center x.y, face_normal x.y]
-      node_ghostcenter = np.zeros(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precision)
+      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precision) * -1
       face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
-      node_ghostfaceinfo = np.zeros(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precision)
+      node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precision) * -1
 
       compute.create_ghost_tables_2d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end)
     else:
       node_ghostcenter_data_size = 6  # [ghost_center x.y.z, cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 4  # [ghost_center x.y.z, gamma]
       node_ghostfaceinfo_data_size = 6  # [face_center x.y.z, face_normal x.y.z]
-      node_ghostcenter = np.zeros(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size),
-                                  dtype=self.float_precision)
+      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size),
+                                  dtype=self.float_precision) * -1 # like old domain *-1
       face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
-      node_ghostfaceinfo = np.zeros(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size),
-                                    dtype=self.float_precision)
+      node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size),
+                                    dtype=self.float_precision) * -1 # like old domain *-1
 
       compute.create_ghost_tables_3d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end)
 
@@ -604,51 +605,53 @@ class LocalDomain:
       b_visited = np.zeros(shape=len(cells), dtype=np.int8)
       max_b_ncellid = compute.get_max_b_ncellid(b_nodeid, node_cellid, b_visited)
       b_visited.fill(0)
-      b_ncellid = np.zeros(shape=max_b_ncellid, dtype=np.int32)
+      b_ncellid = np.zeros(shape=max_b_ncellid, dtype=np.int32) # cells that has at least one boundary node
       compute.create_b_ncellid(b_nodeid, node_cellid, b_visited, b_ncellid)
 
       i_visited = np.ones(shape=shared_ghost_info_size, dtype=np.int32) * -1
-      max_bcell_halobfid = compute.count_max_bcell_halobfid(cells, b_ncellid, node_halophyid, i_visited)
+      max_bcell_halophyid = compute.count_max_bcell_halophyid(cells, b_ncellid, node_halophyid, i_visited)
 
-      bcell_halobfid = np.zeros(shape=(b_ncellid.shape[0], max_bcell_halobfid + 2), dtype=np.int32)
+      bcell_halophyid = np.zeros(shape=(b_ncellid.shape[0], max_bcell_halophyid + 2), dtype=np.int32) # b_ncellid => halo phy_id
       i_visited.fill(-1)
-      compute.create_bcell_halobfid(cells, b_ncellid, node_halophyid, i_visited, bcell_halobfid)
+      compute.create_bcell_halophyid(cells, b_ncellid, node_halophyid, i_visited, bcell_halophyid)
 
       # ------------------------------------------------------------------
       # ghost_new_index
       # ------------------------------------------------------------------
-      ghost_new_index = np.zeros(shape=shared_ghost_info_size, dtype=np.int32)
+      ghost_new_index = np.ones(shape=shared_ghost_info_size, dtype=np.int32) * -1
       nb_haloghost = compute.create_ghost_new_index(ghost_part_size, ghost_new_index)
 
       # ------------------------------------------------------------------
       # create_halo_ghost_tables
       # ------------------------------------------------------------------
-      cell_haloghostnid = np.zeros(shape=(nb_cells, max_bcell_halobfid + 1), dtype=np.int32)
+      cell_haloghostnid = np.zeros(shape=(nb_cells, max_bcell_halophyid + 1), dtype=np.int32)
 
+      max_nb_haloghost = 0
+      if node_halophyid.shape[0] != 0:
+        max_nb_haloghost = np.max(node_halophyid[:, 1])
       if self.dim == 2:
         cell_haloghostcenter_data_size = 3
         node_haloghostcenter_data_size = 5
         node_haloghostfaceinfo_data_size = 4
         cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
-        node_haloghostid = np.zeros(shape=(nb_nodes, node_halophyid.shape[1]), dtype=np.int32)
-        node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halophyid.shape[1], node_haloghostcenter_data_size), dtype=self.float_precision)
-        node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halophyid.shape[1], node_haloghostfaceinfo_data_size), dtype=self.float_precision)
+        node_haloghostid = np.zeros(shape=(nb_nodes, max_nb_haloghost + 1), dtype=np.int32)
+        node_haloghostcenter = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_data_size), dtype=self.float_precision) * -1 # like old domain
+        node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostfaceinfo_data_size), dtype=self.float_precision) * -1 # like old domain
 
-        compute.create_halo_ghost_tables_2d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
-
+        compute.create_halo_ghost_tables_2d(shared_ghost_info, bcell_halophyid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
       else:
         cell_haloghostcenter_data_size = 3
         node_haloghostcenter_data_size = 6
         node_haloghostfaceinfo_data_size = 6
         cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
-        node_haloghostid = np.zeros(shape=(nb_nodes, node_halophyid.shape[1]), dtype=np.int32)
-        node_haloghostcenter = np.zeros(shape=(nb_nodes, node_halophyid.shape[1], node_haloghostcenter_data_size),
+        node_haloghostid = np.zeros(shape=(nb_nodes, max_nb_haloghost + 1), dtype=np.int32)
+        node_haloghostcenter = np.zeros(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_data_size),
                                         dtype=self.float_precision)
-        node_haloghostfaceinfo = np.zeros(shape=(nb_nodes, node_halophyid.shape[1], node_haloghostfaceinfo_data_size),
-                                          dtype=self.float_precision)
+        node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostfaceinfo_data_size),
+                                          dtype=self.float_precision) * -1 # like old domain
 
 
-        compute.create_halo_ghost_tables_3d(shared_ghost_info, bcell_halobfid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
+        compute.create_halo_ghost_tables_3d(shared_ghost_info, bcell_halophyid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
 
     halo_sizehaloghost = np.sum(node_haloghostid[:, -1]) # Two nodes in the same partition can't have the same haloghostId
     return (

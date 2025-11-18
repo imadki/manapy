@@ -206,7 +206,9 @@ class Domain:
     Domain._delete_local_domain_folder(size)
     mesh = Mesh(mesh_path, dim)
     partitioner = Partitioning(mesh)
-    local_domains = partitioner.create_sub_domains(size)
+    if size > 1:
+      partitioner.make_n_part_mesh_nodal(size)
+    local_domains = partitioner.create_sub_domains()
     partitioner.save_local_domains(local_domains, size)
 
   @staticmethod
@@ -220,7 +222,7 @@ class Domain:
       # try:
       mesh = Mesh(mesh_path, dim)
       partitioner = Partitioning(mesh)
-      local_domain_data = partitioner.create_sub_domains(1)
+      local_domain_data = partitioner.create_sub_domains()
       local_domain = LocalDomain(local_domain_data[0], rank, size)
       return Domain(local_domain)
       # except Exception as e:
@@ -237,7 +239,8 @@ class Domain:
             Domain._delete_local_domain_folder(size)
             mesh = Mesh(mesh_path, dim)
             partitioner = Partitioning(mesh)
-            local_domains = partitioner.create_sub_domains(size)
+            partitioner.make_n_part_old(size)
+            local_domains = partitioner.create_sub_domains()
             partitioner.save_local_domains(local_domains, size)
             print("====> End <=====")
         except Exception as e:
@@ -495,7 +498,6 @@ class Domain:
       print("Iteration = ", niter, "time = ", time, "time step = ", dt)
       print("max" + variables[0] + " =", integral_maxw[0])
 
-    print(points, elements)
     meshio.write_points_cells("results/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
                               points, elements, point_data=data, file_format=file_format)
 

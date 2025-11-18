@@ -5,6 +5,7 @@ from mpi4py import MPI
 import h5py
 from manapy.ddm import Domain
 import os
+import traceback
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -66,6 +67,7 @@ def save_tables(domain):
     f.create_dataset("d_face_ghostcenter", data=domain.faces.ghostcenter)
     f.create_dataset("d_face_oldname", data=domain.faces.oldname)
     f.create_dataset("d_face_cellid", data=domain.faces.cellid)
+    f.create_dataset("d_node_periodicid", data=domain.nodes.periodicid)
 
 def create_partitions(mesh_file_path, float_precision, dim):
   running_conf = Struct(backend="numba", signature=True, cache=True, float_precision=float_precision)
@@ -74,16 +76,19 @@ def create_partitions(mesh_file_path, float_precision, dim):
 
   save_tables(domain)
 
-
-if len(sys.argv) == 4:
-  mesh_file_path = sys.argv[1]
-  float_precision = sys.argv[2]
-  dim = int(sys.argv[3])
-  if (float_precision == 'float32' or float_precision == 'float64') and (dim == 2 or dim == 3):
-    print("path", mesh_file_path, "precision", float_precision, "dim", dim, "rank", rank)
-    create_partitions(mesh_file_path, float_precision, dim)
+try:
+  if len(sys.argv) == 4:
+    mesh_file_path = sys.argv[1]
+    float_precision = sys.argv[2]
+    dim = int(sys.argv[3])
+    if (float_precision == 'float32' or float_precision == 'float64') and (dim == 2 or dim == 3):
+      print("path", mesh_file_path, "precision", float_precision, "dim", dim, "rank", rank)
+      create_partitions(mesh_file_path, float_precision, dim)
+    else:
+      raise Exception(f"Invalid float_precision argument or Invalid dim argument {dim} {float_precision}")
   else:
-    raise Exception(f"Invalid float_precision argument or Invalid dim argument {dim} {float_precision}")
-else:
-  raise Exception("Invalid mesh_file_path argument")
+    raise Exception("Invalid mesh_file_path argument")
+except Exception as e:
+  print("Error: ", traceback.format_exc())
+  MPI.COMM_WORLD.Abort(1)
 

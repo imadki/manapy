@@ -53,6 +53,7 @@ class SingleCoreDomainTables:
     self.d_face_ghostcenter = []
     self.d_face_oldname = []
     self.d_face_cellid = []
+    self.d_node_periodicid = []
 
     for i in range(len(local_domains)):
       domain = local_domains[i]
@@ -96,6 +97,7 @@ class SingleCoreDomainTables:
       self.d_face_ghostcenter.append(domain.faces.ghostcenter)
       self.d_face_oldname.append(domain.faces.oldname)
       self.d_face_cellid.append(domain.faces.cellid)
+      self.d_node_periodicid.append(domain.nodes.periodicid)
 
 class DomainTables:
   __slots__ = [
@@ -141,7 +143,8 @@ class DomainTables:
     "d_face_oldname",
     "d_face_cellid",
     "nb_partitions",
-    "float_precision"
+    "float_precision",
+    "d_node_periodicid"
   ]
 
   def __init__(self, nb_partitions, mesh_name, float_precision, dim, create_par_fun):
