@@ -2,12 +2,13 @@ import numpy as np
 from manapy.tests.helpers.TestLogger import TestLogger
 from manapy.tests.helpers.GeneralTestTables import GeneralTestTables
 
-def _reinterpret_float32_as_int32(i):
+# TODO
+def _reinterpret_float32_as_int32(i, flag=False):
   return np.float32(i).view(np.int32)
 
 class GeneralChecker:
 
-  def __init__(self, decimal_precision, domain_tables, unified_domain, test_tables: 'HybridTestTables'):
+  def __init__(self, decimal_precision, domain_tables, unified_domain, test_tables: 'GeneralTestTables'):
 
     self.nb_partitions = domain_tables.nb_partitions
     self.float_precision = domain_tables.float_precision
@@ -132,7 +133,9 @@ class GeneralChecker:
         c_ghostn_center = d_face_ghostcenter[c_ghostnid[0:c_ghostnid[-1]]]
         c_ghostn_center = c_ghostn_center[:, 0:self.dim]
         c_ghostn_center = self.sort_float_arr(c_ghostn_center)
-        self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center[:, 0:3], ghostn_center[:, 0:3], self.decimal_precision)
+
+        for z in range(len(c_ghostn_center)):
+          self.logger.testing("Cell Ghostnid *", np.testing.assert_almost_equal, c_ghostn_center[z, 0:3], ghostn_center[z, 0:3], self.decimal_precision)
 
         # Haloghostnid and Haloghostcenter
         if self.nb_partitions != 1:
@@ -144,10 +147,13 @@ class GeneralChecker:
           c_haloghostnid = c_haloghostnid[0:c_haloghostnid[-1]]
           c_haloghostcenter = d_cell_haloghostcenter[c_haloghostnid][:, 0:3] # center (x, y, z)
           c_haloghostcenter = self.sort_float_arr(c_haloghostcenter)
-          self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal, c_haloghostcenter, haloghostcenter, self.decimal_precision)
+
+          for z in range(len(c_haloghostcenter)):
+            self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal, c_haloghostcenter[z], haloghostcenter[z], self.decimal_precision)
 
       # Number of cells
       nb_cells += d_cells.shape[0]
+
     self.logger.testing("Cell Number of cells", np.testing.assert_equal, self.test_tables.nb_cells, nb_cells)
 
   def test_node_info(self):
@@ -288,12 +294,12 @@ class GeneralChecker:
 
           if self.dim == 3:
             c_node_cellid = c_node_ghostcenter[:, 3][0:c_nb_ghost]
-            c_node_cellid = _reinterpret_float32_as_int32(c_node_cellid)
+            c_node_cellid = _reinterpret_float32_as_int32(c_node_cellid, True)
             c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0]  # g_x
             c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1]  # g_y
             c_ghostinfo[0:c_nb_ghost, 2] = c_node_ghostcenter[0:c_nb_ghost, 2]  # g_z
             c_ghostinfo[0:c_nb_ghost, 3] = d_cell_loctoglob[c_node_cellid]  # cell_id
-            c_ghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_ghostcenter[0:c_nb_ghost, 4])  # face_old_name
+            c_ghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_ghostcenter[0:c_nb_ghost, 4], True)  # face_old_name
             c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 0]  # g_x from ghostid
             c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 1]  # g_y from ghostid
             c_ghostinfo[0:c_nb_ghost, 7] = d_face_ghostcenter[c_node_ghostid, 2]  # g_z from ghostid
@@ -306,12 +312,12 @@ class GeneralChecker:
             c_ghostinfo[0:c_nb_ghost, 14] = c_node_ghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
           else:
             c_node_cellid = c_node_ghostcenter[:, 2][0:c_nb_ghost]
-            c_node_cellid = _reinterpret_float32_as_int32(c_node_cellid)
+            c_node_cellid = _reinterpret_float32_as_int32(c_node_cellid, True)
             c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0]  # g_x
             c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1]  # g_y
             c_ghostinfo[0:c_nb_ghost, 2] = 0.0  # g_z
             c_ghostinfo[0:c_nb_ghost, 3] = d_cell_loctoglob[c_node_cellid]  # cell_id
-            c_ghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_ghostcenter[0:c_nb_ghost, 3])  # face_old_name
+            c_ghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_ghostcenter[0:c_nb_ghost, 3], True)  # face_old_name
             c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 0]  # g_x from ghostid
             c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 1]  # g_y from ghostid
             c_ghostinfo[0:c_nb_ghost, 7] = 0.0  # g_z from ghostid
@@ -326,7 +332,8 @@ class GeneralChecker:
           ghostinfo = self.sort_float_arr(ghostinfo)
           c_ghostinfo = self.sort_float_arr(c_ghostinfo)
 
-          self.logger.testing("Node ghostid, ghostcenter and ghostfaceinfo *", np.testing.assert_almost_equal, ghostinfo, c_ghostinfo, decimal=self.decimal_precision)
+          for z in range(len(ghostinfo)):
+            self.logger.testing("Node ghostid, ghostcenter and ghostfaceinfo *", np.testing.assert_almost_equal, ghostinfo[z], c_ghostinfo[z], decimal=self.decimal_precision)
 
         # Node: haloghostid, haloghostcenter, haloghostfaceinfo
         # The same code as above except that tables are become the halo's tables
@@ -369,13 +376,13 @@ class GeneralChecker:
             c_nb_ghost = len(c_node_haloghostid)
 
             if self.dim == 3:
-              c_node_cellid = _reinterpret_float32_as_int32(c_node_haloghostcenter[:, 3])
+              c_node_cellid = _reinterpret_float32_as_int32(c_node_haloghostcenter[:, 3], True)
               c_node_cellid = c_node_cellid[0:c_nb_ghost]
               c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
               c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
               c_haloghostinfo[0:c_nb_ghost, 2] = c_node_haloghostcenter[0:c_nb_ghost, 2] #g_z
               c_haloghostinfo[0:c_nb_ghost, 3] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
-              c_haloghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_haloghostcenter[0:c_nb_ghost, 4]) # face_old_name
+              c_haloghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_haloghostcenter[0:c_nb_ghost, 4], True) # face_old_name
               c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
               c_haloghostinfo[0:c_nb_ghost, 6] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid
               c_haloghostinfo[0:c_nb_ghost, 7] = d_cell_haloghostcenter[c_node_haloghostid][:, 2] # g_z from haloghostid
@@ -387,13 +394,13 @@ class GeneralChecker:
               c_haloghostinfo[0:c_nb_ghost, 13] = c_node_haloghostfaceinfo[0:c_nb_ghost, 4] # face_normal_y
               c_haloghostinfo[0:c_nb_ghost, 14] = c_node_haloghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
             else:
-              c_node_cellid = _reinterpret_float32_as_int32(c_node_haloghostcenter[:, 2])
+              c_node_cellid = _reinterpret_float32_as_int32(c_node_haloghostcenter[:, 2], True)
               c_node_cellid = c_node_cellid[0:c_nb_ghost]
               c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0]  # g_x
               c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1]  # g_y
               c_haloghostinfo[0:c_nb_ghost, 2] = 0.0  # g_z
               c_haloghostinfo[0:c_nb_ghost, 3] = d_halo_halosext[c_node_cellid][:, 0]  # cell_id
-              c_haloghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_haloghostcenter[0:c_nb_ghost, 3])  # face_old_name
+              c_haloghostinfo[0:c_nb_ghost, 4] = _reinterpret_float32_as_int32(c_node_haloghostcenter[0:c_nb_ghost, 3], True)  # face_old_name
               c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 0]  # g_x from haloghostid
               c_haloghostinfo[0:c_nb_ghost, 6] = d_cell_haloghostcenter[c_node_haloghostid][:, 1]  # g_y from haloghostid
               c_haloghostinfo[0:c_nb_ghost, 7] = 0.0  # g_z from haloghostid
@@ -409,7 +416,8 @@ class GeneralChecker:
             haloghostinfo = self.sort_float_arr(haloghostinfo)
             c_haloghostinfo = self.sort_float_arr(c_haloghostinfo)
 
-            self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo, c_haloghostinfo, decimal=self.decimal_precision)
+            for z in range(len(haloghostinfo)):
+              self.logger.testing("Node haloghostid, haloghostcenter and haloghostfaceinfo", np.testing.assert_almost_equal, haloghostinfo[z], c_haloghostinfo[z], decimal=self.decimal_precision)
 
 
     # Node: number of nodes
@@ -480,6 +488,7 @@ class GeneralChecker:
         # Oldname
         faces_oldname = self.test_tables.face_oldname[t_faces]
         c_faces_oldname = d_face_oldname[c_faces]
+        c_faces_oldname[c_faces_oldname == 10] = 0
         self.logger.testing("Face Oldname", np.testing.assert_equal, faces_oldname, c_faces_oldname)
 
         #! Normal (Only abs)

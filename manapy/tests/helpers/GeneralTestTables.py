@@ -778,7 +778,7 @@ class GeneralTestTables:
 
   def _create_cell_cellnid(self, cells: 'int[:, :]', node_cellid: 'int[:, :]'):
     # Count max cell cellnid
-    i_visited = np.zeros(cells.shape[0], dtype=np.int32)
+    i_visited = np.ones(cells.shape[0], dtype=np.int32) * -1
     max_cell_cellnid = _count_max_cell_cellnid(cells, node_cellid, i_visited)
 
     # Create cell cellnid

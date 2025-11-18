@@ -69,6 +69,7 @@ nbnodes = domain.nbnodes
 nbfaces = domain.nbfaces
 nbcells = domain.nbcells
 
+
 end = timeit.default_timer()
 
 tt = COMM.reduce(end -start, op=MPI.MAX, root=0)
@@ -98,6 +99,9 @@ u  = Variable(domain=domain)
 v  = Variable(domain=domain)
 P  = Variable(domain=domain)
 
+
+
+
 #Call the transport solver
 conf = Struct(order=1, cfl=0.8)
 S = AdvectionSolver(ne, vel=(u, v), conf=conf)
@@ -106,9 +110,19 @@ S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z : Pinit * (1. - x)
 
+
+
+ne.update_halo_value()
+for i in range(nbfaces):
+  if faces.name[i] == 10 and RANK == 7:
+    print("=<", ne.halo[faces.halofid[i]], faces.halofid[i])
+
+
+
 ts = MPI.Wtime()
 
 if RANK == 0: print("Start While loop ...")
+
 
 #loop over time
 while time < tfinal:
@@ -146,7 +160,7 @@ while time < tfinal:
             v.update_ghost_value()  
             v.interpolate_celltonode()
    
-    
+
             domain.save_on_node_multi(d_t, time, niter, miter, variables=["ne", "u","v", "P"],
                                       values=[ne.node, u.node,v.node, P.node], file_format="vtu")
         else:
