@@ -46,7 +46,7 @@ class Logger:
       string = self.last_entry
     time_taken = time.time() - self.dic[string]
     time_from_start = time.time() - self.start
-    # print(f"[Rank: {self.rank}] {string} Acc {time_from_start:.6f} seconds (delta: {time_taken:.6f} seconds)", flush=True)
+    print(f"[Rank: {self.rank}] {string} Acc {time_from_start:.6f} seconds (delta: {time_taken:.6f} seconds)", flush=True)
 
 log_step = Logger()
 

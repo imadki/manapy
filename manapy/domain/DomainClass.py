@@ -255,8 +255,12 @@ class Domain:
       if status != 0:
         comm.Abort(1)
 
-
-      local_domain = LocalDomain.load_and_create(rank, size)
+      try:
+        local_domain = LocalDomain.load_and_create(rank, size)
+      except Exception as e:
+        import traceback
+        print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
+        comm.Abort(1)
 
       # TODO ckeck if local_domain failed and abort
       return Domain(local_domain)
@@ -295,10 +299,7 @@ class Domain:
         scount[i] = halos.neigh[1][i]
 
       comm_ptr.Neighbor_alltoallv(scount, rcount)
-
-      indsend = np.zeros(len(halos.halosint), dtype=np.int32)
-      for i in range(len(halos.halosint)):
-        indsend[i] = halos.halosint[i]
+      indsend = halos.halosint.copy()
 
     else:
       comm_ptr = create_mpi_graph([0])

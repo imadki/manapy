@@ -101,6 +101,7 @@ class Domain():
             self.forcedbackend = "numba"
             
         self.signature = get('signature')
+        self.rank = MPI.COMM_WORLD.rank
         
         if get('float_precision') == "single":
             self.float_precision = 'f4'
