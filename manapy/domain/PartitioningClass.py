@@ -139,6 +139,7 @@ class Partitioning(PartitioningUtils):
     part_vert = manapy_c_api.make_n_part_mesh_nodal(self.cells, nb_parts)
     return self._remap_part_vert(part_vert, nb_parts)
 
+
   def make_n_part_old(self, nb_parts):
     if nb_parts <= 1:
       return

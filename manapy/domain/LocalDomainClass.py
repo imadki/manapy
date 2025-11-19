@@ -626,9 +626,8 @@ class LocalDomain:
       # ------------------------------------------------------------------
       cell_haloghostnid = np.zeros(shape=(nb_cells, max_bcell_halophyid + 1), dtype=np.int32)
 
-      max_nb_haloghost = 0
-      if node_halophyid.shape[0] != 0:
-        max_nb_haloghost = np.max(node_halophyid[:, 1])
+
+      max_nb_haloghost = np.max(node_halophyid[:, -1])
       if self.dim == 2:
         cell_haloghostcenter_data_size = 3
         node_haloghostcenter_data_size = 5

@@ -21,6 +21,7 @@ from manapy.solvers.advec import AdvectionSolver
 
 from manapy.ast import Variable
 from manapy.base.base import Struct
+from manapy.tests.meshes import get_mesh
 
 import os
 
@@ -37,16 +38,8 @@ start = timeit.default_timer()
 # filename = "carre.msh"
 
 #File name
-mesh_list = [
-  (2, 'rectangles.msh'),
-  (2, 'triangles.msh'),
-  (3, 'cube.msh'),
-  (3, 'tetrahedron.msh'),
-  (3, 'tetrahedron_big.msh'),
-]
+dim, filename, mesh_name = get_mesh(3)
 
-dim, mesh_name = mesh_list[0]
-filename = "/home/aben-ham/Desktop/work/manapy/mesh/carre.msh"
 # filename = os.path.join(MESH_DIR, filename)
 # dim = 2
 
@@ -109,14 +102,6 @@ S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 ####Initialisation
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z : Pinit * (1. - x)
-
-
-
-ne.update_halo_value()
-for i in range(nbfaces):
-  if faces.name[i] == 10 and RANK == 7:
-    print("=<", ne.halo[faces.halofid[i]], faces.halofid[i])
-
 
 
 ts = MPI.Wtime()

@@ -406,12 +406,7 @@ class Variable():
 
         return res
     
-#    def update_values(self, value=None):
-#        
-#        self.update_halo_value()
-#        self.update_ghost_value()
-#        # self.interpolate_celltonode()
-        
+
     def update_halo_value(self):
         #update the halo values
         Variable._define_halosend(self.cell, self.halotosend, self.domain.halos.indsend)

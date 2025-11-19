@@ -49,7 +49,7 @@ struct LocalDomainStruct {
 
 
     // Temporary members used to generate the above tables and scalars
-    std::map<int, std::vector<int> > map_int_halos; // map(partitionId => listOf interior halos)
+    std::map<int, std::vector<int> > map_int_halos; // map(partitionId => listOf interior halos by local cell_id)
     int max_node_halophyid = 0;
     int max_phy_face_nodeid = 0;
     std::map<int, int> map_phy_faces; // map(g_id of phy_face => local if of phy_face)
@@ -57,8 +57,7 @@ struct LocalDomainStruct {
     std::set<int> set_halo_phyid_neighsub; // set of partition ids of the halo phyids
     std::vector<int32_t> vec_phyids; // vec(this->set_phyids) sorted by partitionID of each item
     std::map<int32_t, int32_t> map_phyids; // g_phyid => g_phyid index in this->vec_phyids
-    std::vector<int32_t> vec_node_halos; // the same as this->node_halos
-    std::vector<int32_t> vec_halos; // list of halo cells (g_id of cell)
+    std::vector<int32_t> vec_node_halos; // the same as this->node_halos except that g_cell_id used instead of haloId
 
     ~LocalDomainStruct();
 
