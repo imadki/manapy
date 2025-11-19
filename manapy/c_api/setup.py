@@ -31,14 +31,14 @@ ext_modules = [
         include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
-        # extra_compile_args=["-O3"],
+        extra_compile_args=["-O3"],
         define_macros=[
             ("MODULE_NAME", "manapy_domain32"),
             ("FDX_T", "npy_float32"),
             ("FLOAT_TYPE", "NPY_FLOAT32")
         ],
         # extra_compile_args=["-O0", "-g", "-fsanitize=address"],
-        extra_compile_args=["-O0", "-g"],
+        # extra_compile_args=["-O0", "-g"],
         # extra_link_args=["-fsanitize=address"],
         language="c++"
     ),
@@ -49,7 +49,7 @@ ext_modules = [
         include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
-        # extra_compile_args=["-O3"],
+        extra_compile_args=["-O3"],
         define_macros=[
             ("MODULE_NAME", "manapy_domain64"),
             ("FDX_T", "npy_float64"),
@@ -57,7 +57,7 @@ ext_modules = [
         ],
         # LD_PRELOAD=$(gcc -print-file-name=libasan.so) python3 program.py
         # extra_compile_args=["-O0", "-g", "-fsanitize=address"],
-        extra_compile_args=["-O0", "-g"],
+        # extra_compile_args=["-O0", "-g"],
         # extra_link_args=["-fsanitize=address"],
         language="c++"
     )

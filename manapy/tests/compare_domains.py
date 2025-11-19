@@ -532,12 +532,12 @@ class CompareDomains:
         c_haloint = self.od.d_halo_halosint[p][start:start+nb_haloint]
         start += nb_haloint
         o_dic[neigh_part] = c_haloint
-      print(o_dic)
 
       n_keys = np.sort(np.array(list(n_dic.keys()), dtype=np.int32))
       o_keys = np.sort(np.array(list(o_dic.keys()), dtype=np.int32))
       self.logger.testing(f"Halo Halosint and halo_neigh keys", np.testing.assert_equal, n_keys, o_keys)
       for key in n_dic.keys():
+        print(n_dic[key])
         self.logger.testing(f"Halo Halosint and halo_neigh", np.testing.assert_equal, n_dic[key], o_dic[key])
 
 
@@ -555,7 +555,7 @@ class CompareDomains:
       self.logger.testing("Halo sizehaloghost", np.testing.assert_equal, n_sizehaloghost, o_sizehaloghost)
 
 dim, mesh_path, mesh_name = get_mesh(3)
-compare_domains = CompareDomains(decimal_precision=2, nb_parts=4, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
+compare_domains = CompareDomains(decimal_precision=2, nb_parts=8, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
 compare_domains.test_cell_info()
 compare_domains.test_node_info()
 compare_domains.test_face_info()

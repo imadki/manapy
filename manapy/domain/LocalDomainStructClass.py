@@ -18,7 +18,7 @@ class LocalDomainStruct:
     self.halo_neighsub = np.zeros((1, 1), dtype=np.int32) # [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
     self.node_halos = np.zeros(1, dtype=np.int32) # int32[:] [NodiId, haloId, ...] shape=(2 * nb_halos) couple (NodeId, haloId) for each exthalo, HaloId is an index point to halo_halosext, nodeId is the local nodeId.
     self.node_halophyid = np.zeros((1, 1), dtype=np.int32) # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
-    self.halo_halosext = np.zeros((1, 1), dtype=np.int32) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2)
+    self.halo_halosext = np.zeros((1, 1), dtype=np.int32) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2) Halos of a partition P is the Concatenation of Interiors of the neighbor parts that are connected to P.
     self.halo_halosint = np.zeros(1, dtype=np.int32) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
     self.halo_centvol = np.zeros((1, 1), dtype=np.float64)  # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
     self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"

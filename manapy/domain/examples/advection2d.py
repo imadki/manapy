@@ -6,7 +6,6 @@ from manapy.solvers.advec.tools_utils import initialisation_gaussian_2d
 from manapy.solvers.advec import AdvectionSolver
 from manapy.ast import Variable
 from manapy.base.base import Struct
-import os
 
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
@@ -62,17 +61,10 @@ S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z: Pinit * (1. - x)
 
-ne.update_halo_value()
-for i in range(nbfaces):
-  if faces.name[i] == 10 and RANK == 7:
-    print("=<", ne.halo[faces.halofid[i]], faces.halofid[i])
-
-
-
-
 ts = MPI.Wtime()
 
 if RANK == 0: print("Start While loop ...")
+
 
 # loop over time
 while time < tfinal:
