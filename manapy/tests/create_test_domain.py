@@ -7,7 +7,7 @@ from manapy.tests.meshes import get_mesh
 
 
 # Create global domain
-dim, mesh_path, mesh_name = get_mesh(3)
+dim, mesh_path, mesh_name = get_mesh(2)
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh)
 local_domain_data = partitioning.create_sub_domains()

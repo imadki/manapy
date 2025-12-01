@@ -242,7 +242,7 @@ class MeshPartition():
         self._halointlen = compute_halocell(self._halo_cellid, self._cpart, self._cell_nodeid, 
                                             self._vertices, self._neighsub, self._size, self._dim, 
                                             self.float_precision)
-        print("Elapsed time: {:.3f} s".format(time.time() - start))
+
 
     def _savemesh(self):
         
@@ -278,7 +278,15 @@ class MeshPartition():
                     f.create_dataset("localcelltoglobal", data=self._globcelltoloc[i], dtype=np.int32)
                     f.create_dataset("neigh1", data=self._neighsub[i], dtype=np.int32)
                     f.create_dataset("neigh2", data=self._halointlen[i], dtype=np.int32)
-                    f.create_dataset("halosext", data=self._haloextloc[i], dtype=np.int32)
+                    def pad_array(arr):
+                        max_len = max(len(r) for r in arr)
+                        res = np.ones(shape=(len(arr), max_len), dtype=np.int32) * -1
+                        for i in range(len(arr)):
+                            l = np.array(arr[i], dtype=np.int32)
+                            res[i][0:len(l[0:-1])] = l[0:-1]
+                            res[i][-1] = l[-1]
+                        return res
+                    f.create_dataset("halosext", data=pad_array(self._haloextloc[i]), dtype=np.int32)
                     f.create_dataset("halosint", data=self._halointloc[i], dtype=np.int32)
                     
                 f.close()

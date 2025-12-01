@@ -30,7 +30,7 @@ unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precis
 
 
 # Test
-# Hybrid()
+Hybrid()
 
 
 

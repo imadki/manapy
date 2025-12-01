@@ -11,7 +11,6 @@ import pickle
 import os
 import numba
 
-CACHE_FILE = "domain_cache.pkl"
 
 def create_domain(nb_parts, mesh_path, dim):
   mesh = Mesh(mesh_path, dim)
@@ -30,15 +29,14 @@ def create_domain(nb_parts, mesh_path, dim):
   return SingleCoreDomainTables(domains, FLOAT_TYPE)
 
 
-
-
-
 # @numba.njit()
 def _reinterpret_float32_as_int32(i):
   return np.float32(i)
 
+
 # @numba.njit()
-def node_helper(n_node_ghostcenter, n_node_haloghostcenter, o_node_haloghostcenter, n_halo_halosext, o_halo_halosext, dim, nb_parts):
+def node_helper(n_node_ghostcenter, n_node_haloghostcenter, o_node_haloghostcenter, n_halo_halosext, o_halo_halosext,
+                dim, nb_parts):
   for i in range(n_node_ghostcenter.shape[0]):
     for j in range(n_node_ghostcenter.shape[1]):
       item = n_node_ghostcenter[i, j]
@@ -72,25 +70,27 @@ def node_helper(n_node_ghostcenter, n_node_haloghostcenter, o_node_haloghostcent
         if dim == 2 and item[0] != -1:
           item[2] = o_halo_halosext[int(item[2])][0]
         if dim == 3 and item[0] != -1:
-          item[2] = o_halo_halosext[int(item[2])][0]
+          item[3] = o_halo_halosext[int(item[3])][0]
+
 
 class CompareDomains:
 
   def __init__(self, decimal_precision, nb_parts, dim, mesh_path, mesh_name):
 
     # Load self.nd and self.od
-    if os.path.exists(CACHE_FILE):
-      with open(CACHE_FILE, "rb") as f:
+    cache_file = os.path.join(os.path.dirname(__file__), "results", f"{mesh_name}_{nb_parts}_{dim}.pkl")
+    if os.path.exists(cache_file):
+      with open(cache_file, "rb") as f:
         self.nd, self.od, self.g_nd, self.g_od = pickle.load(f)
     else:
       self.nd = create_domain(nb_parts, mesh_path, dim)
       self.od = DomainTables(nb_partitions=nb_parts, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
       self.g_nd = create_domain(1, mesh_path, dim)
       self.g_od = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
-      with open(CACHE_FILE, "wb") as f:
+      with open(cache_file, "wb") as f:
         pickle.dump((self.nd, self.od, self.g_nd, self.g_od), f)
 
-    self.nd = create_domain(nb_parts, mesh_path, dim)
+    # self.nd = create_domain(nb_parts, mesh_path, dim)
     # self.g_nd = create_domain(1, mesh_path, dim)
 
     self.nb_parts = nb_parts
@@ -99,9 +99,6 @@ class CompareDomains:
     self.decimal_precision = decimal_precision
     self.logger = TestLogger()
 
-
-
-
   def summary(self):
     return self.logger.summary()
 
@@ -109,12 +106,12 @@ class CompareDomains:
   def sort_float_arr(arr, size):
     # Lexicographic sort by rows.
     if size == 3:
-      arr = np.round(arr, decimals=3) # np.round to limit sort precision sometime 10.5 is bigger than 10.5
+      arr = np.round(arr, decimals=3)  # np.round to limit sort precision sometime 10.5 is bigger than 10.5
       keys = [arr[:, 0], arr[:, 1], arr[:, 2]]
       indices = np.lexsort(keys)
       arr = arr[indices]
     elif size == 2:
-      arr = np.round(arr, decimals=2) # np.round to limit sort precision sometime 10.5 is bigger than 10.5
+      arr = np.round(arr, decimals=2)  # np.round to limit sort precision sometime 10.5 is bigger than 10.5
       keys = [arr[:, 0], arr[:, 1]]
       indices = np.lexsort(keys)
       arr = arr[indices]
@@ -165,7 +162,6 @@ class CompareDomains:
         o_cellfid = np.sort(o_cellfid[0:o_cellfid[-1]])
         self.logger.testing("Cell Neighbors by face", np.testing.assert_equal, n_cellfid, o_cellfid)
 
-
         # Neighbors by node
         n_cellnid = self.nd.d_cell_cellnid[p][i]
         n_cellnid = np.sort(n_cellnid[0:n_cellnid[-1]])
@@ -177,16 +173,16 @@ class CompareDomains:
         if self.nb_parts != 1:
           n_cell_faces = self.nd.d_cell_faces[p][i]
           n_cell_faces = n_cell_faces[0:n_cell_faces[-1]]
-          n_halofid = self.nd.d_face_halofid[p][n_cell_faces] # get cell halo cells
-          n_halofid = n_halofid[n_halofid != -1] # get cell halo cells
-          n_halofid = self.nd.d_halo_halosext[p][n_halofid][:, 0] # get halos global index
+          n_halofid = self.nd.d_face_halofid[p][n_cell_faces]  # get cell halo cells
+          n_halofid = n_halofid[n_halofid != -1]  # get cell halo cells
+          n_halofid = self.nd.d_halo_halosext[p][n_halofid][:, 0]  # get halos global index
           n_halofid = np.sort(n_halofid)
 
           o_cell_faces = self.od.d_cell_faces[p][i]
           o_cell_faces = o_cell_faces[0:o_cell_faces[-1]]
-          o_halofid = self.od.d_face_halofid[p][o_cell_faces] # get cell halo cells
-          o_halofid = o_halofid[o_halofid != -1] # get cell halo cells
-          o_halofid = self.od.d_halo_halosext[p][o_halofid][:, 0] # get halos global index
+          o_halofid = self.od.d_face_halofid[p][o_cell_faces]  # get cell halo cells
+          o_halofid = o_halofid[o_halofid != -1]  # get cell halo cells
+          o_halofid = self.od.d_halo_halosext[p][o_halofid][:, 0]  # get halos global index
           o_halofid = np.sort(o_halofid)
 
           self.logger.testing("Cell Halo by face", np.testing.assert_equal, n_halofid, o_halofid)
@@ -194,11 +190,11 @@ class CompareDomains:
         # Halo by node
         if self.nb_parts != 1:
           n_halonid = self.nd.d_cell_halonid[p][i]
-          n_halonid = self.nd.d_halo_halosext[p][n_halonid[0:n_halonid[-1]]][:, 0] # get domain global halo cells index
+          n_halonid = self.nd.d_halo_halosext[p][n_halonid[0:n_halonid[-1]]][:, 0]  # get domain global halo cells index
           n_halonid = np.sort(n_halonid)
 
           o_halonid = self.od.d_cell_halonid[p][i]
-          o_halonid = self.od.d_halo_halosext[p][o_halonid[0:o_halonid[-1]]][:, 0] # get domain global halo cells index
+          o_halonid = self.od.d_halo_halosext[p][o_halonid[0:o_halonid[-1]]][:, 0]  # get domain global halo cells index
           o_halonid = np.sort(o_halonid)
           self.logger.testing("Cell Halo by node", np.testing.assert_equal, n_halonid, o_halonid)
 
@@ -213,8 +209,10 @@ class CompareDomains:
         o_ghostn_center = self.od.d_face_ghostcenter[p][o_ghostnid]
         o_ghostn_center = self.sort_float_arr(o_ghostn_center, self.dim)
 
-        self.logger.testing("Ghostnid And face_ghostcenter", np.testing.assert_almost_equal, n_ghostn_center[:, 0:self.dim], o_ghostn_center[:, 0:self.dim], self.decimal_precision)
-        self.logger.testing("ghost Gamma", np.testing.assert_almost_equal, n_ghostn_center[:, self.dim], o_ghostn_center[:, self.dim], self.decimal_precision)
+        self.logger.testing("Ghostnid And face_ghostcenter", np.testing.assert_almost_equal,
+                            n_ghostn_center[:, 0:self.dim], o_ghostn_center[:, 0:self.dim], self.decimal_precision)
+        self.logger.testing("ghost Gamma", np.testing.assert_almost_equal, n_ghostn_center[:, self.dim],
+                            o_ghostn_center[:, self.dim], self.decimal_precision)
 
         # Haloghostnid and Haloghostcenter
         if self.nb_parts != 1:
@@ -227,15 +225,10 @@ class CompareDomains:
           o_haloghostnid = o_haloghostnid[0:o_haloghostnid[-1]]
           o_haloghostcenter = self.od.d_cell_haloghostcenter[p][o_haloghostnid]
           o_haloghostcenter = self.sort_float_arr(o_haloghostcenter, self.dim)
-          self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal, n_haloghostcenter, o_haloghostcenter, self.decimal_precision)
-
-
-
+          self.logger.testing("Cell Haloghostnid and Haloghostcenter *", np.testing.assert_almost_equal,
+                              n_haloghostcenter, o_haloghostcenter, self.decimal_precision)
 
   def test_node_info(self):
-
-
-
 
     # Number of nodes
     for i in range(self.g_nd.d_nodes[0].shape[0]):
@@ -248,7 +241,8 @@ class CompareDomains:
       n_node_ghostcenter = self.nd.d_node_ghostcenter[p]
       n_node_haloghostcenter = self.nd.d_node_haloghostcenter[p]
       o_node_haloghostcenter = self.od.d_node_haloghostcenter[p]
-      node_helper(n_node_ghostcenter, n_node_haloghostcenter, o_node_haloghostcenter, self.nd.d_halo_halosext[p], self.od.d_halo_halosext[p], self.dim, self.nb_parts)
+      node_helper(n_node_ghostcenter, n_node_haloghostcenter, o_node_haloghostcenter, self.nd.d_halo_halosext[p],
+                  self.od.d_halo_halosext[p], self.dim, self.nb_parts)
 
       n_nb_cells = self.nd.d_cells[p].shape[0]
       o_nb_cells = self.od.d_cells[p].shape[0]
@@ -267,8 +261,6 @@ class CompareDomains:
         o_node = self.od.d_nodes[p][i][0:-1]
         n_node = self.g_nd.d_nodes[0][g_index]
         self.logger.testing("Node Vertex 3 (old to g_new)", np.testing.assert_almost_equal, n_node, o_node, 5)
-
-
 
       for i in range(n_nb_cells):
         n_cell_nodes = self.nd.d_cells[p][i]
@@ -323,7 +315,7 @@ class CompareDomains:
           * node_ghostcenter  # [ghost_center x.y, cell_id, face_old_name, face_id]
           * face_ghostcenter  # [ghost_center x.y, gamma]
           * node_ghostfaceinfo  # [face_center x.y, face_normal x.y]
-          
+
           3D
           * node_ghostid # [indices point to faces aka faceid]
           * node_ghostcenter  # [ghost_center x.y.z, cell_id, face_old_name, face_id]
@@ -364,9 +356,11 @@ class CompareDomains:
           self.logger.testing("Node ghostfaceinfo", np.testing.assert_almost_equal,
                               n_node_ghostfaceinfo, o_node_ghostfaceinfo, decimal=self.decimal_precision)
           self.logger.testing("Node face_ghostcenter and node_ghostid", np.testing.assert_almost_equal,
-                              n_face_ghostcenter[:, 0:self.dim], o_face_ghostcenter[:, 0:self.dim], decimal=self.decimal_precision)
+                              n_face_ghostcenter[:, 0:self.dim], o_face_ghostcenter[:, 0:self.dim],
+                              decimal=self.decimal_precision)
           self.logger.testing("Node face_ghostcenter gamma", np.testing.assert_almost_equal,
-                              n_face_ghostcenter[:, self.dim], o_face_ghostcenter[:, self.dim], decimal=self.decimal_precision)
+                              n_face_ghostcenter[:, self.dim], o_face_ghostcenter[:, self.dim],
+                              decimal=self.decimal_precision)
           # Node: haloghostid, haloghostcenter, haloghostfaceinfo, d_cell_haloghostcenter
           """
           2D
@@ -374,7 +368,7 @@ class CompareDomains:
           * node_haloghostid [[indices point to cell_haloghostcenter]]
           * node_haloghostcenter [[[g_x, g_y, (halo_cell)index point to halosext, face_old_name, index point to cell_haloghostcenter]]]
           * node_haloghostfaceinfo [[[fc_x, fc_y, fn_x, fn_y]]]
-          
+
           3D
           * cell_haloghostcenter [[g_x, g_y, g_z]]
           * node_haloghostid [[indices point to cell_haloghostcenter]]
@@ -409,7 +403,6 @@ class CompareDomains:
             self.logger.testing("Node cell_haloghostcenter and node_haloghostid", np.testing.assert_almost_equal,
                                 n_cell_haloghostcenter, o_cell_haloghostcenter, decimal=self.decimal_precision)
 
-
   def test_face_info(self):
     # order of the face inside the cell is different
     # order of the nodes inside the face is different
@@ -438,7 +431,8 @@ class CompareDomains:
           o_face = self.od.d_faces[p][o_c_faces[j]]
           o_face_vertices = self.od.d_nodes[p][o_face[0:o_face[-1]]][:, 0:3]
           o_face_vertices = self.sort_float_arr(o_face_vertices, self.dim)
-          self.logger.testing("Face Vertices", np.testing.assert_almost_equal, n_face_vertices, o_face_vertices, self.decimal_precision)
+          self.logger.testing("Face Vertices", np.testing.assert_almost_equal, n_face_vertices, o_face_vertices,
+                              self.decimal_precision)
 
         # Measure
         n_faces_measure = self.nd.d_face_measure[p][n_c_faces]
@@ -489,10 +483,12 @@ class CompareDomains:
                             o_faces_ghostcenter[:, 0:self.dim], self.decimal_precision)
         self.logger.testing("Face: Ghostcenter gamma", np.testing.assert_almost_equal, c_faces_ghostcenter[:, self.dim],
                             o_faces_ghostcenter[:, self.dim], self.decimal_precision)
-        # Cell face normal (cells.cell_nf) # TODO cells.cell_nf not used on 3D
-        n_cell_nf = self.nd.d_cell_nf[p][i]
-        o_cell_nf = self.od.d_cell_nf[p][i]
-        self.logger.testing("Face Cell face normal", np.testing.assert_almost_equal, n_cell_nf, o_cell_nf, self.decimal_precision)
+        if self.dim == 2:
+          # Cell face normal (cells.cell_nf) # TODO cells.cell_nf not used on 3D
+          n_cell_nf = self.nd.d_cell_nf[p][i]
+          o_cell_nf = self.od.d_cell_nf[p][i]
+          self.logger.testing("Face Cell face normal", np.testing.assert_almost_equal, n_cell_nf, o_cell_nf,
+                              self.decimal_precision)
 
   def test_halo_info(self):
     if self.nb_parts <= 1:
@@ -518,7 +514,7 @@ class CompareDomains:
       for neigh in range(self.nd.d_halo_neigh[p].shape[1]):
         neigh_part = self.nd.d_halo_neigh[p][0, neigh]
         nb_haloint = self.nd.d_halo_neigh[p][1, neigh]
-        c_haloint = self.nd.d_halo_halosint[p][start:start+nb_haloint]
+        c_haloint = self.nd.d_halo_halosint[p][start:start + nb_haloint]
         c_haloint = self.nd.d_cell_loctoglob[p][c_haloint]
         # c_haloint = np.sort(self.nd.d_cell_loctoglob[p][c_haloint])
         start += nb_haloint
@@ -529,7 +525,7 @@ class CompareDomains:
       for neigh in range(self.od.d_halo_neigh[p].shape[1]):
         neigh_part = self.od.d_halo_neigh[p][0, neigh]
         nb_haloint = self.od.d_halo_neigh[p][1, neigh]
-        c_haloint = self.od.d_halo_halosint[p][start:start+nb_haloint]
+        c_haloint = self.od.d_halo_halosint[p][start:start + nb_haloint]
         start += nb_haloint
         o_dic[neigh_part] = c_haloint
 
@@ -540,22 +536,23 @@ class CompareDomains:
         print(n_dic[key])
         self.logger.testing(f"Halo Halosint and halo_neigh", np.testing.assert_equal, n_dic[key], o_dic[key])
 
-
       # Halo: centvol
       n_halo_centvol = self.nd.d_halo_centvol[p]
       o_halo_centvol = self.od.d_halo_centvol[p]
       n_halo_centvol = n_halo_centvol[n_indcies]
       o_halo_centvol = o_halo_centvol[o_indcies]
       for i in range(o_halo_centvol.shape[0]):
-        self.logger.testing("Halo center and vol", np.testing.assert_almost_equal, n_halo_centvol[i], o_halo_centvol[i], decimal=self.decimal_precision)
+        self.logger.testing("Halo center and vol", np.testing.assert_almost_equal, n_halo_centvol[i], o_halo_centvol[i],
+                            decimal=self.decimal_precision)
 
       # Halo : sizehaloghost
       n_sizehaloghost = self.nd.d_halo_sizehaloghost[p]
       o_sizehaloghost = self.od.d_halo_sizehaloghost[p]
       self.logger.testing("Halo sizehaloghost", np.testing.assert_equal, n_sizehaloghost, o_sizehaloghost)
 
-dim, mesh_path, mesh_name = get_mesh(3)
-compare_domains = CompareDomains(decimal_precision=2, nb_parts=8, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
+
+dim, mesh_path, mesh_name = get_mesh(4)
+compare_domains = CompareDomains(decimal_precision=2, nb_parts=32, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
 compare_domains.test_cell_info()
 compare_domains.test_node_info()
 compare_domains.test_face_info()
