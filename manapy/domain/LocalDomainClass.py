@@ -645,7 +645,7 @@ class LocalDomain:
         cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
         node_haloghostid = np.zeros(shape=(nb_nodes, max_nb_haloghost + 1), dtype=np.int32)
         node_haloghostcenter = np.zeros(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_data_size),
-                                        dtype=self.float_precision)
+                                        dtype=self.float_precision) * -1
         node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostfaceinfo_data_size),
                                           dtype=self.float_precision) * -1 # like old domain
 

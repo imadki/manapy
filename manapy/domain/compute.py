@@ -12,12 +12,12 @@ import manapy.c_api.manapy_c_api as manapy_c_api
 #   return np.float32(i).view(np.int32)
 
 def _reinterpret_int32_as_float32(i: 'int32'):
-  return np.float32(i)
+  # return np.float32(i)
   return np.int32(i).view(np.float32)
 
 
 def _reinterpret_float32_as_int32(i: 'float32'):
-  return np.int32(i)
+  # return np.int32(i)
   return np.float32(i).view(np.int32)
 
 
