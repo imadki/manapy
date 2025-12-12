@@ -27,12 +27,34 @@ size = 1
 l_domains, l = create_domain(size)
 g_domains, g = create_domain(1)
 
+# ./create_test_domains
+def _create_face_to_phyid(nb_faces, phyid_to_faceid: 'int32[:]'):
+  face_to_phyid = np.ones(shape=nb_faces, dtype=np.int32) * -1
+  face_to_phyid[phyid_to_faceid] = np.arange(phyid_to_faceid.shape[0])
+  return face_to_phyid
 
+# ./create_test_domains
+def _remap_fid_to_phyid(cell_ghostnid, node_ghostid, face_to_phyid):
+  for i in range(cell_ghostnid.shape[0]):
+    cg = cell_ghostnid[i]
+    for j in range(cg[-1]):
+      fid = cg[j]
+      cg[j] = face_to_phyid[fid]
+
+  for i in range(node_ghostid.shape[0]):
+    ng = node_ghostid[i]
+    for j in range(ng[-1]):
+      fid = ng[j]
+      ng[j] = face_to_phyid[fid]
+
+face_to_phyid = _create_face_to_phyid(len(l[0].faces), l[0].phyid_to_faceid)
+_remap_fid_to_phyid(l[0].cell_ghostnid, l[0].node_ghostid, face_to_phyid)
 ########################################################
 ##### Render
 ########################################################
 
 g_index = 0
+g_2idx = 0
 
 class   Renderer:
   def __init__(self, name):
@@ -66,9 +88,24 @@ class   Renderer:
         return
       g_index -= 1
 
+    def on_w_key(event):
+      global g_2idx
+      if g_2idx >= 5:
+        return
+      g_2idx += 1
+
+    def on_z_key(event):
+      global g_2idx
+      if g_2idx == 0:
+        return
+      g_2idx -= 1
+
+
     # Bind Right Arrow to the entire window
     self.root.bind("<Right>", on_right_arrow)
     self.root.bind("<Left>", on_left_arrow)
+    self.root.bind("w", on_w_key)
+    self.root.bind("z", on_z_key)
 
     # Bind a callback to dynamically set the scroll region based on content size
     scrollregion_width = self.width
@@ -228,12 +265,27 @@ def draw_node_oldname(k):
 
 def cell_ghostnid(k):
   for i in range(len(l[k].cells)):
-    ghosts = l[k].cell_ghostnid[i]
-    print(ghosts, l[k].shared_ghost_info.shape[0])
-    for j in range(ghosts[-1]):
-      ghost_id = l[k].face_to
-      ghost_info = l[k].shared_ghost_info[ghosts[j]]
-      render.ft_put_item(ghost_info, f"{j}", render.getColor(0))
+    if i == g_index:
+      ghosts = l[k].cell_ghostnid[i]
+      for j in range(ghosts[-1]):
+        ghost_info = l[k].shared_ghost_info[ghosts[j]]
+        p = ghost_info[2:4]
+        render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
+
+def node_ghostid(k):
+  for i in range(len(l[k].cells)):
+    if i == g_index:
+      cell = l[k].cells[i]
+      for j in range(cell[-1]):
+        if j == g_2idx:
+          node_id = cell[j]
+          render.ft_put_item(l[k].nodes[node_id], f"{j}", render.getColor(0))
+          for z in range(l[k].node_ghostid[node_id, -1]):
+            ghosts = l[k].node_ghostid[node_id]
+            for y in range(ghosts[-1]):
+              ghost_info = l[k].shared_ghost_info[ghosts[y]]
+              p = ghost_info[2:4]
+              render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
 
 def test():
   for k in range(size):
@@ -257,30 +309,9 @@ def test():
     # draw_face_measure(k)
     # draw_node_cellid(k)
     # draw_node_oldname(k)
-    cell_ghostnid(k)
+    # cell_ghostnid(k)
+    node_ghostid(k)
 
-    # # node global index
-    # for i in range(len(l[k].nodes)):
-    #   p = l[k].nodes[i]
-    #   g_index = l[k].node_loctoglob[i] #d_node_loctoglob[i]
-    #   render.ft_put_item(p, f"{g_index}", render.getColor(0))
-    #
-    # # cell global index
-    # for i in range(len(l[k].cells)):
-    #   g_index = l[k].cell_loctoglob[i]
-    #   p = l[k].cell_center[i]
-    #   render.ft_put_item(p, f"{k}, {g_index}", render.getColor(0))
-    #
-    # for i in range(len(l[k].cell_haloghostcenter)):
-    #   p = l[k].cell_haloghostcenter[i][0:2]
-    #   render.ft_put_item(p, f"{p}", render.getColor(k))
-
-    # for i in range(len(l[k].faces)):
-    #   p = l[k].face_center[i]
-    #   measure = l[k].face_measure[i]
-    #   render.ft_put_item(p, f"{measure:.2}", render.getColor(0))
-
-# print(np.max(l[0].node_halophyid[:, 1]))
 
 def redraw():
   FPS = 20
