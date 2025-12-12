@@ -551,7 +551,7 @@ class CompareDomains:
       self.logger.testing("Halo sizehaloghost", np.testing.assert_equal, n_sizehaloghost, o_sizehaloghost)
 
 
-dim, mesh_path, mesh_name = get_mesh(4)
+dim, mesh_path, mesh_name = get_mesh(2)
 compare_domains = CompareDomains(decimal_precision=2, nb_parts=32, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
 compare_domains.test_cell_info()
 compare_domains.test_node_info()
