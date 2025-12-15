@@ -58,14 +58,15 @@ g_2idx = 0
 
 class   Renderer:
   def __init__(self, name):
+    sc = 1
     self.root = tk.Tk()
-    self.width = 1500 * 2
-    self.height = 1000 * 2
-    self.font_size = 12 * 2
-    self.x_scale = 100 // 2.0 * 2
-    self.x_offset = 100 // 2.0 * 2
-    self.y_scale = 100 // 2.0 * 2
-    self.y_offset = 100 // 2.0 * 2
+    self.width = 1500 * sc
+    self.height = 1000 * sc
+    self.font_size = 12 * sc
+    self.x_scale = 100 // 2.0 * sc
+    self.x_offset = 200 // 2.0 * sc
+    self.y_scale = 100 // 2.0 * sc
+    self.y_offset = 100 // 2.0 * sc
 
     self.root.title(name)
     self.frame = tk.Frame(self.root)
@@ -149,7 +150,7 @@ class   Renderer:
     ])
 
   def ft_put_item(self, p, item, color):
-    a = self.get_rect_point(p, 0.6, 0.3)
+    a = self.get_rect_point(p, 0.6, 0.15)
     self.create_polygon(a, self.specialColor(1))
 
     p = self.scale(p)
