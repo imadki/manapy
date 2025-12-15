@@ -1,10 +1,8 @@
-import os
 from manapy.tests.GeneralChecker import GeneralChecker
 from manapy.tests.helpers.HybridTestTables import HybridTestTables
 from manapy.backends.types import FLOAT_TYPE
 from manapy.tests.helpers.DomainTables import DomainTables
 from manapy.tests.meshes import get_mesh
-import subprocess
 
 # Differences between old domain and domain
 # halos_int in old domain they are stored using global indexes

@@ -110,6 +110,7 @@ class HybridTestTables:
   def _create_local(part_vert, cells, cell_faceid, faces, nodes, nb_parts, ghost_info, face_cellid, cell_cellnid, cell_cellfid, node_cellid, node_ghostnid, node_oldname, cell_ghostnid, face_ghostid):
     l = [Locals() for _ in range(nb_parts)]
 
+    # Determine Cells, Faces and nodes For evert partition `p`.
     for i in range(len(cells)):
       p = part_vert[i]
       l[p].map_cells[i] = len(l[p].map_cells)
@@ -122,6 +123,7 @@ class HybridTestTables:
         if node_id not in l[p].map_nodes:
           l[p].map_nodes[node_id] = len(l[p].map_nodes)
 
+    # Create cells cell_faceid, faces, nodes, cells_loctolob, faces_loctoglob, nodes_loctoglob tables
     for p in range(nb_parts):
       nb_cells = len(l[p].map_cells)
       nb_faces = len(l[p].map_faces)
@@ -137,11 +139,13 @@ class HybridTestTables:
       l[p].faces_loctoglob = np.zeros(shape=nb_faces, dtype=np.int32)
       l[p].nodes_loctoglob = np.zeros(shape=nb_nodes, dtype=np.int32)
 
+    # Copy dest[0:src[-1]] = dic[src[0:src[-1]]
     def copy(dest, src, dic):
       size = src[-1]
       dest[0:size] = np.vectorize(dic.get)(src[0:size])
       dest[-1] = size
 
+    # Copy with condition
     def copy_lambda(dest, src, lambda_func):
       size = src[-1]
       if size != 0:
