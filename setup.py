@@ -55,7 +55,7 @@ install_requires = [
     'sympy',
     'termcolor',
     'textX',
-    'mgmetis',
+    # 'mgmetis',
     'meshio',
     ]
 
