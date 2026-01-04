@@ -9,16 +9,28 @@ from manapy.tests.helpers.DomainTables import DomainTables
 ##### Render
 ########################################################
 
+########################################################
+##### Create domain
+########################################################
+
+dim, mesh_path, mesh_name = get_mesh(2)
+size = 4
+l = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
+g = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
+
 class   Renderer:
   def __init__(self, name):
+    sc = 1
     self.root = tk.Tk()
-    self.width = 1500
-    self.height = 1000
-    self.font_size = 12
-    self.x_scale = 100
-    self.x_offset = 100
-    self.y_scale = 100
-    self.y_offset = 100
+    self.width = 1500 * sc
+    self.height = 1000 * sc
+    self.font_size = 12 * sc
+    self.x_scale = 100 // 2.0 * sc
+    self.x_offset = 200 // 2.0 * sc
+    self.y_scale = 100 // 2.0 * sc
+    self.y_offset = 100 // 2.0 * sc
+
+
 
     self.root.title(name)
     self.frame = tk.Frame(self.root)
@@ -69,7 +81,7 @@ class   Renderer:
     ])
 
   def ft_put_item(self, p, item, color):
-    a = self.get_rect_point(p, 0.2, 0.1)
+    a = self.get_rect_point(p, 0.4, 0.1)
     self.create_polygon(a, self.specialColor(1))
 
     self.scale(p)
@@ -80,7 +92,16 @@ class   Renderer:
 render = Renderer("Hybrid")
 
 
+def draw_face_oldname(k):
+  for i in range(l.d_faces[k].shape[0]):
+    p = l.d_face_center[k][i]
+    name = l.d_face_oldname[k][i]
+    render.ft_put_item(p, f"{name}", render.getColor(0))
 
+def draw_ghost_center(k):
+  for i in range(l.d_face_ghostcenter[k].shape[0]):
+    p = l.d_face_ghostcenter[k][i]
+    render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
 
 def test():
   for k in range(size):
@@ -90,35 +111,33 @@ def test():
       p = l.d_nodes[k][cell_nodeid][:, 0:2].flatten()
       render.create_polygon(p, render.getColor(k))
 
+    draw_face_oldname(k)
+    draw_ghost_center(k)
+
     # # node global index
     # for i in range(len(l[k].nodes)):
     #   p = l[k].nodes[i]
     #   g_index = l[k].node_loctoglob[i] #d_node_loctoglob[i]
     #   render.ft_put_item(p, f"{g_index}", render.getColor(0))
 
-    for i in range(len(l.d_cell_haloghostcenter[k])):
-      p = l.d_cell_haloghostcenter[k][i][0:2]
-      render.ft_put_item(p, f"{p}", render.getColor(k))
+    # for i in range(len(l.d_cell_haloghostcenter[k])):
+    #   p = l.d_cell_haloghostcenter[k][i][0:2]
+    #   render.ft_put_item(p, f"{p}", render.getColor(k))
 
     # cell global index
-    for i in range(len(l.d_cells[k])):
-      g_index = l.d_cell_loctoglob[k][i]
-      p = l.d_cell_center[k][i]
-      render.ft_put_item(p, f"{k}, {g_index}", render.getColor(0))
+    # for i in range(len(l.d_cells[k])):
+    #   g_index = l.d_cell_loctoglob[k][i]
+    #   p = l.d_cell_center[k][i]
+    #   render.ft_put_item(p, f"{k}, {g_index}", render.getColor(0))
 
     # for i in range(len(l.d_faces[k])):
     #   p = l.d_face_center[k][i]
     #   measure = l.d_face_measure[k][i]
     #   render.ft_put_item(p, f"{measure:.2}", render.getColor(0))
 
-########################################################
-##### Create domain
-########################################################
 
-dim, mesh_path, mesh_name = get_mesh(0)
-size = 4
-l = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
-g = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
+
+
 
 test()
 render.root.mainloop()

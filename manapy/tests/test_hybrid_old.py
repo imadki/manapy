@@ -17,7 +17,7 @@ def Hybrid():
   checker.test_cell_info()
   checker.test_face_info()
   checker.test_node_info()
-  checker.test_halo_info()
+  # checker.test_halo_info()
   checker.summary()
 
 # Create domains

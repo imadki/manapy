@@ -14,6 +14,8 @@ meshes*PROC
 domain_meshes*PROC
 test
 Notes
+cmake-build-debug
+*.mtx
 
 manapy/gpu_fun/_tests/create_system/out
 gpu_accelerator/functions/results

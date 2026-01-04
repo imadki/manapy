@@ -27,26 +27,25 @@ start = timeit.default_timer()
 
 # ... get the mesh directory
 try:
-    MESH_DIR = os.environ['MESH_DIR']
- 
+  MESH_DIR = os.environ['MESH_DIR']
+
 except:
-    BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-    BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
-    MESH_DIR = os.path.join(BASE_DIR, 'mesh')
- 
+  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
+  MESH_DIR = os.path.join(BASE_DIR, 'mesh')
+
 dim = 2
-# filename = "rectangle.msh"
-filename = "begger_rectangle.msh" # Time to do calculation 87.114774868
-# filename = "mid_rectangle.msh"
+filename = "rectangle.msh"
+# filename = "begger_rectangle.msh" Time to do calculation 87.114774868
 
-#File name
+# File name
 filename = os.path.join(MESH_DIR, filename)
-   
-running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="double", 
-                      int_precision="signed")
-mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0,0,0])
 
-#Create the informations about cells, faces and nodes
+running_conf = Struct(backend="numba", signature=True, cache=True, float_precision="double",
+                      int_precision="signed")
+mesh = MeshPartition(filename, dim=dim, conf=running_conf, periodic=[0, 0, 0])
+
+# Create the informations about cells, faces and nodes
 domain = Domain(dim=dim, conf=running_conf)
 faces = domain.faces
 cells = domain.cells
@@ -59,48 +58,45 @@ nbcells = domain.nbcells
 
 end = timeit.default_timer()
 
-tt = COMM.reduce(end -start, op=MPI.MAX, root=0)
+tt = COMM.reduce(end - start, op=MPI.MAX, root=0)
 if RANK == 0:
-    print("Time to create the domain", tt)
+  print("Time to create the domain", tt)
 
-#TODO tfinal
+# TODO tfinal
 miter = 0
 niter = 1
 Pinit = 10.
 saving_at_node = 1
 
-boundaries = {"in" : "dirichlet",
-              "out" : "dirichlet",
-              "upper":"dirichlet",
-              "bottom":"dirichlet",
+boundaries = {"in": "dirichlet",
+              "out": "dirichlet",
+              "upper": "dirichlet",
+              "bottom": "dirichlet",
               }
-values = {"in" : 20,
+values = {"in": 20,
           "out": 0.,
-          "upper":0.,
-          "bottom":0.,
+          "upper": 0.,
+          "bottom": 0.,
           }
 
-
-P  = Variable(domain=domain, BC=boundaries, values=values)
-#conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False)
-conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False, 
-              precond='gamg', sub_precond="amg",# with_mtx=False,
+P = Variable(domain=domain, BC=boundaries, values=values)
+# conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False)
+conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False,
+              precond='gamg', sub_precond="amg",  # with_mtx=False,
               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
 L = MUMPSSolver(domain=domain, var=P, conf=conf)
+
 ts = MPI.Wtime()
 L()
+
+P.update_halo_value()
+P.update_ghost_value()
+P.interpolate_celltonode()
+
+domain.save_on_node_multi(0., 0., niter, miter, variables=["P"], values=[P.node])
+
 te = MPI.Wtime()
-
-
-
-# P.update_halo_value()
-# P.update_ghost_value()
-# P.interpolate_celltonode()
-#
-# domain.save_on_node_multi(0., 0., niter, miter, variables=["P"],values=[P.node])
-       
-
 
 
 def save_matrix():
@@ -109,8 +105,8 @@ def save_matrix():
   from scipy.io import mmwrite
 
   # Sparse matrix (COO data you already have)
-  row = np.array(L._row) - 1
-  col = np.array(L._col) - 1
+  row = np.array(L._row)
+  col = np.array(L._col)
   data = np.array(L._data)
 
   # Build sparse matrix
@@ -122,13 +118,11 @@ def save_matrix():
   mmwrite("b.mtx", b)
   mmwrite("x.mtx", x)
   mmwrite("A.mtx", A)
-  print("Data saved")
+
 
 save_matrix()
 
-
-tt = COMM.reduce(te-ts, op=MPI.MAX, root=0)
+tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:
-    print("Time to do calculation", tt)
-        
-      
+  print("Time to do calculation", tt)
+

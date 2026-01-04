@@ -193,10 +193,10 @@ class Variable():
                     elif isinstance(self._values[loc], (int, float)):
                         for i in self.BCs[loc]._BCfaces:
                             valueface[i] = self._values[loc]
-                            
+
                         for i in np.where(self.domain.nodes.oldname==self.BCs[loc]._BCtypeindex)[0]:
                             valuenode[i] = self._values[loc]
-                        
+
                             for j in range(len(self.domain.nodes.haloghostcenter[i])):
                                     cell = int(self.domain.nodes.haloghostcenter[i][j][-1])
                                     if cell != -1:

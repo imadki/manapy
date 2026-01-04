@@ -614,8 +614,6 @@ class PETScKrylovSolver(LinearSolver):
         self.sol.view()
     
     def clear(self):
-        if self.ksp is not None:
-            del(self.ksp)
         self.ksp = None
         
     def __del__(self):

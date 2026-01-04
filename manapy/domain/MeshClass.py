@@ -97,9 +97,9 @@ class Mesh:
 
   def _create_cells(self, meshio_mesh_dic, dim):
     # TODO make cell Types global constant
-    allowed_cells = ['quad', 'triangle']
+    allowed_cells = ['triangle', 'quad']
     if dim == 3:
-      allowed_cells = ['pyramid', 'hexahedron', 'tetra']
+      allowed_cells = ['tetra', 'pyramid', 'hexahedron']
     cell_type_dic = {
       "triangle": 1,
       "quad": 2,
