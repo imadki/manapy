@@ -310,8 +310,8 @@ def test():
     # draw_face_measure(k)
     # draw_node_cellid(k)
     # draw_node_oldname(k)
-    # cell_ghostnid(k)
-    node_ghostid(k)
+    cell_ghostnid(k)
+    # node_ghostid(k)
 
 
 def redraw():

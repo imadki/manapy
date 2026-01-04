@@ -87,11 +87,14 @@ class CompareDomains:
       self.od = DomainTables(nb_partitions=nb_parts, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
       self.g_nd = create_domain(1, mesh_path, dim)
       self.g_od = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=FLOAT_TYPE, dim=dim)
+
       with open(cache_file, "wb") as f:
         pickle.dump((self.nd, self.od, self.g_nd, self.g_od), f)
 
     # self.nd = create_domain(nb_parts, mesh_path, dim)
     # self.g_nd = create_domain(1, mesh_path, dim)
+
+
 
     self.nb_parts = nb_parts
     self.dim = dim
@@ -552,7 +555,7 @@ class CompareDomains:
 
 
 dim, mesh_path, mesh_name = get_mesh(2)
-compare_domains = CompareDomains(decimal_precision=2, nb_parts=32, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
+compare_domains = CompareDomains(decimal_precision=2, nb_parts=4, mesh_name=mesh_name, dim=dim, mesh_path=mesh_path)
 compare_domains.test_cell_info()
 compare_domains.test_node_info()
 compare_domains.test_face_info()
