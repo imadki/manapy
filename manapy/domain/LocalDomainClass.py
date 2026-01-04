@@ -583,11 +583,11 @@ class LocalDomain:
     nb_cells = self.nb_cells
 
     if self.size == 1:
-      cell_haloghostnid = np.zeros(shape=(1, 1), dtype=np.int32)
-      cell_haloghostcenter = np.zeros(shape=(1, 1), dtype=self.float_precision)
+      cell_haloghostnid = np.zeros(shape=(0, 1), dtype=np.int32)
+      cell_haloghostcenter = np.zeros(shape=(0, 1), dtype=self.float_precision)
       node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
-      node_haloghostcenter = np.zeros(shape=(1, 1, 1), dtype=self.float_precision)
-      node_haloghostfaceinfo = np.zeros(shape=(1, 1, 1), dtype=self.float_precision)
+      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 5), dtype=self.float_precision) * -1 # !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
+      node_haloghostfaceinfo = np.zeros(shape=(0, 1, 1), dtype=self.float_precision)
 
     else:
       shared_ghost_info_size = shared_ghost_info.shape[0]

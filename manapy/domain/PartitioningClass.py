@@ -184,7 +184,8 @@ class Partitioning(PartitioningUtils):
     local_domain.halo_halosext = np.zeros(shape=(1, 1), dtype=np.int32)
     local_domain.halo_halosint = np.zeros(shape=1, dtype=np.int32)
     local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=np.float64)
-    local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.int32) # keep it shape=0
+    #local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.int32) # keep it shape=0
+    local_domain.cell_loctoglob = np.arange(0, self.nb_cells, dtype=np.int32)
     local_domain.node_loctoglob = np.zeros(shape=1, dtype=np.int32)
 
     local_domain.phyid_recv = np.arange(self.nb_phy_faces, dtype=np.int32)

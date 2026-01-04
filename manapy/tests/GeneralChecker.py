@@ -4,6 +4,8 @@ from manapy.tests.helpers.GeneralTestTables import GeneralTestTables
 
 # TODO
 def _reinterpret_float32_as_int32(i, flag=False):
+  if flag:
+    return np.int32(i)
   return np.float32(i).view(np.int32)
 
 class GeneralChecker:
@@ -312,7 +314,9 @@ class GeneralChecker:
             c_ghostinfo[0:c_nb_ghost, 14] = c_node_ghostfaceinfo[0:c_nb_ghost, 5] # face_normal_z
           else:
             c_node_cellid = c_node_ghostcenter[:, 2][0:c_nb_ghost]
+            print(c_node_cellid)
             c_node_cellid = _reinterpret_float32_as_int32(c_node_cellid, True)
+            print(c_node_cellid)
             c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0]  # g_x
             c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1]  # g_y
             c_ghostinfo[0:c_nb_ghost, 2] = 0.0  # g_z
