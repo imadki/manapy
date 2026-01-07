@@ -36,7 +36,7 @@ except:
  
 dim = 2
 # filename = "rectangle.msh"
-filename = "begger_rectangle.msh" # Time to do calculation 87.114774868
+filename = "mid_rectangle.msh" # Time to do calculation 87.114774868
 # filename = "mid_rectangle.msh"
 
 #File name
