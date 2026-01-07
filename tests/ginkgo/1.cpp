@@ -7,16 +7,28 @@
 #include <iostream>
 #include <map>
 #include <string>
-
+#include <iomanip>
+#include <limits>
 #include <ginkgo/ginkgo.hpp>
 
 // Some shortcuts
 using ValueType = double;
-using RealValueType = gko::remove_complex<ValueType>;
+//using RealValueType = gko::remove_complex<ValueType>;
 using IndexType = int;
 using mtx = gko::matrix::Csr<ValueType, IndexType>;
 using vec = gko::matrix::Dense<ValueType>;
-using real_vec = gko::matrix::Dense<RealValueType>;
+using real_vec = gko::matrix::Dense<ValueType>;
+
+double compute_residual(const std::shared_ptr<gko::Executor>& exec, const std::shared_ptr<mtx>& A, const std::shared_ptr<vec> b, const std::shared_ptr<vec> x)
+{
+    auto one = gko::initialize<vec>({1.0}, exec);
+    auto neg_one = gko::initialize<vec>({-1.0}, exec);
+    auto res = gko::initialize<real_vec>({0.0}, exec);
+    auto b_clone = b->clone();
+    A->apply(one, x, neg_one, b_clone);
+    b_clone->compute_norm2(res);
+    return res->clone(gko::OmpExecutor::create())->at(0);
+}
 
 template <typename Solver>
 void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_ptr<mtx>& A, const std::shared_ptr<vec> b, const std::shared_ptr<vec> x)
@@ -25,26 +37,32 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
     // Preconditioners
     // #####################################################
     // Generate incomplete factors using ParILU
-    // auto par_ilu_fact =
-    //     gko::factorization::ParIlu<ValueType, IndexType>::build().on(exec);
-    // // Generate concrete factorization for input matrix
-    // auto par_ilu = gko::share(par_ilu_fact->generate(A));
-    //
-    // // Generate an ILU preconditioner factory by setting lower and upper
-    // // triangular solver - in this case the exact triangular solves
-    // auto ilu_pre_factory =
-    //     gko::preconditioner::Ilu<gko::solver::LowerTrs<ValueType, IndexType>,
-    //                              gko::solver::UpperTrs<ValueType, IndexType>,
-    //                              false>::build()
-    //         .on(exec);
-    //
-    // // Use incomplete factors to generate ILU preconditioner
-    // auto preconditioner = gko::share(ilu_pre_factory->generate(par_ilu));
+    auto par_ilu_fact =
+        gko::factorization::ParIlu<ValueType, IndexType>::build().on(exec);
+    // Generate concrete factorization for input matrix
+    auto par_ilu = gko::share(par_ilu_fact->generate(A));
+
+    // Generate an ILU preconditioner factory by setting lower and upper
+    // triangular solver - in this case the exact triangular solves
+    auto ilu_pre_factory =
+        gko::preconditioner::Ilu<gko::solver::LowerTrs<ValueType, IndexType>,
+                                 gko::solver::UpperTrs<ValueType, IndexType>,
+                                 false>::build()
+            .on(exec);
+
+    // Use incomplete factors to generate ILU preconditioner
+    auto preconditioner = gko::share(ilu_pre_factory->generate(par_ilu));
+
+    // #### jacobi
+    auto jacobi_pre_factory = gko::preconditioner::Jacobi<ValueType, IndexType>::build().on(exec);
+    auto jacobi_preconditioner = gko::share(jacobi_pre_factory->generate(A));
+
+
 
     // #####################################################
     // Criteria
     // #####################################################
-    constexpr RealValueType reduction_factor{1e-7};
+    constexpr ValueType reduction_factor{1e-7};
     auto iteration_criteria = gko::stop::Iteration::build().with_max_iters(1000u);
     auto residual_criteria = gko::stop::ResidualNorm<ValueType>::build().with_reduction_factor(reduction_factor);
 
@@ -57,7 +75,7 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
 
     std::shared_ptr<gko::LinOpFactory> solver_factory = Solver::build()
         .with_criteria(iteration_criteria, residual_criteria)
-        //.with_generated_preconditioner(preconditioner)
+        .with_generated_preconditioner(jacobi_preconditioner)
         .on(exec);
 
     // Generate preconditioned solver for a specific target system
@@ -75,13 +93,7 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start);
     std::cout << "Iterations: " << logger->get_num_iterations() << "\n";
     std::cout << "Time: " << duration.count() << " microseconds" << "\n";
-    // Calculate residual
-    auto one = gko::initialize<vec>({1.0}, exec);
-    auto neg_one = gko::initialize<vec>({-1.0}, exec);
-    auto res = gko::initialize<real_vec>({0.0}, exec);
-    A->apply(one, x, neg_one, b);
-    b->compute_norm2(res);
-    std::cout << "Residual norm sqrt(r^T*r):" << res->clone(gko::OmpExecutor::create())->at(0) << std::endl;
+
 }
 
 
@@ -89,7 +101,7 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
 
 int main(int argc, char* argv[])
 {
-
+    std::cout << std::scientific << std::setprecision(15);
     // Print version information
     std::cout << gko::version_info::get() << std::endl;
 
@@ -136,7 +148,7 @@ int main(int argc, char* argv[])
     x->fill(0.0);
     auto mumps_x = gko::share(gko::read<vec>(std::ifstream(data_folder + "/x.mtx"), exec));
 
-
+    //gko::write(std::cout, b);
     // #####################################################
     // Solve system
     // #####################################################
@@ -160,6 +172,10 @@ int main(int argc, char* argv[])
         exit(-1);
     }
 
+
+    // Calculate residual
+    std::cout << "ginkgo Residual norm sqrt(r^T*r):" << compute_residual(exec, A, b, x) << std::endl;
+    std::cout << "mumps Residual norm sqrt(r^T*r):" << compute_residual(exec, A, b, mumps_x) << std::endl;
 
     // Difference between mumps_sol and ginkgo_sol
     auto neg_one = gko::initialize<vec>({-1.0}, exec);

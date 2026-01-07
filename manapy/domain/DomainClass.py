@@ -100,7 +100,7 @@ class Domain:
     self.faces._normal = local_domain.face_normal # always 3D
     self.faces._mesure = local_domain.face_measure
     self.faces._center = local_domain.face_center # always 3D
-    self.faces._dist_ortho = local_domain.face_dist_ortho # ?? in old domain in 3D it useless to define dist_ortho with shape nbfaces TODO
+    self.faces._dist_ortho = local_domain.face_dist_ortho # ?? in old domain in 3D it is useless to define dist_ortho with shape nbfaces TODO
     self.faces._ghostcenter = local_domain.face_ghostcenter # always 3D
     self.faces._oppnodeid = None
     self.faces._halofid = local_domain.face_haloid
