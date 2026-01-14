@@ -4,7 +4,7 @@ from manapy.domain import LocalDomain, LocalDomainStruct
 from manapy.backends.debug import log_step
 import time
 import numpy as np
-
+import subprocess
 
 
 class SingleCoreDomainTables:
@@ -36,7 +36,9 @@ class SingleCoreDomainTables:
     self.d_node_ghostid = []
     self.d_node_haloghostid = []
     self.d_node_ghostcenter = []
+    self.d_node_ghostcenter_info = []
     self.d_node_haloghostcenter = []
+    self.d_node_haloghostcenter_info = []
     self.d_node_ghostfaceinfo = []
     self.d_node_haloghostfaceinfo = []
     self.d_node_halonid = []
@@ -80,7 +82,9 @@ class SingleCoreDomainTables:
       self.d_node_ghostid.append(domain.nodes.ghostid)
       self.d_node_haloghostid.append(domain.nodes.haloghostid)
       self.d_node_ghostcenter.append(domain.nodes.ghostcenter)
+      self.d_node_ghostcenter_info.append(domain.nodes.ghostcenter_info)
       self.d_node_haloghostcenter.append(domain.nodes.haloghostcenter)
+      self.d_node_haloghostcenter_info.append(domain.nodes.haloghostcenter_info)
       self.d_node_ghostfaceinfo.append(domain.nodes.ghostfaceinfo)
       self.d_node_haloghostfaceinfo.append(domain.nodes.haloghostfaceinfo)
       self.d_node_halonid.append(domain.nodes.halonid)
@@ -124,7 +128,9 @@ class DomainTables:
     "d_node_ghostid",
     "d_node_haloghostid",
     "d_node_ghostcenter",
+    "d_node_ghostcenter_info",
     "d_node_haloghostcenter",
+    "d_node_haloghostcenter_info",
     "d_node_ghostfaceinfo",
     "d_node_haloghostfaceinfo",
     "d_node_halonid",
@@ -150,6 +156,20 @@ class DomainTables:
   def __init__(self, nb_partitions, mesh_name, float_precision, dim, create_par_fun):
     if create_par_fun:
       create_par_fun(nb_partitions, mesh_name, float_precision=float_precision, dim=dim)
+    else:
+      mpi_exec = "/usr/bin/mpirun"
+      python_exec = "/home/aben-ham/anaconda3/envs/work/bin/python3"
+
+      root_file = os.getcwd()
+      mesh_file_path = os.path.join(root_file, 'meshes', mesh_name)
+      script_path = os.path.join(root_file, 'helpers', 'create_partitions_mpi_worker.py')
+      cmd = [mpi_exec, "-n", str(nb_partitions), "--oversubscribe", python_exec, script_path, mesh_file_path,
+             float_precision, str(dim)]
+
+      result = subprocess.run(cmd, env=os.environ.copy(), stderr=subprocess.PIPE)
+      if result.returncode != 0:
+        print(result.__str__(), os.getcwd())
+        raise SystemExit(result.returncode)
 
     self.nb_partitions = nb_partitions
     self.float_precision = float_precision
@@ -216,6 +236,15 @@ class LocalDomain1Cpu(LocalDomain):
       self.test = True
 
       self.start = time.time()
+
+      log_step.log("Prepare communication")
+      (
+        self.halo_scount,
+        self.halo_rcount,
+        self.halo_indsend,
+        self.halo_comm_ptr
+      ) = (None, None, None, None)
+      log_step.out()
 
       log_step.log("bounds")
       self.bounds = self._define_bounds(self.nodes)
@@ -284,10 +313,16 @@ class LocalDomain1Cpu(LocalDomain):
       log_step.out()
 
       log_step.log("_create_shared_ghost_info")
-      self.shared_ghost_info = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center,
-                                                              self.cell_faceid, self.cell_loctoglob, self.face_oldname,
-                                                              self.face_normal, self.face_center, self.face_measure,
-                                                              len(self.phyid_recv))
+      (self.shared_ghost_info_int, self.shared_ghost_info_flt) = self._create_shared_ghost_info(self.bf_cellid,
+                                                                                                self.ghost_part_size,
+                                                                                                self.cell_center,
+                                                                                                self.cell_faceid,
+                                                                                                self.cell_loctoglob,
+                                                                                                self.face_oldname,
+                                                                                                self.face_normal,
+                                                                                                self.face_center,
+                                                                                                self.face_measure,
+                                                                                                len(self.phyid_recv))
       log_step.out()
 
       log_step.log("_create_ghost_tables")
@@ -295,10 +330,11 @@ class LocalDomain1Cpu(LocalDomain):
         self.node_ghostid,
         self.cell_ghostnid,
         self.node_ghostcenter,
+        self.node_ghostcenter_info,
         self.face_ghostcenter,
         self.node_ghostfaceinfo
-      ) = self._create_ghost_tables(self.shared_ghost_info, self.cells, self.faces, self.cell_faceid,
-                                    self.ghost_part_size)
+      ) = self._create_ghost_tables(self.shared_ghost_info_int, self.shared_ghost_info_flt, self.cells, self.faces,
+                                    self.cell_faceid, self.ghost_part_size)
       log_step.out()
 
     # ------------------------------------------------------------------
@@ -318,10 +354,11 @@ class LocalDomain1Cpu(LocalDomain):
         self.cell_haloghostcenter,
         self.node_haloghostid,
         self.node_haloghostcenter,
+        self.node_haloghostcenter_info,
         self.node_haloghostfaceinfo,
         self.halo_sizehaloghost
-      ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.phy_faces, self.node_cellid,
-                                         self.node_halophyid, self.node_haloid, self.halo_halosext,
+      ) = self._create_halo_ghost_tables(self.shared_ghost_info_int, self.shared_ghost_info_flt, self.cells,
+                                         self.node_cellid, self.node_halophyid, self.node_haloid, self.halo_halosext,
                                          self.ghost_part_size, self.node_oldname)
       log_step.out()
 

@@ -57,13 +57,16 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
     auto jacobi_pre_factory = gko::preconditioner::Jacobi<ValueType, IndexType>::build().on(exec);
     auto jacobi_preconditioner = gko::share(jacobi_pre_factory->generate(A));
 
+    // #### jacobi
+    auto ic_pre_factory = gko::preconditioner::Ic<ValueType, IndexType>::build().on(exec);
+    auto ic_pre_factory_precon = gko::share(ic_pre_factory->generate(A));
 
 
     // #####################################################
     // Criteria
     // #####################################################
-    constexpr ValueType reduction_factor{1e-7};
-    auto iteration_criteria = gko::stop::Iteration::build().with_max_iters(1000u);
+    constexpr ValueType reduction_factor{1e-15};
+    auto iteration_criteria = gko::stop::Iteration::build().with_max_iters(10000u);
     auto residual_criteria = gko::stop::ResidualNorm<ValueType>::build().with_reduction_factor(reduction_factor);
 
 
@@ -74,8 +77,8 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
     //using solver = gko::solver::Gmres<ValueType>; // Gmres, Cgs, Bicg
 
     std::shared_ptr<gko::LinOpFactory> solver_factory = Solver::build()
-        .with_criteria(iteration_criteria, residual_criteria)
-        .with_generated_preconditioner(jacobi_preconditioner)
+        .with_criteria(residual_criteria)
+        .with_generated_preconditioner(ic_pre_factory_precon)
         .on(exec);
 
     // Generate preconditioned solver for a specific target system
@@ -148,7 +151,8 @@ int main(int argc, char* argv[])
     x->fill(0.0);
     auto mumps_x = gko::share(gko::read<vec>(std::ifstream(data_folder + "/x.mtx"), exec));
 
-    //gko::write(std::cout, b);
+    // gko::write(std::cout, A);
+
     // #####################################################
     // Solve system
     // #####################################################
@@ -166,6 +170,8 @@ int main(int argc, char* argv[])
         solve_system<gko::solver::Gcr<ValueType> >(exec, A, b, x);
     else if (solver_name == "idr")
         solve_system<gko::solver::Idr<ValueType> >(exec, A, b, x);
+    else if (solver_name == "cg")
+        solve_system<gko::solver::Cg<ValueType> >(exec, A, b, x);
     else
     {
         std::cerr << "Unknown solver name: " << solver_name << std::endl;
