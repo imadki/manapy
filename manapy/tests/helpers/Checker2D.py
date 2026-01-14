@@ -2,8 +2,7 @@ import numpy as np
 from .TestLogger import TestLogger
 
 
-def _reinterpret_float32_as_int32(i):
-  return np.float32(i).view(np.int32)
+
 
 class Checker2D:
 
@@ -178,7 +177,9 @@ class Checker2D:
       d_node_ghostid = self.domain_tables.d_node_ghostid[p]
       d_node_haloghostid = self.domain_tables.d_node_haloghostid[p]
       d_node_ghostcenter = self.domain_tables.d_node_ghostcenter[p]
+      d_node_ghostcenter_info = self.domain_tables.d_node_ghostcenter_info[p]
       d_node_haloghostcenter = self.domain_tables.d_node_haloghostcenter[p]
+      d_node_haloghostcenter_info = self.domain_tables.d_node_haloghostcenter_info[p]
       d_node_ghostfaceinfo = self.domain_tables.d_node_ghostfaceinfo[p]
       d_node_haloghostfaceinfo = self.domain_tables.d_node_haloghostfaceinfo[p]
       d_node_halonid = self.domain_tables.d_node_halonid[p]
@@ -275,17 +276,18 @@ class Checker2D:
 
           c_ghostinfo = np.ones(shape=(2, 11), dtype=self.float_type) * -1
           c_node_ghostcenter = d_node_ghostcenter[c_cell_nodes[k]]
+          c_node_ghostcenter_info = d_node_ghostcenter_info[c_cell_nodes[k]]
           c_node_ghostfaceinfo = d_node_ghostfaceinfo[c_cell_nodes[k]]
           c_node_ghostid = d_node_ghostid[c_cell_nodes[k]]
           c_node_ghostid = c_node_ghostid[0:c_node_ghostid[-1]]
-          c_node_cellid = _reinterpret_float32_as_int32(c_node_ghostcenter[:, 2])
+          c_node_cellid = c_node_ghostcenter_info[:, 0]
           c_nb_ghost = len(c_node_ghostid)
           c_node_cellid = c_node_cellid[0:c_nb_ghost]
 
           c_ghostinfo[0:c_nb_ghost, 0] = c_node_ghostcenter[0:c_nb_ghost, 0] #g_x
           c_ghostinfo[0:c_nb_ghost, 1] = c_node_ghostcenter[0:c_nb_ghost, 1] #g_y
           #c_ghostinfo[0:c_nb_ghost, 2] = d_cell_loctoglob[c_node_cellid] #cell_id
-          c_ghostinfo[0:c_nb_ghost, 3] = _reinterpret_float32_as_int32(c_node_ghostcenter[0:c_nb_ghost, 3]) # face_old_name
+          c_ghostinfo[0:c_nb_ghost, 3] = c_node_ghostcenter_info[0:c_nb_ghost, 1] # face_old_name
           c_ghostinfo[0:c_nb_ghost, 4] = d_face_ghostcenter[c_node_ghostid, 0] # g_x from ghostid
           c_ghostinfo[0:c_nb_ghost, 5] = d_face_ghostcenter[c_node_ghostid, 1] # g_y from ghostid
           # c_ghostinfo[0:c_nb_ghost, 6] = d_face_ghostcenter[c_node_ghostid, 2] # vol from ghostid
@@ -329,17 +331,18 @@ class Checker2D:
 
             c_haloghostinfo = np.ones(shape=(2, 11), dtype=self.float_type) * -1
             c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
+            c_node_haloghostcenter_info = d_node_haloghostcenter_info[c_cell_nodes[k]]
             c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
             c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
             c_node_haloghostid = c_node_haloghostid[0:c_node_haloghostid[-1]]
-            c_node_cellid = _reinterpret_float32_as_int32(c_node_haloghostcenter[:, 2])
+            c_node_cellid = c_node_haloghostcenter_info[:, 0]
             c_nb_ghost = len(c_node_haloghostid)
             c_node_cellid = c_node_cellid[0:c_nb_ghost]
 
             c_haloghostinfo[0:c_nb_ghost, 0] = c_node_haloghostcenter[0:c_nb_ghost, 0] #g_x
             c_haloghostinfo[0:c_nb_ghost, 1] = c_node_haloghostcenter[0:c_nb_ghost, 1] #g_y
             c_haloghostinfo[0:c_nb_ghost, 2] = d_halo_halosext[c_node_cellid][:, 0] #cell_id
-            c_haloghostinfo[0:c_nb_ghost, 3] = _reinterpret_float32_as_int32(c_node_haloghostcenter[0:c_nb_ghost, 3])  # face_old_name
+            c_haloghostinfo[0:c_nb_ghost, 3] = c_node_haloghostcenter_info[0:c_nb_ghost, 1]  # face_old_name
 
             c_haloghostinfo[0:c_nb_ghost, 4] = d_cell_haloghostcenter[c_node_haloghostid][:, 0] # g_x from haloghostid
             c_haloghostinfo[0:c_nb_ghost, 5] = d_cell_haloghostcenter[c_node_haloghostid][:, 1] # g_y from haloghostid

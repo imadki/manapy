@@ -54,7 +54,7 @@ def get_arg_types(func):
 
 
 def compile(func, backend="numba", parallel=False, skip_on_error=False):
-  return func
+  # return func
   if backend == "python":
     return func
 

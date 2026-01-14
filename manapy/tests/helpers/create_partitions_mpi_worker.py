@@ -1,11 +1,10 @@
 import sys
-from manapy.partitions import MeshPartition
-from manapy.base.base import Struct
 from mpi4py import MPI
 import h5py
-from manapy.ddm import Domain
 import os
 import traceback
+from manapy.domain import Domain
+
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -41,7 +40,7 @@ def save_tables(domain):
     f.create_dataset("d_cell_ghostnid", data=domain.cells.ghostnid)
     f.create_dataset("d_cell_haloghostnid", data=domain.cells.haloghostnid)
     f.create_dataset("d_cell_haloghostcenter", data=domain.cells.haloghostcenter)
-    f.create_dataset("d_cell_tc", data=domain.cells.tc)
+    # f.create_dataset("d_cell_tc", data=domain.cells.tc)
     f.create_dataset("d_node_loctoglob", data=domain.nodes.loctoglob)
     f.create_dataset("d_node_cellid", data=domain.nodes.cellid)
     f.create_dataset("d_node_name", data=domain.nodes.name)
@@ -49,7 +48,9 @@ def save_tables(domain):
     f.create_dataset("d_node_ghostid", data=domain.nodes.ghostid)
     f.create_dataset("d_node_haloghostid", data=domain.nodes.haloghostid)
     f.create_dataset("d_node_ghostcenter", data=domain.nodes.ghostcenter)
+    f.create_dataset("d_node_ghostcenter_info", data=domain.nodes.ghostcenter_info)
     f.create_dataset("d_node_haloghostcenter", data=domain.nodes.haloghostcenter)
+    f.create_dataset("d_node_haloghostcenter_info", data=domain.nodes.haloghostcenter_info)
     f.create_dataset("d_node_ghostfaceinfo", data=domain.nodes.ghostfaceinfo)
     f.create_dataset("d_node_haloghostfaceinfo", data=domain.nodes.haloghostfaceinfo)
     f.create_dataset("d_node_halonid", data=domain.nodes.halonid)
@@ -58,7 +59,7 @@ def save_tables(domain):
     f.create_dataset("d_halo_neigh", data=domain.halos.neigh)
     f.create_dataset("d_halo_centvol", data=domain.halos.centvol)
     f.create_dataset("d_halo_sizehaloghost", data=domain.halos.sizehaloghost)
-    f.create_dataset("d_halo_indsend", data=domain.halos.indsend)
+    # f.create_dataset("d_halo_indsend", data=domain.halos.indsend)
     f.create_dataset("d_face_halofid", data=domain.faces.halofid)
     f.create_dataset("d_face_name", data=domain.faces.name)
     f.create_dataset("d_face_normal", data=domain.faces.normal)
@@ -70,9 +71,7 @@ def save_tables(domain):
     f.create_dataset("d_node_periodicid", data=domain.nodes.periodicid)
 
 def create_partitions(mesh_file_path, float_precision, dim):
-  running_conf = Struct(backend="numba", signature=True, cache=True, float_precision=float_precision)
-  MeshPartition(mesh_file_path, dim=dim, conf=running_conf, periodic=[0,0,0])
-  domain = Domain(dim=dim, conf=running_conf)
+  domain = Domain.create_domain(mesh_file_path, dim, recreate=True)
 
   save_tables(domain)
 

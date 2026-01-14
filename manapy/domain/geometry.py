@@ -77,7 +77,7 @@ class Cell():
             
 class Node():
     """ """
-    __slots__= ['_nbnodes', '_vertex', '_name', '_oldname', '_cellid', '_ghostid', '_haloghostid', '_ghostcenter', '_haloghostcenter', '_ghostfaceinfo', 
+    __slots__= ['_nbnodes', '_vertex', '_name', '_oldname', '_cellid', '_ghostid', '_haloghostid', '_ghostcenter', '_ghostcenter_info', '_haloghostcenter', '_haloghostcenter_info', '_ghostfaceinfo',
                 '_haloghostfaceinfo', '_loctoglob', '_halonid', '_nparts', '_periodicid', '_R_x', '_R_y', '_R_z', '_number', 
                 '_lambda_x', '_lambda_y', '_lambda_z']
      
@@ -114,10 +114,18 @@ class Node():
     @property
     def ghostcenter(self):
         return self._ghostcenter
+
+    @property
+    def ghostcenter_info(self):
+        return self._ghostcenter_info
     
     @property
     def haloghostcenter(self):
         return self._haloghostcenter
+
+    @property
+    def haloghostcenter_info(self):
+        return self._haloghostcenter_info
     
     @property
     def ghostfaceinfo(self):

@@ -16,6 +16,7 @@ class LocalDomain:
     self.size = size
     self.dim = local_domain_struct.dim
     self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
+    self.mpi_float_precision = MPI.FLOAT if local_domain_struct.float_precision == 32 else MPI.DOUBLE
     self.nodes = local_domain_struct.nodes.astype(self.float_precision)
     self.cells = local_domain_struct.cells
     self.cells_type = local_domain_struct.cells_type
@@ -43,6 +44,14 @@ class LocalDomain:
     self.nb_phy_faces = np.int32(len(self.phy_faces))
     self.test = False # debug attribute
 
+    log_step.log("Prepare communication")
+    (
+      self.halo_scount,
+      self.halo_rcount,
+      self.halo_indsend,
+      self.halo_comm_ptr
+    ) = self.prepare_comm(self.halo_neighsub, self.halo_halosint)
+    log_step.out()
 
     log_step.log("bounds")
     self.bounds = self._define_bounds(self.nodes)
@@ -110,23 +119,29 @@ class LocalDomain:
     log_step.out()
 
     log_step.log("_create_shared_ghost_info")
-    self.shared_ghost_info = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, len(self.phyid_recv))
+    (self.shared_ghost_info_int, self.shared_ghost_info_flt) = self._create_shared_ghost_info(self.bf_cellid, self.ghost_part_size, self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, len(self.phyid_recv))
     log_step.out()
+
+    log_step.log("_share_ghost_info_flt and _share_ghost_info_int")
+    self._share_ghost_info(self.rank, self.phyid_recv_part_size, self.shared_ghost_info_flt, self.phyid_send)
+    self._share_ghost_info(self.rank, self.phyid_recv_part_size, self.shared_ghost_info_int, self.phyid_send)
+    log_step.out()
+
+    # print(self.rank, "Aborting...")
+    # # Aborting
+    # MPI.COMM_WORLD.Abort()
 
     log_step.log("_create_ghost_tables")
     (
       self.node_ghostid,
       self.cell_ghostnid,
       self.node_ghostcenter,
+      self.node_ghostcenter_info,
       self.face_ghostcenter,
       self.node_ghostfaceinfo
-    ) = self._create_ghost_tables(self.shared_ghost_info, self.cells, self.faces, self.cell_faceid, self.ghost_part_size)
+    ) = self._create_ghost_tables(self.shared_ghost_info_int, self.shared_ghost_info_flt, self.cells, self.faces, self.cell_faceid, self.ghost_part_size)
     log_step.out()
 
-
-    log_step.log("_share_ghost_info")
-    self._share_ghost_info(self.rank, self.phyid_recv_part_size, self.shared_ghost_info, self.phyid_send)
-    log_step.out()
 
     log_step.log("_create_halo_ghost_tables")
     (
@@ -134,9 +149,10 @@ class LocalDomain:
       self.cell_haloghostcenter,
       self.node_haloghostid,
       self.node_haloghostcenter,
+      self.node_haloghostcenter_info,
       self.node_haloghostfaceinfo,
       self.halo_sizehaloghost
-    ) = self._create_halo_ghost_tables(self.shared_ghost_info, self.cells, self.phy_faces, self.node_cellid, self.node_halophyid, self.node_haloid, self.halo_halosext,self.ghost_part_size, self.node_oldname)
+    ) = self._create_halo_ghost_tables(self.shared_ghost_info_int, self.shared_ghost_info_flt, self.cells, self.node_cellid, self.node_halophyid, self.node_haloid, self.halo_halosext,self.ghost_part_size, self.node_oldname)
     log_step.out()
 
     ## TODO the use of this tables !?
@@ -221,6 +237,26 @@ class LocalDomain:
     self.face_dist_ortho = self._dist_ortho_function_2d(self.innerfaces, self.boundaryfaces, self.face_cellid, self.cell_center, self.face_center, self.face_normal)
     log_step.out()
 
+  def prepare_comm(self, halo_neighsub, halo_halosint):
+    if self.size == 1:
+      comm_ptr = MPI.COMM_WORLD.Create_dist_graph_adjacent([0], [0], sourceweights=None, destweights=None)
+      indsend = np.zeros(1, dtype=np.int32)
+      scount = np.zeros(1, dtype=np.uint32)
+      rcount = np.zeros(1, dtype=np.uint32)
+      return scount, rcount, indsend, comm_ptr
+
+    comm_ptr = MPI.COMM_WORLD.Create_dist_graph_adjacent(halo_neighsub[0], halo_neighsub[0], sourceweights=None,
+                                                         destweights=None)
+    scount = np.zeros(len(halo_neighsub[1]), dtype=np.uint32)
+    rcount = np.zeros(len(halo_neighsub[1]), dtype=np.uint32)
+
+    for i in range(len(halo_neighsub[0])):
+      scount[i] = halo_neighsub[1][i]
+
+    comm_ptr.Neighbor_alltoallv(scount, rcount)
+    indsend = halo_halosint.copy()
+
+    return scount, rcount, indsend, comm_ptr
 
   def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int'):
     return utils.create_node_cellid(cells, nb_nodes)
@@ -387,29 +423,23 @@ class LocalDomain:
 
   def _create_shared_ghost_info(self, bf_cellid: 'int[:, :]', ghost_part_size: 'int[:]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', phyid_recv_size: 'int'):
 
-
-
-    # if self.dim == 2:
-    #   shared_ghost_info_data_size = 11
-    #   shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
-    #
-    #   compute.create_ghost_info_2d(bf_cellid, cell_center, cell_faceid, cell_loctoglob, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, ghost_part_size[0])
-    # else:
-    shared_ghost_info_data_size = 14
-    shared_ghost_info = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size), dtype=self.float_precision)
+    shared_ghost_info_data_size_flt = 10 # (ghostcenter_x&y&z, gamma, face_center_x&y&z, face_normal_x&y&z)
+    shared_ghost_info_data_size_int = 4 # (cell_id, face index inside the cell, face_oldname, cell global id)
+    shared_ghost_info_flt = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size_flt), dtype=self.float_precision)
+    shared_ghost_info_int = np.zeros(shape=(phyid_recv_size, shared_ghost_info_data_size_int), dtype=np.int32)
 
     # TODO remove self
-    compute.create_ghost_info(bf_cellid, cell_center, cell_faceid, cell_loctoglob, self.faces, self.nodes, face_oldname, face_normal, face_center, face_measure, shared_ghost_info, self.dim, ghost_part_size[0])
+    compute.create_ghost_info(bf_cellid, cell_center, cell_faceid, cell_loctoglob, self.faces, self.nodes, face_oldname, face_normal, face_center, face_measure, shared_ghost_info_int, shared_ghost_info_flt, self.dim, ghost_part_size[0])
 
-    return shared_ghost_info
+    return shared_ghost_info_int, shared_ghost_info_flt
 
-  def _create_ghost_tables(self, shared_ghost_info: 'int[:, :]', cells: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', ghost_part_size: 'int[:]'):
+  def _create_ghost_tables(self, shared_ghost_info_int: 'int[:, :]', shared_ghost_info_flt: 'float[:, :]', cells: 'int[:, :]', faces: 'int[:, :]', cell_faceid: 'int[:, :]', ghost_part_size: 'int[:]'):
 
     start = ghost_part_size[0]
     end = start + ghost_part_size[1]
 
     node_nb_ghostid = np.zeros(shape=self.nb_nodes, dtype=np.int32)
-    compute.get_ghost_tables_size(shared_ghost_info, faces, cell_faceid, node_nb_ghostid, start, end)
+    compute.get_ghost_tables_size(shared_ghost_info_int, faces, cell_faceid, node_nb_ghostid, start, end)
 
     max_node_ghost = np.max(node_nb_ghostid)
     node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_ghost + 1), dtype=np.int32)
@@ -422,25 +452,28 @@ class LocalDomain:
     # ------------------------------------------------------------------
 
     if self.dim == 2:
-      node_ghostcenter_data_size = 5  # [ghost_center x.y, cell_id, face_old_name, face_id]
+      node_ghostcenter_data_size = 2  # [ghost_center x.y]
+      node_ghostcenter_info_data_size = 3 # [cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 3  # [ghost_center x.y, gamma]
       node_ghostfaceinfo_data_size = 4  # [face_center x.y, face_normal x.y]
       node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precision) * -1
+      node_ghostcenter_info = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_info_data_size), dtype=np.int32) * -1
       face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
       node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size), dtype=self.float_precision) * -1
 
-      compute.create_ghost_tables_2d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end)
+      compute.create_ghost_tables_2d(shared_ghost_info_int, shared_ghost_info_flt, faces, cell_faceid, node_ghostid, node_ghostcenter, node_ghostcenter_info, face_ghostcenter, node_ghostfaceinfo, start, end)
     else:
-      node_ghostcenter_data_size = 6  # [ghost_center x.y.z, cell_id, face_old_name, face_id]
+      node_ghostcenter_data_size = 3  # [ghost_center x.y.z]
+      node_ghostcenter_info_data_size = 3  # [cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 4  # [ghost_center x.y.z, gamma]
       node_ghostfaceinfo_data_size = 6  # [face_center x.y.z, face_normal x.y.z]
-      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size),
-                                  dtype=self.float_precision) * -1 # like old domain *-1
+      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_data_size), dtype=self.float_precision) * -1 # like old domain *-1
+      node_ghostcenter_info = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostcenter_info_data_size), dtype=np.int32) * -1 # like old domain *-1
       face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
       node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_ghost, node_ghostfaceinfo_data_size),
                                     dtype=self.float_precision) * -1 # like old domain *-1
 
-      compute.create_ghost_tables_3d(shared_ghost_info, faces, cell_faceid, node_ghostid, node_ghostcenter, face_ghostcenter, node_ghostfaceinfo, start, end)
+      compute.create_ghost_tables_3d(shared_ghost_info_int, shared_ghost_info_flt, faces, cell_faceid, node_ghostid, node_ghostcenter, node_ghostcenter_info, face_ghostcenter, node_ghostfaceinfo, start, end)
 
     # ------------------------------------------------------------------
     # cell_ghostnid
@@ -462,6 +495,7 @@ class LocalDomain:
       node_ghostid,
       cell_ghostnid,
       node_ghostcenter,
+      node_ghostcenter_info,
       face_ghostcenter,
       node_ghostfaceinfo
     )
@@ -482,7 +516,8 @@ class LocalDomain:
       domain = local_domains[rank]
 
       phyid_send = domain.phyid_send
-      shared_ghost_info = domain.shared_ghost_info
+      shared_ghost_info_flt = domain.shared_ghost_info_flt
+      shared_ghost_info_int = domain.shared_ghost_info_int
 
       i = 0
       while i < len(phyid_send):
@@ -490,8 +525,9 @@ class LocalDomain:
         start = i + 2
         end = start + phyid_send[i + 1]
         data_indices = phyid_send[start:end]
-        data = shared_ghost_info[data_indices]
-        recv_data[rank][dest_part] = data
+        data_flt = shared_ghost_info_flt[data_indices]
+        data_int = shared_ghost_info_int[data_indices]
+        recv_data[rank][dest_part] = (data_int, data_flt)
         i = end
 
     # ------------------------------------------------------------------
@@ -501,28 +537,30 @@ class LocalDomain:
       domain = local_domains[rank]
 
       phyid_recv_part_size = domain.phyid_recv_part_size
-      shared_ghost_info = domain.shared_ghost_info
+      shared_ghost_info_flt = domain.shared_ghost_info_flt
+      shared_ghost_info_int = domain.shared_ghost_info_int
 
       start = 0
       for i in range(0, len(phyid_recv_part_size), 2):
         the_sender = phyid_recv_part_size[i]
         size = phyid_recv_part_size[i + 1]
         if the_sender != rank:
-          data = recv_data[the_sender][rank]
-          end = start + len(data)
-          shared_ghost_info[start:end] = data
+          (data_int, data_flt) = recv_data[the_sender][rank]
+          end = start + len(data_flt)
+          shared_ghost_info_flt[start:end] = data_flt
+          shared_ghost_info_int[start:end] = data_int
         start += size
 
-  def _share_ghost_info(self, rank: 'int', phyid_recv_part_size: 'int[:]', shared_ghost_info: 'float[:, :]', phyid_send: 'int[:]'):
+
+
+  def _share_ghost_info(self, rank: 'int', phyid_recv_part_size: 'int[:]', ghost_info_table: 'int[:, :]|float[:, :]', phyid_send: 'int[:]'):
     if self.size == 1:
       return
-
     comm = MPI.COMM_WORLD
 
-    shared_ghost_info_data_size = shared_ghost_info.shape[1] # 14 on 3D 11 on 2D
+    mpi_data_type = self.mpi_float_precision if np.issubdtype(ghost_info_table.dtype, np.floating) else MPI.INT32_T
     recv_data = []
     reqs = []
-
     # ------------------------------------------------------------------
     # 1. Post non-blocking receives
     # ------------------------------------------------------------------
@@ -531,9 +569,9 @@ class LocalDomain:
       the_sender = phyid_recv_part_size[i]
       size = phyid_recv_part_size[i + 1]
       if the_sender != rank:
-        buffer = np.zeros(shape=(size, shared_ghost_info_data_size), dtype=self.float_precision)
+        buffer = np.zeros(shape=(size, ghost_info_table.shape[1]), dtype=ghost_info_table.dtype)
         recv_data.append((start, buffer))
-        req = comm.Irecv([buffer, MPI.FLOAT], source=the_sender, tag=0)
+        req = comm.Irecv([buffer, mpi_data_type], source=the_sender, tag=0)
         reqs.append(req)
       start += size
 
@@ -547,8 +585,8 @@ class LocalDomain:
       start = i + 2
       end = start + phyid_send[i + 1]
       data_indices = phyid_send[start:end]
-      data = shared_ghost_info[data_indices]
-      req = comm.Isend([data, MPI.FLOAT], dest=dest_part, tag=0)
+      data = ghost_info_table[data_indices]
+      req = comm.Isend([data, self.mpi_float_precision], dest=dest_part, tag=0)
       reqs.append(req)
       i = end
 
@@ -570,15 +608,15 @@ class LocalDomain:
       raise RuntimeError("MPI error during Waitall")
 
     # ------------------------------------------------------------------
-    # 4. Copy Data to shared_ghost_info
+    # 4. Copy Data to ghost_info_table
     # ------------------------------------------------------------------
     for item in recv_data:
       start = item[0]
       data = item[1]
       end = start + len(data)
-      shared_ghost_info[start:end] = data
+      ghost_info_table[start:end] = data
 
-  def _create_halo_ghost_tables(self, shared_ghost_info: 'float[:, :]', cells: 'int[:, :]', phy_faces: 'int[:, :]', node_cellid: 'int[:, :]', node_halophyid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_part_size, node_oldname):
+  def _create_halo_ghost_tables(self, shared_ghost_info_int: 'int32[:, :]', shared_ghost_info_flt: 'float[:, :]', cells: 'int[:, :]', node_cellid: 'int[:, :]', node_halophyid: 'int[:, :]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', ghost_part_size, node_oldname):
     nb_nodes = self.nb_nodes
     nb_cells = self.nb_cells
 
@@ -586,11 +624,12 @@ class LocalDomain:
       cell_haloghostnid = np.zeros(shape=(0, 1), dtype=np.int32)
       cell_haloghostcenter = np.zeros(shape=(0, 1), dtype=self.float_precision)
       node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
-      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 5), dtype=self.float_precision) * -1 # !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
+      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 3), dtype=self.float_precision) * -1 # !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
+      node_haloghostcenter_info = np.ones(shape=(0, 1, 3), dtype=np.int32) * -1
       node_haloghostfaceinfo = np.zeros(shape=(0, 1, 1), dtype=self.float_precision)
 
     else:
-      shared_ghost_info_size = shared_ghost_info.shape[0]
+      shared_ghost_info_size = shared_ghost_info_flt.shape[0]
 
       # ------------------------------------------------------------------
       # create_b_nodeid
@@ -628,29 +667,36 @@ class LocalDomain:
 
 
       max_nb_haloghost = np.max(node_halophyid[:, -1])
+      """
+      * cell_haloghostnid [[indices point to cell_haloghostcenter]]
+      * node_haloghostid [[indices point to cell_haloghostcenter]]
+      """
       if self.dim == 2:
-        cell_haloghostcenter_data_size = 3
-        node_haloghostcenter_data_size = 5
-        node_haloghostfaceinfo_data_size = 4
+        cell_haloghostcenter_data_size = 3 # [[g_x, g_y, unused g_z]]
+        node_haloghostcenter_data_size = 2 # [[[g_x, g_y]]]
+        node_haloghostcenter_info_data_size = 3 # [[[(halo_cell)index point to halosext, face_old_name, index point to cell_haloghostcenter]]]
+        node_haloghostfaceinfo_data_size = 4 # [[[fc_x, fc_y, fn_x, fn_y]]]
         cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
         node_haloghostid = np.zeros(shape=(nb_nodes, max_nb_haloghost + 1), dtype=np.int32)
         node_haloghostcenter = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_data_size), dtype=self.float_precision) * -1 # like old domain
+        node_haloghostcenter_info = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_info_data_size), dtype=np.int32) * -1
         node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostfaceinfo_data_size), dtype=self.float_precision) * -1 # like old domain
 
-        compute.create_halo_ghost_tables_2d(shared_ghost_info, bcell_halophyid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostfaceinfo)
+        compute.create_halo_ghost_tables_2d(shared_ghost_info_int, shared_ghost_info_flt, bcell_halophyid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostcenter_info, node_haloghostfaceinfo)
       else:
-        cell_haloghostcenter_data_size = 3
-        node_haloghostcenter_data_size = 6
-        node_haloghostfaceinfo_data_size = 6
+        cell_haloghostcenter_data_size = 3 # [[g_x, g_y, g_z]]
+        node_haloghostcenter_data_size = 3 # [[[g_x, g_y, g_z]]]
+        node_haloghostcenter_info_data_size = 3 # [[[(halo_cell)index point to halosext, face_old_name, index point to cell_haloghostcenter]]]
+        node_haloghostfaceinfo_data_size = 6 # [[[fc_x, fc_y, fc_z, fn_x, fn_y, fn_z]]]
         cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
         node_haloghostid = np.zeros(shape=(nb_nodes, max_nb_haloghost + 1), dtype=np.int32)
-        node_haloghostcenter = np.zeros(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_data_size),
-                                        dtype=self.float_precision) * -1
+        node_haloghostcenter = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_data_size), dtype=self.float_precision) * -1
+        node_haloghostcenter_info = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostcenter_info_data_size), dtype=np.int32) * -1
         node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_nb_haloghost, node_haloghostfaceinfo_data_size),
                                           dtype=self.float_precision) * -1 # like old domain
 
 
-        compute.create_halo_ghost_tables_3d(shared_ghost_info, bcell_halophyid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter,node_haloghostfaceinfo)
+        compute.create_halo_ghost_tables_3d(shared_ghost_info_int, shared_ghost_info_flt, bcell_halophyid, b_nodeid, node_halophyid, node_haloid, halo_halosext, ghost_new_index, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostcenter_info, node_haloghostfaceinfo)
 
     halo_sizehaloghost = np.sum(node_haloghostid[:, -1]) # Two nodes in the same partition can't have the same haloghostId
     return (
@@ -658,6 +704,7 @@ class LocalDomain:
       cell_haloghostcenter,
       node_haloghostid,
       node_haloghostcenter,
+      node_haloghostcenter_info,
       node_haloghostfaceinfo,
       halo_sizehaloghost
     )

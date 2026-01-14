@@ -21,7 +21,7 @@ class LocalDomainStruct:
     self.halo_halosext = np.zeros((1, 1), dtype=np.int32) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2) Halos of a partition P is the Concatenation of Interiors of the neighbor parts that are connected to P.
     self.halo_halosint = np.zeros(1, dtype=np.int32) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
     self.halo_centvol = np.zeros((1, 1), dtype=np.float64)  # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
-    self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other paritions, all other tables that will use boundary faces must point to this table"
+    self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other partitions, all other tables that will use boundary faces must point to this table"
     self.phyid_recv_part_size = np.zeros(1, dtype=np.int32) # [boundary faces part, size]
     self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
 
