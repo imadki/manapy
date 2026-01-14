@@ -76,7 +76,9 @@ class Domain:
     self.nodes._ghostid = local_domain.node_ghostid
     self.nodes._haloghostid = local_domain.node_haloghostid
     self.nodes._ghostcenter = local_domain.node_ghostcenter
+    self.nodes._ghostcenter_info = local_domain.node_ghostcenter_info
     self.nodes._haloghostcenter = local_domain.node_haloghostcenter
+    self.nodes._haloghostcenter_info = local_domain.node_haloghostcenter_info
     self.nodes._ghostfaceinfo = local_domain.node_ghostfaceinfo
     self.nodes._haloghostfaceinfo = local_domain.node_haloghostfaceinfo
     self.nodes._loctoglob = local_domain.node_loctoglob
@@ -123,10 +125,14 @@ class Domain:
     self.halos._centvol = local_domain.halo_centvol # always 3D
     self.halos._sizehaloghost = local_domain.halo_sizehaloghost
     # TODO
-    (self.halos._scount,
-    self.halos._rcount,
-    self.halos._indsend,
-    self.halos._comm_ptr) = self.prepare_comm(self.cells, self.halos)
+    self.halos._scount = local_domain.halo_scount
+    self.halos._rcount = local_domain.halo_rcount
+    self.halos._indsend = local_domain.halo_indsend
+    self.halos._comm_ptr = local_domain.halo_comm_ptr
+    # (self.halos._scount,
+    # self.halos._rcount,
+    # self.halos._indsend,
+    # self.halos._comm_ptr) = self.prepare_comm(self.cells, self.halos)
     self.halos._faces = None
     self.halos._nodes = None
     self.halos._requests = None
