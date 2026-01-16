@@ -15,7 +15,7 @@ RANK = COMM.Get_rank()
 
 from manapy.partitions import MeshPartition
 from manapy.ddm import Domain
-
+import numpy as np
 from manapy.ast import Variable
 from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
 from manapy.base.base import Struct
@@ -35,9 +35,12 @@ except:
     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
  
 dim = 2
-# filename = "rectangle.msh"
-filename = "bigger_rectangle.msh" # Time to do calculation 87.114774868  48
+filename = "rectangle.msh"
 # filename = "mid_rectangle.msh"
+# filename = "bigger_rectangle.msh"
+
+# Petsc -> (0.126s, 0.498s, 54.07s)
+# Mumps -> (0.088s, 0.381s, 48.58s)
 
 #File name
 filename = os.path.join(MESH_DIR, filename)
@@ -87,7 +90,8 @@ conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False,
               precond='gamg', sub_precond="amg",# with_mtx=False,
               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
-L = MUMPSSolver(domain=domain, var=P, conf=conf)
+# L = MUMPSSolver(domain=domain, var=P, conf=conf)
+L = PETScKrylovSolver(domain=domain, var=P, conf=conf)
 ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
@@ -101,10 +105,28 @@ te = MPI.Wtime()
 # domain.save_on_node_multi(0., 0., niter, miter, variables=["P"],values=[P.node])
        
 
+def save_matrix_petsc():
+  from scipy.sparse import coo_matrix
+  from scipy.io import mmwrite
 
+  # Sparse matrix (COO data you already have)
+  row = np.array(L._row)
+  col = np.array(L._col)
+  data = np.array(L._data)
 
-def save_matrix():
-  import numpy as np
+  print(row)
+  # Build sparse matrix
+  n = max(max(row), max(col)) + 1
+  A = coo_matrix((data, (row, col)), shape=(n, n))
+  b = np.array(L.rhs0).reshape(-1, 1)
+  x = np.array(L.sol.getArray()).reshape(-1, 1)
+
+  mmwrite("b.mtx", b)
+  mmwrite("x.mtx", x)
+  mmwrite("A.mtx", A)
+  print("Data saved petsc")
+
+def save_matrix_mumps():
   from scipy.sparse import coo_matrix
   from scipy.io import mmwrite
 
@@ -122,13 +144,14 @@ def save_matrix():
   mmwrite("b.mtx", b)
   mmwrite("x.mtx", x)
   mmwrite("A.mtx", A)
-  print("Data saved")
+  print("Data saved mumps")
 
-save_matrix()
+
 
 
 tt = COMM.reduce(te-ts, op=MPI.MAX, root=0)
 if RANK == 0:
-    print("Time to do calculation", tt)
-        
+  print("Time to do calculation", tt)
+  save_matrix_petsc()
+  # save_matrix_mumps()
       

@@ -192,6 +192,8 @@ class Domain:
     self._typeOfCells = self._define_eltypes()
     self.bounds = self._bounds
 
+    # TODO
+
   @staticmethod
   def _all_local_mesh_files_exist(size: int):
     folder_name = f"local_domain_{size}"
