@@ -16,3 +16,15 @@ struct SwapchainSupportDetails {
 
     bool isAdequate();
 };
+
+struct Vertex {
+    glm::vec3 position;
+    glm::vec3 color;
+
+    static VkVertexInputBindingDescription                  getBindingDescription();
+    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions();
+};
+
+struct alignas(16) PushConstantData { // std430
+    glm::mat4 viewProjMat;
+};

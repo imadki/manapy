@@ -13,14 +13,19 @@ file(GLOB SRC_FILES src/*.cpp)
 pybind11_add_module(manapyGUI ${SRC_FILES})
 
 
+target_compile_definitions(manapyGUI PRIVATE
+    SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+)
+
+target_include_directories(manapyGUI PRIVATE
+    extern/glm
+)
+
 target_link_libraries(manapyGUI PRIVATE 
     Vulkan::Vulkan
     glfw
 )
 
-target_compile_definitions(manapyGUI PRIVATE
-    SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
-)
 
 set_target_properties(manapyGUI PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/manapy/gui

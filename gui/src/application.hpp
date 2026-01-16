@@ -3,10 +3,9 @@
 #include "renderer.hpp"
 #include "window.hpp"
 
-class App {
+class Application {
   public:
-    App();
-    ~App();
+    Application();
 
     void run();
 

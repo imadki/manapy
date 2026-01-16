@@ -1,6 +1,7 @@
 #include "window.hpp"
 
 Window::Window(const char* title)
+    : pFrameBufferResized(std::make_shared<bool>(false)), scrollOffset(0.f)
 {
     glfwInit();
 
@@ -9,10 +10,12 @@ Window::Window(const char* title)
 
     glfwWindow =
         glfwCreateWindow(Window::defaultWidth, Window::defaultHeight, title, nullptr, nullptr);
-
     glfwSetWindowSize(glfwWindow, Window::defaultWidth, Window::defaultHeight);
 
+    glfwSetWindowUserPointer(glfwWindow, this);
+
     glfwSetWindowSizeCallback(glfwWindow, Window::framebufferResizeCallback);
+    glfwSetScrollCallback(glfwWindow, Window::scrollCallback);
 }
 
 Window::~Window()
@@ -25,11 +28,6 @@ bool Window::shouldClose() { return glfwWindowShouldClose(glfwWindow); }
 void Window::pollEvents() { glfwPollEvents(); }
 void Window::waitEvents() { glfwWaitEvents(); }
 
-void Window::setResizeUserPointer(bool* pResized)
-{
-    glfwSetWindowUserPointer(glfwWindow, pResized);
-}
-
 void Window::createSurface(VkInstance vkInstance, VkSurfaceKHR* pSurface)
 {
     VK_CHECK(glfwCreateWindowSurface(vkInstance, glfwWindow, nullptr, pSurface));
@@ -40,11 +38,46 @@ void Window::getFramebufferSize(int* pWidth, int* pHeight)
     glfwGetFramebufferSize(glfwWindow, pWidth, pHeight);
 }
 
+glm::vec2 Window::getDragOffset()
+{
+    static glm::dvec2 lastMousePos;
+
+    glm::dvec2 currMousePos;
+    glfwGetCursorPos(glfwWindow, &currMousePos.x, &currMousePos.y);
+
+    if (glfwGetMouseButton(glfwWindow, GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS) {
+        lastMousePos = currMousePos;
+        return glm::vec2{0.f};
+    }
+
+    glm::vec2 dragOffset{
+        static_cast<float>(currMousePos.x - lastMousePos.x),
+        static_cast<float>(currMousePos.y - lastMousePos.y),
+    };
+
+    lastMousePos = currMousePos;
+    return dragOffset;
+}
+
+void  Window::addScrollOffset(float offset) { scrollOffset += offset; }
+float Window::getAndResetScrollOffset()
+{
+    float offset = scrollOffset;
+    scrollOffset = 0.f;
+
+    return offset;
+}
+
 void Window::framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
-    if (glfwGetWindowUserPointer(window) == nullptr)
-        throw std::runtime_error("Window resize user pointer not initialized!");
+    Window* instance = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 
-    bool* pResized = reinterpret_cast<bool*>(glfwGetWindowUserPointer(window));
-    *pResized      = true;
+    *instance->pFrameBufferResized = true;
+}
+
+void Window::scrollCallback(GLFWwindow* window, double xOffset, double yOffset)
+{
+    Window* instance = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+
+    instance->addScrollOffset(yOffset);
 }

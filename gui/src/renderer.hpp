@@ -1,5 +1,6 @@
 #pragma once
 
+#include "camera.hpp"
 #include "common.hpp"
 #include "rendererUtils.hpp"
 #include "window.hpp"
@@ -23,11 +24,25 @@ class Renderer {
 #else
     static constexpr bool enableValidationLayers = true;
 #endif
+    const std::vector<Vertex> vertices = {
+        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+
+        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+    };
+
+    const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
 
     Window& window;
 
-    bool     framebufferResized = false;
-    uint32_t currentFrame       = 0;
+    std::shared_ptr<bool> pFrameBufferResized;
+
+    uint32_t currentFrame = 0;
 
     VkInstance               vkInstance     = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
@@ -48,16 +63,27 @@ class Renderer {
     std::vector<VkImageView>   swapchainImageViews;
     std::vector<VkFramebuffer> swapchainFramebuffers;
 
+    VkImage        depthImage       = VK_NULL_HANDLE;
+    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+    VkImageView    depthImageView   = VK_NULL_HANDLE;
+
     VkRenderPass     renderPass       = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout   = VK_NULL_HANDLE;
     VkPipeline       graphicsPipeline = VK_NULL_HANDLE;
 
-    VkCommandPool                commandPool = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> commandBuffers;
+    VkCommandPool                graphicsCommandPool = VK_NULL_HANDLE;
+    std::vector<VkCommandBuffer> graphicsCommandBuffers;
+
+    VkBuffer       vertexBuffer       = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer       indexBuffer        = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory  = VK_NULL_HANDLE;
 
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence>     inFlightFences;
+
+    Camera camera;
 
   private:
     // ─[ MAIN FUNCTIONS ]─────────────────────────────────────────────────
@@ -70,12 +96,15 @@ class Renderer {
     void createImageViews();
     void createRenderPass();
     void createGraphicsPipeline();
+    void createCommandPools();
+    void createDepthResources();
     void createFramebuffers();
-    void createCommandPool();
+    void createVertexBuffer();
+    void createIndexBuffer();
     void allocateCommandBuffers();
     void createSyncObjects();
 
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx);
+    void recordDrawCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx);
 
     void recreateSwapchain();
     void cleanupSwapchain();
@@ -114,4 +143,36 @@ class Renderer {
     chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
 
     VkShaderModule createShaderModule(const char* bytecodePath);
+
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+
+    void createBuffer(VkDeviceSize          size,
+                      VkBufferUsageFlags    usage,
+                      VkMemoryPropertyFlags properties,
+                      VkBuffer&             buffer,
+                      VkDeviceMemory&       bufferMemory);
+
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
+                                 VkImageTiling                tiling,
+                                 VkFormatFeatureFlags         features);
+
+    VkFormat findDepthFormat();
+
+    void createImage(uint32_t              width,
+                     uint32_t              height,
+                     VkFormat              format,
+                     VkImageTiling         tiling,
+                     VkImageUsageFlags     usage,
+                     VkMemoryPropertyFlags properties,
+                     VkImage&              image,
+                     VkDeviceMemory&       imageMemory);
+    void createImageView(VkImage            image,
+                         VkFormat           format,
+                         VkImageAspectFlags aspectFlags,
+                         VkImageView&       imageView);
+
+    void             updateCamera();
+    PushConstantData getPushConstantData();
 };

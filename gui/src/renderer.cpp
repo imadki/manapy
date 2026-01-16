@@ -2,7 +2,7 @@
 
 Renderer::Renderer(const char* appName, Window& window) : window(window)
 {
-    window.setResizeUserPointer(&framebufferResized);
+    pFrameBufferResized = window.pFrameBufferResized;
 
     createVulkanInstance(appName);
     setupDebugMessenger();
@@ -13,8 +13,11 @@ Renderer::Renderer(const char* appName, Window& window) : window(window)
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
+    createCommandPools();
+    createDepthResources();
     createFramebuffers();
-    createCommandPool();
+    createVertexBuffer();
+    createIndexBuffer();
     allocateCommandBuffers();
     createSyncObjects();
 }
@@ -25,12 +28,17 @@ Renderer::~Renderer()
 
     cleanupSwapchain();
 
+    vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkFreeMemory(device, vertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, indexBuffer, nullptr);
+    vkFreeMemory(device, indexBufferMemory, nullptr);
+
     for (size_t i = 0; i < maxFramesInFlight; i++) {
         vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
         vkDestroyFence(device, inFlightFences[i], nullptr);
     }
 
-    vkDestroyCommandPool(device, commandPool, nullptr);
+    vkDestroyCommandPool(device, graphicsCommandPool, nullptr);
 
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -72,8 +80,8 @@ void Renderer::drawFrame()
     VK_CHECK(vkResetFences(device, 1, &inFlightFences[currentFrame]));
 
     // Record draw command buffer
-    VK_CHECK(vkResetCommandBuffer(commandBuffers[currentFrame], 0));
-    recordCommandBuffer(commandBuffers[currentFrame], imageIdx);
+    VK_CHECK(vkResetCommandBuffer(graphicsCommandBuffers[currentFrame], 0));
+    recordDrawCommandBuffer(graphicsCommandBuffers[currentFrame], imageIdx);
 
     // ─[ Submit Command Buffer ]──────────────────────────────────────────
     VkSemaphore          waitSemaphores[]   = {imageAvailableSemaphores[currentFrame]};
@@ -86,7 +94,7 @@ void Renderer::drawFrame()
         .pWaitSemaphores      = waitSemaphores,
         .pWaitDstStageMask    = waitStages,
         .commandBufferCount   = 1,
-        .pCommandBuffers      = &commandBuffers[currentFrame],
+        .pCommandBuffers      = &graphicsCommandBuffers[currentFrame],
         .signalSemaphoreCount = 1,
         .pSignalSemaphores    = signalSemaphores,
     };
@@ -108,8 +116,8 @@ void Renderer::drawFrame()
     res = vkQueuePresentKHR(presentQueue, &presentInfo);
 
     // Check for framebuffer resize
-    if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || framebufferResized) {
-        framebufferResized = false;
+    if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || *pFrameBufferResized) {
+        *pFrameBufferResized = false;
         recreateSwapchain();
     }
     else if (res != VK_SUCCESS) {
@@ -305,26 +313,10 @@ void Renderer::createImageViews()
     swapchainImageViews.resize(swapchainImages.size());
 
     for (size_t i = 0; i < swapchainImages.size(); i++) {
-        VkImageViewCreateInfo createInfo{
-            .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image    = swapchainImages[i],
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format   = swapchainImageFormat,
-            .components{
-                .r = VK_COMPONENT_SWIZZLE_IDENTITY,
-                .g = VK_COMPONENT_SWIZZLE_IDENTITY,
-                .b = VK_COMPONENT_SWIZZLE_IDENTITY,
-            },
-            .subresourceRange{
-                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1,
-            },
-        };
-
-        VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &swapchainImageViews[i]));
+        createImageView(swapchainImages[i],
+                        swapchainImageFormat,
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        swapchainImageViews[i]);
     }
 }
 
@@ -347,34 +339,59 @@ void Renderer::createRenderPass()
         .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
+    // ─[ Depth Attachment ]───────────────────────────────────────────────
+    VkAttachmentDescription depthAttachment{
+        .format         = findDepthFormat(),
+        .samples        = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+
+    VkAttachmentReference depthAttachmentRef{
+        .attachment = 1,
+        .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+
     // ─[ Subpass ]──────────────────────────────────────────────────────
     VkSubpassDescription subpass{
-        .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-        .colorAttachmentCount = 1,
-        .pColorAttachments    = &colorAttachmentRef,
+        .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount    = 1,
+        .pColorAttachments       = &colorAttachmentRef,
+        .pDepthStencilAttachment = &depthAttachmentRef,
     };
 
     VkSubpassDependency dependency{
-        .srcSubpass    = VK_SUBPASS_EXTERNAL,
-        .dstSubpass    = 0,
-        .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .srcAccessMask = 0,
-        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .srcSubpass = VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+
+        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+
+        .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
     };
 
     // ─[ Render Pass ]────────────────────────────────────────────────────
-    VkRenderPassCreateInfo createInfo{
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
+
+    VkRenderPassCreateInfo renderPassInfo{
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments    = &colorAttachment,
+        .attachmentCount = static_cast<uint32_t>(attachments.size()),
+        .pAttachments    = attachments.data(),
         .subpassCount    = 1,
         .pSubpasses      = &subpass,
         .dependencyCount = 1,
         .pDependencies   = &dependency,
     };
 
-    VK_CHECK(vkCreateRenderPass(device, &createInfo, nullptr, &renderPass));
+    VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
 }
 
 void Renderer::createGraphicsPipeline()
@@ -400,9 +417,15 @@ void Renderer::createGraphicsPipeline()
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
     // ─[ Vertex Input ]───────────────────────────────────────────────────
+    auto bindingDescription    = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{
         .sType                         = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = 0,
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions    = &bindingDescription,
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+        .pVertexAttributeDescriptions    = attributeDescriptions.data(),
     };
 
     // ─[ Input Assembly ]─────────────────────────────────────────────────
@@ -438,7 +461,7 @@ void Renderer::createGraphicsPipeline()
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode             = VK_POLYGON_MODE_FILL,
         .cullMode                = VK_CULL_MODE_BACK_BIT,
-        .frontFace               = VK_FRONT_FACE_CLOCKWISE,
+        .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .depthBiasEnable         = VK_FALSE,
         .lineWidth               = 1.f,
     };
@@ -448,6 +471,16 @@ void Renderer::createGraphicsPipeline()
         .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
         .sampleShadingEnable  = VK_FALSE,
+    };
+
+    // ─[ Depth and Stencil ]──────────────────────────────────────────────
+    VkPipelineDepthStencilStateCreateInfo depthStencilInfo{
+        .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable       = VK_TRUE,
+        .depthWriteEnable      = VK_TRUE,
+        .depthCompareOp        = VK_COMPARE_OP_LESS,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable     = VK_FALSE,
     };
 
     // ─[ Color Blend ]────────────────────────────────────────────────────
@@ -465,9 +498,18 @@ void Renderer::createGraphicsPipeline()
     };
 
     // ─[ Pipeline Layout ]────────────────────────────────────────────────
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    VkPushConstantRange pushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .offset     = 0,
+        .size       = sizeof(PushConstantData),
     };
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges    = &pushConstantRange,
+    };
+
     VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
 
     // ─[ Pipeline ]───────────────────────────────────────────────────────
@@ -480,6 +522,7 @@ void Renderer::createGraphicsPipeline()
         .pViewportState      = &viewportInfo,
         .pRasterizationState = &rasterizationInfo,
         .pMultisampleState   = &multisampleInfo,
+        .pDepthStencilState  = &depthStencilInfo,
         .pColorBlendState    = &colorBlendInfo,
         .pDynamicState       = &dynamicStateInfo,
         .layout              = pipelineLayout,
@@ -504,15 +547,16 @@ void Renderer::createFramebuffers()
     swapchainFramebuffers.resize(swapchainImages.size());
 
     for (size_t i = 0; i < swapchainImages.size(); i++) {
-        VkImageView attachments[] = {
+        std::array<VkImageView, 2> attachments = {
             swapchainImageViews[i],
+            depthImageView,
         };
 
         VkFramebufferCreateInfo createInfo{
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass      = renderPass,
-            .attachmentCount = 1,
-            .pAttachments    = attachments,
+            .attachmentCount = static_cast<uint32_t>(attachments.size()),
+            .pAttachments    = attachments.data(),
             .width           = swapchainExtent.width,
             .height          = swapchainExtent.height,
             .layers          = 1,
@@ -522,29 +566,114 @@ void Renderer::createFramebuffers()
     }
 }
 
-void Renderer::createCommandPool()
+void Renderer::createCommandPools()
 {
+    // ─[ Graphics ]───────────────────────────────────────────────────────
     VkCommandPoolCreateInfo createInfo{
         .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
         .queueFamilyIndex = queueFamilyIndices.graphicsFamily.value(),
     };
 
-    VK_CHECK(vkCreateCommandPool(device, &createInfo, nullptr, &commandPool));
+    VK_CHECK(vkCreateCommandPool(device, &createInfo, nullptr, &graphicsCommandPool));
+}
+
+void Renderer::createDepthResources()
+{
+    VkFormat depthFormat = findDepthFormat();
+
+    createImage(swapchainExtent.width,
+                swapchainExtent.height,
+                depthFormat,
+                VK_IMAGE_TILING_OPTIMAL,
+                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                depthImage,
+                depthImageMemory);
+    createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, depthImageView);
+}
+
+void Renderer::createVertexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+    // ─[ Staging Buffer ]─────────────────────────────────────────────────
+    VkBuffer       stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+
+    createBuffer(bufferSize,
+                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 stagingBuffer,
+                 stagingBufferMemory);
+
+    // Copy data
+    void* data;
+    VK_CHECK(vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data));
+    memcpy(data, vertices.data(), (size_t)bufferSize);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    // ─[ Vertex Buffer ]──────────────────────────────────────────────────
+    createBuffer(bufferSize,
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                 vertexBuffer,
+                 vertexBufferMemory);
+
+    copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+
+    // ─[ Cleanup ]────────────────────────────────────────────────────────
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+
+void Renderer::createIndexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+    // ─[ Staging Buffer ]─────────────────────────────────────────────────
+    VkBuffer       stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+
+    createBuffer(bufferSize,
+                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 stagingBuffer,
+                 stagingBufferMemory);
+
+    // Copy data
+    void* data;
+    VK_CHECK(vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data));
+    memcpy(data, indices.data(), (size_t)bufferSize);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    // ─[ Index Buffer ]───────────────────────────────────────────────────
+    createBuffer(bufferSize,
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                 indexBuffer,
+                 indexBufferMemory);
+
+    copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+    // ─[ Cleanup ]────────────────────────────────────────────────────────
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void Renderer::allocateCommandBuffers()
 {
-    commandBuffers.resize(maxFramesInFlight);
+    // ─[ Graphics ]───────────────────────────────────────────────────────
+    graphicsCommandBuffers.resize(maxFramesInFlight);
 
     VkCommandBufferAllocateInfo allocInfo{
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool        = commandPool,
+        .commandPool        = graphicsCommandPool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = static_cast<uint32_t>(commandBuffers.size()),
+        .commandBufferCount = static_cast<uint32_t>(graphicsCommandBuffers.size()),
     };
 
-    VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()));
+    VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, graphicsCommandBuffers.data()));
 }
 
 void Renderer::createSyncObjects()
@@ -568,7 +697,7 @@ void Renderer::createSyncObjects()
     }
 }
 
-void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx)
+void Renderer::recordDrawCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx)
 {
     VkCommandBufferBeginInfo beginInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -577,7 +706,9 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
     // ─[ Begin Render Pass ]──────────────────────────────────────────────
-    VkClearValue clearColor = {{{0.f, 0.f, 0.f, 1.f}}};
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color        = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo renderPassInfo{
         .sType       = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -587,12 +718,20 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
             .offset = {0, 0},
             .extent = swapchainExtent,
         },
-        .clearValueCount = 1,
-        .pClearValues    = &clearColor,
+        .clearValueCount = static_cast<uint32_t>(clearValues.size()),
+        .pClearValues    = clearValues.data(),
     };
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // ─[ Bind Resources ]─────────────────────────────────────────────────
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+    VkBuffer     vertexBuffers[] = {vertexBuffer};
+    VkDeviceSize offsets[]       = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
     // ─[ Dynamic States ]─────────────────────────────────────────────────
     VkViewport viewport{
@@ -611,11 +750,23 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     };
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+    // ─[ Push Constants ]─────────────────────────────────────────────────
+
+    PushConstantData pushConstant = getPushConstantData();
+
+    vkCmdPushConstants(commandBuffer,
+                       pipelineLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT,
+                       0,
+                       sizeof(PushConstantData),
+                       &pushConstant);
+
     // ─[ Draw ]───────────────────────────────────────────────────────────
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     // ─[ End Render Pass ]────────────────────────────────────────────────
     vkCmdEndRenderPass(commandBuffer);
+
     VK_CHECK(vkEndCommandBuffer(commandBuffer));
 }
 
@@ -635,11 +786,16 @@ void Renderer::recreateSwapchain()
 
     createSwapchain();
     createImageViews();
+    createDepthResources();
     createFramebuffers();
 }
 
 void Renderer::cleanupSwapchain()
 {
+    vkDestroyImageView(device, depthImageView, nullptr);
+    vkDestroyImage(device, depthImage, nullptr);
+    vkFreeMemory(device, depthImageMemory, nullptr);
+
     for (size_t i = 0; i < swapchainImages.size(); ++i) {
         vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
 
@@ -870,14 +1026,15 @@ Renderer::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availab
 VkPresentModeKHR
 Renderer::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
 {
-
-    for (const auto& availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            return availablePresentMode;
-        }
-    }
-
     return VK_PRESENT_MODE_FIFO_KHR;
+
+    // for (const auto& availablePresentMode : availablePresentModes) {
+    //     if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+    //         return availablePresentMode;
+    //     }
+    // }
+    //
+    // return VK_PRESENT_MODE_FIFO_KHR;
 }
 
 VkExtent2D Renderer::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
@@ -930,4 +1087,204 @@ VkShaderModule Renderer::createShaderModule(const char* bytecodePath)
     VK_CHECK(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule));
 
     return shaderModule;
+}
+uint32_t Renderer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+    VkPhysicalDeviceMemoryProperties memoryProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) &&
+            (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Failed to find suitable memory type!");
+}
+
+void Renderer::createBuffer(VkDeviceSize          size,
+                            VkBufferUsageFlags    usage,
+                            VkMemoryPropertyFlags properties,
+                            VkBuffer&             buffer,
+                            VkDeviceMemory&       bufferMemory)
+{
+    // ─[ Create Buffer Object ]───────────────────────────────────────────
+    VkBufferCreateInfo bufferInfo{
+        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size        = size,
+        .usage       = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer));
+
+    // ─[ Allocate Buffer Memory ]─────────────────────────────────────────
+    VkMemoryRequirements memoryRequirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+
+    VkMemoryAllocateInfo allocInfo{
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = memoryRequirements.size,
+        .memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, properties),
+    };
+
+    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory));
+
+    VK_CHECK(vkBindBufferMemory(device, buffer, bufferMemory, 0));
+}
+
+void Renderer::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+{
+    // ─[ Allocate Transfer Command Buffer ]───────────────────────────────
+    VkCommandBufferAllocateInfo allocInfo{
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = graphicsCommandPool,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer commandBuffer;
+    VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer));
+
+    // ─[ Record Commands ]────────────────────────────────────────────────
+    VkCommandBufferBeginInfo beginInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+    VkBufferCopy copyRegion{
+        .size = size,
+    };
+
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+    VK_CHECK(vkEndCommandBuffer(commandBuffer));
+
+    // ─[ Submit Command Buffer ]──────────────────────────────────────────
+    VkSubmitInfo submitInfo{
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &commandBuffer,
+    };
+
+    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE));
+
+    // ─[ Cleanup ]────────────────────────────────────────────────────────
+    VK_CHECK(vkQueueWaitIdle(graphicsQueue));
+    vkFreeCommandBuffers(device, graphicsCommandPool, 1, &commandBuffer);
+}
+
+VkFormat Renderer::findSupportedFormat(const std::vector<VkFormat>& candidates,
+                                       VkImageTiling                tiling,
+                                       VkFormatFeatureFlags         features)
+{
+    for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+        if (tiling == VK_IMAGE_TILING_LINEAR &&
+            (props.linearTilingFeatures & features) == features) {
+            return format;
+        }
+        else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
+                 (props.optimalTilingFeatures & features) == features) {
+            return format;
+        }
+    }
+
+    throw std::runtime_error("Failed to find supported format!");
+}
+
+VkFormat Renderer::findDepthFormat()
+{
+    return findSupportedFormat(
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+}
+
+void Renderer::createImage(uint32_t              width,
+                           uint32_t              height,
+                           VkFormat              format,
+                           VkImageTiling         tiling,
+                           VkImageUsageFlags     usage,
+                           VkMemoryPropertyFlags properties,
+                           VkImage&              image,
+                           VkDeviceMemory&       imageMemory)
+{
+    // ─[ Create Image Object ]────────────────────────────────────────────
+    VkImageCreateInfo imageInfo{
+        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format    = format,
+        .extent{
+            .width  = width,
+            .height = height,
+            .depth  = 1,
+        },
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = tiling,
+        .usage         = usage,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    VK_CHECK(vkCreateImage(device, &imageInfo, nullptr, &image));
+
+    // ─[ Allocate Image Memory ]──────────────────────────────────────────
+    VkMemoryRequirements memoryRequirements;
+    vkGetImageMemoryRequirements(device, image, &memoryRequirements);
+
+    VkMemoryAllocateInfo allocInfo{
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = memoryRequirements.size,
+        .memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, properties),
+    };
+
+    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory));
+
+    VK_CHECK(vkBindImageMemory(device, image, imageMemory, 0));
+}
+
+void Renderer::createImageView(VkImage            image,
+                               VkFormat           format,
+                               VkImageAspectFlags aspectFlags,
+                               VkImageView&       imageView)
+{
+    VkImageViewCreateInfo viewInfo{
+        .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image    = image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format   = format,
+        .subresourceRange{
+            .aspectMask     = aspectFlags,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1,
+        },
+    };
+
+    VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &imageView));
+}
+
+void Renderer::updateCamera()
+{
+    camera.orbit(window.getDragOffset());
+    camera.adjustRadius(window.getAndResetScrollOffset());
+}
+
+PushConstantData Renderer::getPushConstantData()
+{
+    updateCamera();
+
+    glm::mat4 proj = camera.getProjMat((float)swapchainExtent.width / swapchainExtent.height);
+    proj[1][1] *= -1.f;
+
+    return PushConstantData{.viewProjMat = proj * camera.getViewMat()};
 }

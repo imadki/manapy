@@ -1,6 +1,6 @@
-class App:
+class Application:
     """
-    Python binding for a C++ class providing the Manapy GUI application.
+    Python binding for the C++ class providing the Manapy GUI application.
     """
     def __init__(self) -> None: ...
 
