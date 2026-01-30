@@ -409,20 +409,18 @@ class PETScKrylovSolver(LinearSolver):
     ]
     
     def __init__(self, domain=None, var=None, comm=None, conf=None, **kwargs):
-        
         try_imports(['import petsc4py',],
                     'cannot import petsc4py solver!')
         
         import petsc4py
         import sys
         petsc4py.init(sys.argv)
-        
         from petsc4py import PETSc
 
         self.petsc = PETSc
         self.ksp   = None
         
-        self.converged_reasons = {}                                                                                                                                                                             
+        self.converged_reasons = {}
         for key, val in six.iteritems(PETSc.KSP.ConvergedReason.__dict__):                                                                                                                                 
             if isinstance(val, int):                                                                                                                                                                       
                 self.converged_reasons[val] = key               
@@ -456,7 +454,7 @@ class PETScKrylovSolver(LinearSolver):
         
     @standard_call
     def __call__(self, rhs=None, conf=None, **kwargs):
-        
+
         def custom_monitor(ksp, its, r_norm):
             print(f"Iteration {its}: Residual Norm = {r_norm}")
         
@@ -483,7 +481,7 @@ class PETScKrylovSolver(LinearSolver):
             self.sol.array = self.sol.array[np.argsort(self.perm)]
         
         self.comm.Gatherv(sendbuf=self.sol.array.astype(self.float_precision), recvbuf=(self.recvbuf, self.sendcounts2), root=0)
-        
+
         if self.comm.Get_rank() == 0:
             #Convert solution for scattering
             convert_solution(self.recvbuf, self.x1converted, self.domain.cells.tc, self.globalsize)

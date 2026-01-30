@@ -25,7 +25,7 @@ def create_domain(nb_parts):
 
 size = 1
 l_domains, l = create_domain(size)
-g_domains, g = create_domain(1)
+g_domains, g = create_domain(size)
 
 
 ########################################################
@@ -251,13 +251,13 @@ def test():
     # draw_cellnid(k)
     # draw_cellfaceid(k)
     # draw_face_cellid(k)
-    # draw_face_oldname(k)
+    draw_face_oldname(k)
     # draw_face_to_phyid(k)
     # draw_face_normal(k)
     # draw_face_measure(k)
     # draw_node_cellid(k)
     # draw_node_oldname(k)
-    cell_ghostnid(k)
+    # cell_ghostnid(k)
 
     # # node global index
     # for i in range(len(l[k].nodes)):

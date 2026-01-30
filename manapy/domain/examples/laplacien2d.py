@@ -34,8 +34,8 @@ except:
   MESH_DIR = os.path.join(BASE_DIR, 'mesh')
 
 dim = 2
-filename = "rectangle.msh"
-# filename = "mid_rectangle.msh"
+# filename = "rectangle.msh"
+filename = "mid_rectangle.msh"
 # filename = "bigger_rectangle.msh"
 
 # Petsc -> (0.126s, 0.498s, 54.07s)
@@ -82,8 +82,8 @@ conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False,
               precond='gamg', sub_precond="amg",  # with_mtx=False,
               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
-L = MUMPSSolver(domain=domain, var=P, conf=conf)
-# L = PETScKrylovSolver(domain=domain, var=P, conf=conf)
+# L = MUMPSSolver(domain=domain, var=P, conf=conf)
+L = PETScKrylovSolver(domain=domain, var=P, conf=conf)
 ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
@@ -96,7 +96,7 @@ te = MPI.Wtime()
 # domain.save_on_node_multi(0., 0., niter, miter, variables=["P"],values=[P.node])
 
 
-def save_matrix_petsc():
+def save_matrix_petsc(x_sol):
   from scipy.sparse import coo_matrix
   from scipy.io import mmwrite
 
@@ -110,7 +110,7 @@ def save_matrix_petsc():
   n = max(max(row), max(col)) + 1
   A = coo_matrix((data, (row, col)), shape=(n, n))
   b = np.array(L.rhs0).reshape(-1, 1)
-  x = np.array(L.sol.getArray()).reshape(-1, 1)
+  x = np.array(x_sol).reshape(-1, 1)
 
   mmwrite("b.mtx", b)
   mmwrite("x.mtx", x)
@@ -138,9 +138,33 @@ def save_matrix_mumps():
   mmwrite("A.mtx", A)
   print("Data saved mumps")
 
+def vec_to_numpy_root(x):
+  x_local = x.getArray()
+  sizes = MPI.COMM_WORLD.allgather(len(x_local))
+
+  if MPI.COMM_WORLD.Get_rank() == 0:
+    x_global = np.empty(sum(sizes))
+  else:
+    x_global = None
+
+  MPI.COMM_WORLD.Gatherv(
+    x_local,
+    (x_global, sizes) if MPI.COMM_WORLD.Get_rank() == 0 else None,
+    root=0
+  )
+  if MPI.COMM_WORLD.Get_rank() == 0:
+    return x_global
+  return None
+
 
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:
   print("Time to do calculation", tt)
-  # save_matrix_petsc()
-  # save_matrix_mumps()
+
+if isinstance(L, PETScKrylovSolver):
+  x_sol = vec_to_numpy_root(L.sol)
+  if RANK == 0:
+    save_matrix_petsc(x_sol)
+else:
+  if RANK == 0:
+    save_matrix_mumps()

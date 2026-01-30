@@ -19,6 +19,7 @@ using mtx = gko::matrix::Csr<ValueType, IndexType>;
 using vec = gko::matrix::Dense<ValueType>;
 using real_vec = gko::matrix::Dense<ValueType>;
 using mg = gko::solver::Multigrid;
+using pgm = gko::multigrid::Pgm<ValueType, IndexType>;
 
 double compute_residual(const std::shared_ptr<gko::Executor>& exec, const std::shared_ptr<mtx>& A, const std::shared_ptr<vec> b, const std::shared_ptr<vec> x)
 {
@@ -52,13 +53,15 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
             .on(exec);
 
     // Use incomplete factors to generate ILU preconditioner
-    auto preconditioner = gko::share(ilu_pre_factory->generate(par_ilu));
+    auto ilu_preconditioner = gko::share(ilu_pre_factory->generate(par_ilu));
 
     // #### jacobi
     auto jacobi_pre_factory = gko::preconditioner::Jacobi<ValueType, IndexType>::build().on(exec);
     auto jacobi_preconditioner = gko::share(jacobi_pre_factory->generate(A));
 
-    // #### jacobi
+
+
+    // #### Ic
     auto ic_pre_factory = gko::preconditioner::Ic<ValueType, IndexType>::build().on(exec);
     auto ic_pre_factory_precon = gko::share(ic_pre_factory->generate(A));
 
@@ -78,8 +81,9 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
     //using solver = gko::solver::Gmres<ValueType>; // Gmres, Cgs, Bicg
 
     std::shared_ptr<gko::LinOpFactory> solver_factory = Solver::build()
-        .with_criteria(residual_criteria, iteration_criteria)
-        //.with_generated_preconditioner(ic_pre_factory_precon)
+    .with_criteria(iteration_criteria, residual_criteria)
+    // .with_preconditioner(gko::preconditioner::Ic<>::build())
+        // .with_generated_preconditioner(ilu_preconditioner)
         .on(exec);
 
     // Generate preconditioned solver for a specific target system
@@ -100,75 +104,144 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
 
 }
 
-// void solve_system_multigrid(const std::shared_ptr<gko::Executor>& exec, const std::shared_ptr<mtx>& A, const std::shared_ptr<vec> &b, const std::shared_ptr<vec> &x, const IndexType max_levels) {
-//
-//     // Create multigrid factory
-//     std::shared_ptr<gko::LinOpFactory> multigrid_gen;
-//     multigrid_gen =
-//         mg::build()
-//             .with_mg_level(pgm::build().with_deterministic(true))
-//             .with_criteria(gko::stop::Iteration::build().with_max_iters(1u))
-//             .on(exec);
-//     const gko::remove_complex<ValueType> tolerance = 1e-8;
-//     auto solver_gen =
-//         cg::build()
-//             .with_criteria(gko::stop::Iteration::build().with_max_iters(100u),
-//                            gko::stop::ResidualNorm<ValueType>::build()
-//                                .with_baseline(gko::stop::mode::absolute)
-//                                .with_reduction_factor(tolerance))
-//             .with_preconditioner(multigrid_gen)
-//             .on(exec);
-//
-//
-//     auto mg_solver_factory = gko::solver::Multigrid::build()
-//         // Number of AMG levels (coarser → faster)
-//         .with_max_levels(10)
-//
-//         // Choose smoother: Jacobi is safest, ParILU is stronger
-//         .with_pre_smoother(gko::share(
-//             gko::preconditioner::Jacobi<ValueType, IndexType>::build().on(exec)
-//         ))
-//         .with_post_smoother(gko::share(
-//             gko::preconditioner::Jacobi<ValueType, IndexType>::build().on(exec)
-//         ))
-//
-//         // Coarse-level solver (often CG or direct LU)
-//         .with_coarsest_solver(gko::share(
-//             gko::solver::Cg<ValueType>::build().on(exec)
-//         ))
-//
-//         // // Coarsening (Ruge–Stüben)
-//         // .with_coarsening(
-//         //     gko::share(gko::multigrid::CoarseningOperator::build().on(exec))
-//         // )
-//
-//
-//         .with_criteria(
-//             //gko::stop::Iteration::build().with_max_iters(gko::size_type{1000}),
-//             gko::stop::ResidualNorm<ValueType>::build().with_reduction_factor(1e-8)
-//         )
-//
-//         .on(exec);
-//
-//     // Generate the multigrid hierarchy using A
-//     auto mg_solver = mg_solver_factory->generate(A);
-//
-//     // ###############################
-//     //    SOLVE Ax = b
-//     // ###############################
-//
-//     auto logger = gko::share(gko::log::Convergence<>::create());
-//     mg_solver->add_logger(logger);
-//
-//     exec->synchronize();
-//     auto time_start = std::chrono::steady_clock::now();
-//     mg_solver->apply(b, x);
-//     exec->synchronize();
-//     auto time_end = std::chrono::steady_clock::now();
-//     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start);
-//     std::cout << "Iterations: " << logger->get_num_iterations() << "\n";
-//     std::cout << "Time: " << duration.count() << " microseconds" << "\n";
-// }
+void solve_system_multigrid(const std::shared_ptr<gko::Executor>& exec, const std::shared_ptr<mtx>& A, const std::shared_ptr<vec> &b, const std::shared_ptr<vec> &x) {
+
+    auto ilu_preconditioner = gko::share(
+    gko::preconditioner::Ilu<gko::solver::LowerTrs<ValueType, IndexType>,
+                             gko::solver::UpperTrs<ValueType, IndexType>,
+                             false>::build()
+        .on(exec));
+
+    auto jacobi_preconditioner = gko::share(
+        gko::preconditioner::Jacobi<ValueType, IndexType>::build().on(exec));
+
+
+    // Smoother
+    auto smoother_gen = gko::share(
+        gko::solver::build_smoother(jacobi_preconditioner, 2u, static_cast<ValueType>(0.9)));
+
+
+
+    // Coarser
+    auto exact_tol_stop =
+        gko::share(gko::stop::ResidualNorm<ValueType>::build()
+                       .with_baseline(gko::stop::mode::rhs_norm)
+                       .with_reduction_factor(1e-14)
+                       .on(exec));
+    auto coarsening_iter_stop =
+     gko::share(gko::stop::Iteration::build().with_max_iters(50u).on(exec));
+    auto coarsest_gen = gko::share(gko::solver::Gmres<ValueType>::build()
+                                       .with_preconditioner(jacobi_preconditioner)
+                                       .with_criteria(coarsening_iter_stop, exact_tol_stop)
+                                       .on(exec));
+
+
+    // Here we put the customized options together and create the multigrid factory.
+    std::shared_ptr<gko::LinOpFactory> multigrid_gen;
+    multigrid_gen =
+        mg::build()
+            .with_max_levels(15u) // stop coarsening if multigrid levels reaches max_multigrid_levels
+            .with_min_coarse_rows(1000u) // stop coarsening if coarse_rows < min_coarse_rows
+            .with_pre_smoother(smoother_gen)
+            .with_post_uses_pre(true)
+            .with_mg_level(gko::share(pgm::build().with_deterministic(true).on(exec))) // Use Pgm as the MultigridLevel factory.
+            .with_coarsest_solver(coarsest_gen)
+            .with_default_initial_guess(gko::solver::initial_guess_mode::zero)
+            .with_criteria(gko::stop::Iteration::build().with_max_iters(1u))
+            .on(exec);
+
+
+    // Create solver factory
+    const gko::remove_complex<ValueType> tolerance = 1e-15;
+    auto tol_stop = gko::share(gko::stop::ResidualNorm<ValueType>::build()
+                               .with_baseline(gko::stop::mode::absolute)
+                               .with_reduction_factor(tolerance)
+                               .on(exec));
+
+    auto iter_stop =
+     gko::share(gko::stop::Iteration::build().with_max_iters(1000u).on(exec));
+    auto solver_gen = gko::solver::Gmres<ValueType>::build()
+                          .with_criteria(iter_stop, tol_stop)
+                          .with_preconditioner(multigrid_gen)
+                          .on(exec);
+
+
+
+    // Generate the multigrid hierarchy using A
+    auto mg_solver = solver_gen->generate(A);
+
+    // ###############################
+    //    SOLVE Ax = b
+    // ###############################
+
+    auto logger = gko::share(gko::log::Convergence<>::create());
+    mg_solver->add_logger(logger);
+
+    exec->synchronize();
+    auto time_start = std::chrono::steady_clock::now();
+    mg_solver->apply(b, x);
+    exec->synchronize();
+    auto time_end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start);
+    std::cout << "Iterations: " << logger->get_num_iterations() << "\n";
+    std::cout << "Time: " << duration.count() << " microseconds" << "\n";
+}
+
+
+
+void solve_system_multigrid_1(const std::shared_ptr<gko::Executor>& exec, const std::shared_ptr<mtx>& A, const std::shared_ptr<vec> &b, const std::shared_ptr<vec> &x) {
+
+    auto ic_gen = gko::share(
+    gko::preconditioner::Ic<gko::solver::LowerTrs<ValueType>>::build()
+        .with_factorization(gko::factorization::Ic<ValueType, int>::build())
+        .on(exec));
+    auto smoother_gen = gko::share(
+        gko::solver::build_smoother(ic_gen, 2u, static_cast<ValueType>(0.9)));
+
+
+    // Create multigrid factory
+    std::shared_ptr<gko::LinOpFactory> multigrid_gen =
+        mg::build()
+            .with_max_levels(20u)
+            .with_pre_smoother(smoother_gen)
+            .with_mg_level(pgm::build().with_deterministic(true))
+            .with_default_initial_guess(gko::solver::initial_guess_mode::zero)
+            .with_criteria(gko::stop::Iteration::build().with_max_iters(2u))
+            .on(exec);
+
+    const gko::remove_complex<ValueType> tolerance = 1e-8;
+
+    auto solver_gen =
+        gko::solver::Gmres<ValueType>::build()
+            .with_criteria(gko::stop::Iteration::build().with_max_iters(1000u),
+                           gko::stop::ResidualNorm<ValueType>::build()
+                               .with_baseline(gko::stop::mode::absolute)
+                               .with_reduction_factor(tolerance))
+            .with_preconditioner(multigrid_gen)
+            .on(exec);
+
+
+
+
+    // Generate the multigrid hierarchy using A
+    auto mg_solver = solver_gen->generate(A);
+
+    // ###############################
+    //    SOLVE Ax = b
+    // ###############################
+
+    auto logger = gko::share(gko::log::Convergence<>::create());
+    mg_solver->add_logger(logger);
+
+    exec->synchronize();
+    auto time_start = std::chrono::steady_clock::now();
+    mg_solver->apply(b, x);
+    exec->synchronize();
+    auto time_end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start);
+    std::cout << "Iterations: " << logger->get_num_iterations() << "\n";
+    std::cout << "Time: " << duration.count() << " microseconds" << "\n";
+}
 
 
 int main(int argc, char* argv[])
@@ -218,7 +291,7 @@ int main(int argc, char* argv[])
     auto b = gko::share(gko::read<vec>(std::ifstream(data_folder + "/b.mtx"), exec));
     auto x = gko::share(vec::create(exec, b->get_size()));
     x->fill(0.0);
-    auto mumps_x = gko::share(gko::read<vec>(std::ifstream(data_folder + "/x.mtx"), exec));
+    auto mumps_x = gko::share(gko::read<vec>(std::ifstream(data_folder + "/x_sol.mtx"), exec));
 
     // gko::write(std::cout, A);
 
@@ -241,8 +314,8 @@ int main(int argc, char* argv[])
         solve_system<gko::solver::Idr<ValueType> >(exec, A, b, x);
     else if (solver_name == "cg")
         solve_system<gko::solver::Cg<ValueType> >(exec, A, b, x);
-    // else if (solver_name == "multigrid")
-    //     solve_system_multigrid(exec, A, b, x, 10);
+    else if (solver_name == "multigrid")
+        solve_system_multigrid(exec, A, b, x);
     else
     {
         std::cerr << "Unknown solver name: " << solver_name << std::endl;

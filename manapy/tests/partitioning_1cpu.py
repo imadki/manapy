@@ -213,6 +213,7 @@ class LocalDomain1Cpu(LocalDomain):
       self.phy_faces = local_domain_struct.phy_faces
       self.phy_faces_name = local_domain_struct.phy_faces_name
       self.cell_loctoglob = local_domain_struct.cell_loctoglob
+      self.cell_tc = local_domain_struct.cell_tc
       self.node_loctoglob = local_domain_struct.node_loctoglob
       self.node_oldname = local_domain_struct.node_oldname
       self.halo_neighsub = local_domain_struct.halo_neighsub

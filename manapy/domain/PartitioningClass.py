@@ -70,6 +70,7 @@ class PartitioningUtils:
     c_res = manapy_c_api.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, dim)
 
     list_local_domains = LocalDomainStruct.new_local_domains(nb_parts)
+    counter, cell_tc = 0, np.zeros(len(part_vert), dtype=np.int32)
     for i in range(nb_parts):
       obj = list_local_domains[i]
 
@@ -98,6 +99,15 @@ class PartitioningUtils:
       obj.max_cell_halonid = c_res[i][k]; k+=1
       obj.dim = dim
       obj.float_precision = float_precision
+
+      # All ranks have cell_tc = array([], np.int32)
+      # Build tc for rank0
+      cell_tc[counter:counter + len(obj.cells)] = obj.cell_loctoglob[:]
+      counter += len(obj.cells)
+
+    # Like the old version, only rank 0 stores cell_tc
+    list_local_domains[0].cell_tc = cell_tc
+
 
     return list_local_domains
 
@@ -186,6 +196,7 @@ class Partitioning(PartitioningUtils):
     local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=np.float64)
     #local_domain.cell_loctoglob = np.zeros(shape=0, dtype=np.int32) # keep it shape=0
     local_domain.cell_loctoglob = np.arange(0, self.nb_cells, dtype=np.int32)
+    local_domain.cell_tc = np.arange(0, self.nb_cells, dtype=np.int32)
     local_domain.node_loctoglob = np.zeros(shape=1, dtype=np.int32)
 
     local_domain.phyid_recv = np.arange(self.nb_phy_faces, dtype=np.int32)
