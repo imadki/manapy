@@ -23,6 +23,7 @@ class LocalDomain:
     self.phy_faces = local_domain_struct.phy_faces
     self.phy_faces_name = local_domain_struct.phy_faces_name
     self.cell_loctoglob = local_domain_struct.cell_loctoglob
+    self.cell_tc = local_domain_struct.cell_tc
     self.node_loctoglob = local_domain_struct.node_loctoglob
     self.node_oldname = local_domain_struct.node_oldname
     self.halo_neighsub = local_domain_struct.halo_neighsub
@@ -624,8 +625,8 @@ class LocalDomain:
       cell_haloghostnid = np.zeros(shape=(0, 1), dtype=np.int32)
       cell_haloghostcenter = np.zeros(shape=(0, 1), dtype=self.float_precision)
       node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
-      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 3), dtype=self.float_precision) * -1 # !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
-      node_haloghostcenter_info = np.ones(shape=(0, 1, 3), dtype=np.int32) * -1
+      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 3), dtype=self.float_precision) * -1 # TODO !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
+      node_haloghostcenter_info = np.ones(shape=(self.nb_nodes, 1, 3), dtype=np.int32) * -1 # TODO
       node_haloghostfaceinfo = np.zeros(shape=(0, 1, 1), dtype=self.float_precision)
 
     else:

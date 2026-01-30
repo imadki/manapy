@@ -7,6 +7,8 @@ find_package(Ginkgo 1.11.0 REQUIRED PATHS ${GINKGO_INSTALL_FOLDER})
 
 add_executable(lu_solver lu_solver.cpp)
 add_executable(example_lu_solver 1.cpp)
+add_executable(ginkgo gonkgo/ginkgo.cpp)
 
 target_link_libraries(lu_solver Ginkgo::ginkgo)
 target_link_libraries(example_lu_solver Ginkgo::ginkgo)
+target_link_libraries(ginkgo Ginkgo::ginkgo)

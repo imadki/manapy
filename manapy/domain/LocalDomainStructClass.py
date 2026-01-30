@@ -24,6 +24,7 @@ class LocalDomainStruct:
     self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other partitions, all other tables that will use boundary faces must point to this table"
     self.phyid_recv_part_size = np.zeros(1, dtype=np.int32) # [boundary faces part, size]
     self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
+    self.cell_tc = np.zeros(1, dtype=np.int32) # Array stored only on rank0, its size = number of cells of global domain [rank0 loctoglob..., rank1 loctoglob..., rank2 loc.......]
 
     # Scalars
     self.max_cell_nodeid = 0
@@ -61,6 +62,7 @@ class LocalDomainStruct:
       f.create_dataset('phyid_recv', data=ld.phyid_recv)
       f.create_dataset('phyid_recv_part_size', data=ld.phyid_recv_part_size)
       f.create_dataset('phyid_send', data=ld.phyid_send)
+      f.create_dataset('cell_tc', data=ld.cell_tc)
       f.create_dataset('halo_halosext', data=ld.halo_halosext)
       f.create_dataset('halo_centvol', data=ld.halo_centvol)
       f.create_dataset('dim', data=ld.dim)
@@ -91,6 +93,7 @@ class LocalDomainStruct:
       local_domain.phyid_recv = f['phyid_recv'][...]
       local_domain.phyid_recv_part_size = f['phyid_recv_part_size'][...]
       local_domain.phyid_send = f['phyid_send'][...]
+      local_domain.cell_tc = f['cell_tc'][...]
       local_domain.halo_halosext = f['halo_halosext'][...]
       local_domain.halo_centvol = f['halo_centvol'][...]
       local_domain.dim = f['dim'][()]

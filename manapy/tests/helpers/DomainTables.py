@@ -6,9 +6,12 @@ def create_partitions(nb_partitions, mesh_name, float_precision, dim):
   root_file = os.path.dirname(os.path.realpath(__file__))
   mesh_file_path = os.path.join(root_file, '..', 'meshes', mesh_name)
   script_path = os.path.join(root_file, 'create_partitions_mpi_worker.py')
+  # choose cmd depending on the MPI version
   cmd = ["mpirun", "--allow-run-as-root", "--use-hwthread-cpus", "-n", str(nb_partitions), "--oversubscribe", "python3", script_path, mesh_file_path, float_precision, str(dim)]
 
+  cmd = ["mpirun", "-n", str(nb_partitions), "python3", script_path, mesh_file_path, float_precision, str(dim)]
   result = subprocess.run(cmd, env=os.environ.copy(), stderr=subprocess.PIPE)
+
   if result.returncode != 0:
     print(result.__str__(), os.getcwd())
     raise SystemExit(result.returncode)
@@ -39,6 +42,8 @@ class DomainTables:
     "d_node_ghostid",
     "d_node_haloghostid",
     "d_node_ghostcenter",
+    "d_node_ghostcenter_info",
+    "d_node_haloghostcenter_info",
     "d_node_haloghostcenter",
     "d_node_ghostfaceinfo",
     "d_node_haloghostfaceinfo",

@@ -3,7 +3,7 @@ from mpi4py import MPI
 import h5py
 import os
 import traceback
-from manapy.domain import Domain
+
 
 
 comm = MPI.COMM_WORLD
@@ -48,9 +48,9 @@ def save_tables(domain):
     f.create_dataset("d_node_ghostid", data=domain.nodes.ghostid)
     f.create_dataset("d_node_haloghostid", data=domain.nodes.haloghostid)
     f.create_dataset("d_node_ghostcenter", data=domain.nodes.ghostcenter)
-    f.create_dataset("d_node_ghostcenter_info", data=domain.nodes.ghostcenter_info)
+    # f.create_dataset("d_node_ghostcenter_info", data=domain.nodes.ghostcenter_info)
     f.create_dataset("d_node_haloghostcenter", data=domain.nodes.haloghostcenter)
-    f.create_dataset("d_node_haloghostcenter_info", data=domain.nodes.haloghostcenter_info)
+    # f.create_dataset("d_node_haloghostcenter_info", data=domain.nodes.haloghostcenter_info)
     f.create_dataset("d_node_ghostfaceinfo", data=domain.nodes.ghostfaceinfo)
     f.create_dataset("d_node_haloghostfaceinfo", data=domain.nodes.haloghostfaceinfo)
     f.create_dataset("d_node_halonid", data=domain.nodes.halonid)
@@ -71,9 +71,21 @@ def save_tables(domain):
     f.create_dataset("d_node_periodicid", data=domain.nodes.periodicid)
 
 def create_partitions(mesh_file_path, float_precision, dim):
-  domain = Domain.create_domain(mesh_file_path, dim, recreate=True)
+  from manapy.partitions import MeshPartition
+  from manapy.base.base import Struct
+  from manapy.ddm import Domain
+
+  running_conf = Struct(backend="numba", signature=True, cache=True, float_precision=float_precision)
+  MeshPartition(mesh_file_path, dim=dim, conf=running_conf, periodic=[0,0,0])
+  domain = Domain(dim=dim, conf=running_conf)
 
   save_tables(domain)
+
+# def create_partitions(mesh_file_path, float_precision, dim):
+#   from manapy.domain import Domain
+#   domain = Domain.create_domain(mesh_file_path, dim, recreate=True)
+#
+#   save_tables(domain)
 
 try:
   if len(sys.argv) == 4:
