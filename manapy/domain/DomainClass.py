@@ -14,7 +14,6 @@ from manapy.backends.types import FLOAT_TYPE, INT_TYPE
 # TODO watch for FLOAT_TYPE AND INT_TYPE
 class Domain:
   def __init__(self, local_domain: 'LocalDomain'):
-
     # Init
     self.float_precision = local_domain.float_precision
     self.rank = local_domain.rank
@@ -63,7 +62,7 @@ class Domain:
     self.cells._volume = local_domain.cell_volume
     self.cells._nf = local_domain.cell_nf # dimension always 3D
     self.cells._loctoglob = local_domain.cell_loctoglob
-    self.cells._tc = None
+    self.cells._tc = local_domain.cell_tc
     self.cells._periodicfid = local_domain.cell_periodicfid
     self.cells._shift = local_domain.cell_shift
 
@@ -192,7 +191,17 @@ class Domain:
     self._typeOfCells = self._define_eltypes()
     self.bounds = self._bounds
 
-    # TODO
+    # TODO to remove (old domain behaviour)
+    self.old_node_ghostcenter()
+
+  def old_node_ghostcenter(self):
+    def combine(a, b):
+      res = np.zeros(shape=(a.shape[0], a.shape[1], a.shape[2] + b.shape[2]), dtype=a.dtype)
+      res[:, :, 0:a.shape[2]] = a
+      res[:, :, a.shape[2]:a.shape[2]+b.shape[2]] = b
+      return res
+    self.nodes._ghostcenter = combine(self.nodes.ghostcenter, self.nodes.ghostcenter_info)
+    self.nodes._haloghostcenter = combine(self.nodes.haloghostcenter, self.nodes.haloghostcenter_info)
 
   @staticmethod
   def _all_local_mesh_files_exist(size: int):

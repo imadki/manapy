@@ -20,7 +20,7 @@ g = DomainTables(nb_partitions=size, mesh_name=mesh_name, float_precision=FLOAT_
 
 class   Renderer:
   def __init__(self, name):
-    sc = 1
+    sc = 2
     self.root = tk.Tk()
     self.width = 1500 * sc
     self.height = 1000 * sc
