@@ -199,7 +199,7 @@ def face_gradient_2d(w_c:'float[:]', w_ghost:'float[:]', w_halo:'float[:]', w_no
 def centertovertex_2d(w_c:'float[:]', w_ghost:'float[:]', w_halo:'float[:]', w_haloghost:'float[:]',
                       centerc:'float[:,:]', centerh:'float[:,:]', cellid:'int32[:,:]', ghostid:'int32[:,:]', haloghostid:'int32[:,:]',
                       periodicid:'int32[:,:]',
-                      haloid:'int32[:,:]', vertexn:'float[:,:]', node_oldname, centergf:'float[:,:]', halocenterg:'float[:,:]',
+                      haloid:'int32[:,:]', vertexn:'float[:,:]', node_oldname:'int32[:]', centergf:'float[:,:]', halocenterg:'float[:,:]',
                       R_x:'float[:]', R_y:'float[:]', R_z:'float[:]', lambda_x:'float[:]',lambda_y:'float[:]', 
                       lambda_z:'float[:]', number:'uint32[:]', shift:'float[:,:]',  w_n:'float[:]'):
    

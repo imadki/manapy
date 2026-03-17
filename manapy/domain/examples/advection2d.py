@@ -2,9 +2,9 @@ from mpi4py import MPI
 import timeit
 from manapy.domain import Domain
 from manapy.tests.meshes import get_mesh
-from manapy.solvers.advec.tools_utils import initialisation_gaussian_2d
-from manapy.solvers.advec import AdvectionSolver
-from manapy.ast import Variable
+from manapy.sys_solvers.advec.tools_utils_compute import initialisation_gaussian_2d
+from manapy.sys_solvers.advec.system import AdvectionSolver
+from manapy.core.Variable import Variable
 from manapy.base.base import Struct
 
 COMM = MPI.COMM_WORLD

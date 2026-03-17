@@ -37,6 +37,8 @@ except:
 dim = 2
 # filename = "rectangle.msh"
 filename = "mid_rectangle.msh"
+# filename = "test_rectangle.msh  "
+# filename = "test_rect.msh"
 # filename = "bigger_rectangle.msh"
 
 # Petsc -> (0.126s, 0.498s, 54.07s)
@@ -124,16 +126,39 @@ def vec_to_numpy_root(x):
 #
 # domain.save_on_node_multi(0., 0., niter, miter, variables=["P"],values=[P.node])
        
+def deal_with_duplicate(row, col, data):
+  matrix = {}
+
+  for i in range(len(row)):
+    r = row[i]
+    c = col[i]
+    d = data[i]
+    t = (r, c)
+    if matrix.get(t) is None:
+      matrix[(r, c)] = d
+    else:
+      matrix[(r, c)] += d
+  row = []; col = []; data = []
+  for k, v in matrix.items():
+    row.append(k[0])
+    col.append(k[1])
+    data.append(v)
+  row = np.array(row)
+  col = np.array(col)
+  data = np.array(data)
+  return row, col, data
 
 def save_matrix_petsc(x_sol):
   from scipy.sparse import coo_matrix
   from scipy.io import mmwrite
 
-
   # Sparse matrix (COO data you already have)
   row = np.array(L._row)
   col = np.array(L._col)
   data = np.array(L._data)
+
+  # remove duplicate
+  row, col, data = deal_with_duplicate(row, col, data)
 
 
   # Build sparse matrix

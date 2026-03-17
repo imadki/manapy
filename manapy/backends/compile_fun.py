@@ -21,6 +21,10 @@ def get_type(s: 'str'):
     base_type = numba.float32
   elif s.startswith("float"):
     base_type = numba.float64 if FLOAT_TYPE == "float64" else numba.float32
+  elif s.startswith("uint32"):
+    base_type = numba.uint32
+  elif s.startswith("uint64"):
+    base_type = numba.uint64
   elif s.startswith("int32"):
     base_type = numba.int32
   elif s.startswith("int64"):
@@ -53,7 +57,7 @@ def get_arg_types(func):
   return tuple(arg_types)
 
 
-def compile(func, backend="numba", parallel=False, skip_on_error=False):
+def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=False):
   # return func
   if backend == "python":
     return func
@@ -80,7 +84,7 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False):
   # Compile and store hash
   if backend == "numba":
     # print("=>", func.__name__, "->", signature)
-    compiled_func = numba.jit(signature, nopython=True, fastmath=False, cache=True, parallel=parallel)(func)
+    compiled_func = numba.jit(signature, nopython=True, fastmath=False, cache=True, parallel=parallel, nogil=nogil)(func)
   elif backend == "cuda":
     compiled_func = cuda.jit(signature, fastmath=True, device=True)(func)
   else:
