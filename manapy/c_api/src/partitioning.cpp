@@ -37,8 +37,8 @@ static void create_halos(
      */
 
     //variables needed as read only
-    auto l_map_int_halos = ld[p].map_int_halos;
-    auto &vec_node_halos = ld[p].vec_node_halos;
+    const auto &l_map_int_halos = ld[p].map_int_halos;
+    const auto &vec_node_halos = ld[p].vec_node_halos;
     const int32_t nb_nodes = static_cast<int32_t>(ld[p].nodes->shape[0]);
 
     //write
@@ -49,7 +49,7 @@ static void create_halos(
     // halo_halosext, local_max_node_haloid, local_node_halos
     // #########################################################
     // The concept is that Halos of partition P is the Concatenation of Interiors of the neighbor parts that are connected to P
-    // Global Id of the Interiors of the other partition can't be duplicated
+    // Global Id of the Interiors of the other partitions can't be duplicated (a cell can't be shared with two paritions)
 
     //local
     std::vector<int32_t> vec_max(nb_nodes, 0);
@@ -70,7 +70,7 @@ static void create_halos(
     int32_t counter = 0;
     for (const auto &item: ld[p].map_int_halos) {
         const int32_t neighbor = item.first;
-        const auto &halos_int = ld[neighbor].map_int_halos[p];
+        const auto &halos_int = ld[neighbor].map_int_halos[p]; // interiors of the neighbor partition.
 
         for (const auto &halo: halos_int) {
             const int32_t g_id = ld[neighbor].cell_loctoglob->get(halo);
@@ -205,7 +205,7 @@ static void create_phy(
 
     for (int32_t i = 0; i < vec_phyids.size(); i++) {
         const int32_t item = vec_phyids[i];
-        map_phyids[item] = i;
+        map_phyids[item] = i; // assign local phyid
     }
 
     // Create the tables

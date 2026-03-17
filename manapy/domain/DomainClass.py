@@ -172,6 +172,7 @@ class Domain:
     self._periodicfrontnodes = local_domain.periodicfrontnodes
     self._periodicbacknodes = local_domain.periodicbacknodes
 
+    self.BCs = self._BCs
     self.innerfaces = self._innerfaces
     self.infaces = self._infaces
     self.outfaces = self._outfaces
@@ -188,6 +189,10 @@ class Domain:
     self.boundarynodes = self._boundarynodes
     self.periodicboundaryfaces = self._periodicboundaryfaces
     self.periodicboundarynodes = self._periodicboundarynodes
+    self.frontfaces = self._frontfaces
+    self.backfaces = self._backfaces
+    self.frontnodes = self._frontnodes
+    self.backnodes = self._backnodes
     self._typeOfCells = self._define_eltypes()
     self.bounds = self._bounds
 

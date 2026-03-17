@@ -79,9 +79,9 @@ ksp.setTolerances(
   max_it=10000
 )
 
-ksp.setType("gmres") # gmres, bcgs, qcg
+ksp.setType("bicg") # gmres, bcgs, qcg
 pc = ksp.getPC()
-pc.setType("gamg") # jacobi, ilu, gamg, hypre
+pc.setType("ilu") # jacobi, ilu, gamg, hypre
 
 ksp.setFromOptions()
 

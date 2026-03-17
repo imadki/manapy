@@ -46,7 +46,7 @@ void LocalDomainStruct::create_tuple() {
 
 // private
 void LocalDomainStruct::free_tables() {
-    // all these tables are created using this->_create_tables
+    // all these tables are created using new PyArray
     delete this->nodes; this->nodes = nullptr;
     delete this->cells; this->cells = nullptr;
     delete this->cells_type; this->cells_type = nullptr;
@@ -64,4 +64,5 @@ void LocalDomainStruct::free_tables() {
     delete this->halo_halosext; this->halo_halosext = nullptr;
     delete this->halo_halosint; this->halo_halosint = nullptr;
     delete this->halo_centvol; this->halo_centvol = nullptr;
+
 }
