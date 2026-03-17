@@ -529,7 +529,7 @@ def _get_bf_recv_part_info(phyid_recv_part_size: 'int32[:]', rank: 'int32', part
 def _create_bf_cellid(phy_faces: 'int32[:, :]', phyid_recv: 'int32[:]', node_cellid: 'int32[:, :]',
                       phyid_to_faceid: 'int32[:]', cell_faceid: 'int32[:, :]', intersect: 'int32[:]', start: 'int32',
                       end: 'int32', bf_cellid: 'int32[:, :]'):
-  #! Here a boundary cell is cell that is connected to a physical face.
+  #! Here a boundary cell is a cell that is connected to a physical face.
   #! It is different from a boundary cell that has a node that has at least one neighbor physical face.
   counter = 0
   for i in range(start, end):
@@ -772,6 +772,7 @@ def _count_max_bcell_halophyid(cells: 'int32[:, :]', b_ncellid: 'int32[:]', node
 
 def _create_bcell_halophyid(cells: 'int32[:, :]', b_ncellid: 'int32[:]', node_halophyid: 'int32[:, :]',
                            i_visited: 'int32[:]', bcell_halophyid: 'int32[:, :]'):
+  # bcell_halophyid = [cellglobal_id, physical_face_id, ..., nb_physical_face]
   for i in range(b_ncellid.shape[0]):
     bc = b_ncellid[i]
     cell = cells[bc]
@@ -814,6 +815,7 @@ def _create_b_ncellid(b_nodeid: 'int32[:]', node_cellid: 'int32[:, :]', b_visite
 
 def _create_ghost_new_index(ghost_part_size: 'int32[:]', ghost_new_index: 'int32[:]'):
   # all ghost_new_index[:] = -1
+  # [0, 1, 2, ... start-1, -1, -1, -1, ... start, ...]
   start = ghost_part_size[0]
   end = start + ghost_part_size[1]
   cmp = 0

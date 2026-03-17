@@ -582,9 +582,10 @@ class LocalDomain:
     # ------------------------------------------------------------------
     i = 0
     while i < len(phyid_send):
-      dest_part = phyid_send[i]
-      start = i + 2
-      end = start + phyid_send[i + 1]
+      dest_part = phyid_send[i] # 0
+      size = phyid_send[i + 1] # 1
+      start = i + 2 # 2 ... 2 + size
+      end = start + size
       data_indices = phyid_send[start:end]
       data = ghost_info_table[data_indices]
       req = comm.Isend([data, self.mpi_float_precision], dest=dest_part, tag=0)

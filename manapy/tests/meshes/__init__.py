@@ -5,7 +5,7 @@ def get_mesh(name: 'int || str'):
     (2, 'rectangles.msh'),#0
     (2, 'triangles.msh'),#1
     (2, 'hybrid.msh'),#2
-    (2, 'carre.msh'),#3
+    (2, 'carre2.msh'),#3
     (3, 'cube.msh'),#4
     (3, 'tetrahedron.msh'),#5
     # gmsh ./meshes/tetra_test_2.geo -3 -setnumber Nx 100 -setnumber Ny 100 -setnumber Nz 100  -o ./meshes/big/tetra_test_100.msh > /dev/null

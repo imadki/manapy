@@ -80,7 +80,7 @@ void solve_system(const std::shared_ptr<gko::Executor>& exec, const std::shared_
 
     std::shared_ptr<gko::LinOpFactory> solver_factory = Solver::build()
     .with_criteria(iteration_criteria, residual_criteria)
-    .with_generated_preconditioner(ilu_preconditioner)
+    .with_generated_preconditioner(jacobi_preconditioner)
     .on(exec);
 
 

@@ -5,7 +5,7 @@ from manapy.backends.cpu.local import stack_empty_impl
 from importlib.machinery import ExtensionFileLoader
 import sys
 import importlib
-
+from manapy.backends import compile_fun
 
 import inspect
 
@@ -67,7 +67,8 @@ class CPUBackend(Backend):
                 nb.config.THREADING_LAYER = multithread
     
     def compile(self, func, signature=False, forcedbackend=None, outer=False):
-        return func
+        # return compile_fun.compile(func)
+        # return func
         backend = self.backend
         if forcedbackend is not None:
             backend = forcedbackend
