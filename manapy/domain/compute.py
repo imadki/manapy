@@ -772,7 +772,7 @@ def _count_max_bcell_halophyid(cells: 'int32[:, :]', b_ncellid: 'int32[:]', node
 
 def _create_bcell_halophyid(cells: 'int32[:, :]', b_ncellid: 'int32[:]', node_halophyid: 'int32[:, :]',
                            i_visited: 'int32[:]', bcell_halophyid: 'int32[:, :]'):
-  # bcell_halophyid = [cellglobal_id, physical_face_id, ..., nb_physical_face]
+  # bcell_halophyid = [[cellglobal_id, physical_face_id, ..., nb_physical_face] ...]
   for i in range(b_ncellid.shape[0]):
     bc = b_ncellid[i]
     cell = cells[bc]

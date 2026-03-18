@@ -156,121 +156,123 @@ static void create_halos(
 static void create_phy(
     LocalDomainStruct *ld,
     const int32_t p,
-    PyArray<int32_t, 2> *node_phyid,
-    PyArray<int32_t, 1> *phy_faces_name,
-    PyArray<int32_t, 2> *phy_faces,
-    const std::vector<int32_t> &part_phyid,
+    const PyArray<int32_t, 1> *phy_faces_name,
+    const PyArray<int32_t, 2> *phy_faces,
     const std::vector<int32_t> &vec_node_oldname,
     const std::vector<std::map<int32_t, int32_t> > &vec_map_nodes
     ) {
 
     /*
      * RETURN: (description at LocalDomainStruct.h)
+     * ld[x].phyid_neighbor
      * ld[x].phyid_recv
-     * ld[x].phyid_recv_part_size
-     * ld[x].node_oldname
+     * ld[x].phyid_send
      * ld[x].node_halophyid
+     * ld[x].node_oldname
      * ld[x].phy_faces
      * ld[x].phy_faces_name
      */
 
     //read only variables
-    auto &l_set_phyids = ld[p].set_phyids;
-    auto &l_map_phy_faces = ld[p].map_phy_faces;
-    const int32_t nb_halo_phyid_neighsub = (int32_t)ld[p].set_halo_phyid_neighsub.size();
-    const int32_t max_node_halophyid = ld[p].max_node_halophyid;
-    const int32_t max_phy_face_nodeid = ld[p].max_phy_face_nodeid;
-    auto l_node_loctoglob = ld[p].node_loctoglob;
-    const int32_t l_nb_nodes = (int32_t)l_node_loctoglob->shape[0];
+    // Description in the header file
+    const auto &l_map_phy_faces = ld[p].map_phyid;
+    const auto max_phy_face_nodeid = ld[p].max_phy_face_nodeid;
+    const auto l_node_loctoglob = ld[p].node_loctoglob;
+    const auto l_nb_nodes = static_cast<int32_t>(l_node_loctoglob->shape[0]);
+    const auto &l_map_phyid_recv = ld[p].map_phyid_recv;
+    const auto &l_map_node_halophyid = ld[p].map_node_halophyid;
+
+    /// Write variables
+    std::map<int32_t, int32_t> map_halophyid; ///< Map halophyid to its location inside phyid_recv
 
     // #########################################################
-    // phyid_recv => [phyid of p_a, ..., phyid of p_b, ...]
-    // phyid_recv_part_size => [partition Id, size, ...]
+    // phyid_neighbor phyid_recv phyid_send node_halophyid
     // #########################################################
 
-    ld[p].vec_phyids = std::vector<int32_t>(l_set_phyids.size());
-    ld[p].map_phyids = std::map<int32_t, int32_t>();
-    auto &vec_phyids = ld[p].vec_phyids;
-    auto &map_phyids = ld[p].map_phyids;
+    // Assumption: The neighbors to send are equal to those to receive.
+    int32_t neighbor_size = 0;
+    int32_t recv_size = 0;
+    int32_t send_size = 0;
+    int32_t node_halophyid_size = 0;
 
-    int32_t vec_phyids_counter = 0;
-    for (const auto item : l_set_phyids) {
-        vec_phyids[vec_phyids_counter] = item;
-        vec_phyids_counter += 1;
+    //*** Compute sizes for phyid_neighbor phyid_recv phyid_send node_halophyid
+    for (const auto &[neighbor_part_id, set_halophyid]: l_map_phyid_recv) {
+        recv_size += static_cast<int32_t>(set_halophyid.size());
+        send_size += static_cast<int32_t>(ld[neighbor_part_id].map_phyid_recv[p].size());
+        neighbor_size++;
     }
-    // Sort vec_phyids by comparing part_phyid[phyid]
-    std::sort(vec_phyids.begin(), vec_phyids.end(),[&part_phyid](const int a, const int b) {
-        return part_phyid[a] < part_phyid[b];
-    });
-
-    for (int32_t i = 0; i < vec_phyids.size(); i++) {
-        const int32_t item = vec_phyids[i];
-        map_phyids[item] = i; // assign local phyid
+    for (const auto& [node_id, set_node_halophyid] : l_map_node_halophyid) {
+        node_halophyid_size += static_cast <int32_t>(set_node_halophyid.size()) + 2; // 1 for node, 1 for size
     }
+    //*** End Compute sizes
 
-    // Create the tables
-    ld[p].phyid_recv = new PyArray<int32_t, 1>(make_npy_dims(vec_phyids.size()));
-    ld[p].phyid_recv_part_size = new PyArray<int32_t, 1>(make_npy_dims(nb_halo_phyid_neighsub * 2 + 2));
-    auto l_phyid_recv = ld[p].phyid_recv;
-    auto l_phyid_recv_part_size = ld[p].phyid_recv_part_size;
+    //*** Allocate
+    // Description in the header file
+    auto *py_phyid_neighbor = new PyArray<int32_t, 2>(make_npy_dims(neighbor_size, 3));
+    auto *py_phyid_recv = new PyArray<int32_t, 1>(make_npy_dims(recv_size));
+    auto *py_phyid_send = new PyArray<int32_t, 1>(make_npy_dims(send_size));
+    auto *py_node_halophyid = new PyArray<int32_t, 1>(make_npy_dims(node_halophyid_size));
+    ld[p].phyid_neighbor = py_phyid_neighbor;
+    ld[p].phyid_recv = py_phyid_recv;
+    ld[p].phyid_send = py_phyid_send;
+    ld[p].node_halophyid = py_node_halophyid;
+    //*** End Allocate
 
-    int32_t old_part = -1;
-    int32_t counter = 0;
-    bool p_has_halo_phyid = false;
-    //*** start phyid_recv phyid_recv_part_size
-    for (int32_t i = 0; i < vec_phyids.size(); i++) {
-        const int32_t g_id = vec_phyids[i];
-        const int32_t part = part_phyid[g_id];
-        l_phyid_recv->get(i) = g_id;
-        if (p == part) {
-            p_has_halo_phyid = true;
-            l_phyid_recv->get(i) = l_map_phy_faces.at(g_id); // transform phyid to local for p == part
+    //*** start phyid_neighbor, phyid_recv, phyid_send
+    neighbor_size = 0;
+    recv_size = 0;
+    send_size = 0;
+    for (const auto& [neighbor_part_id, set_halophyid]: l_map_phyid_recv) {
+        //set_halophyid: Elements that will be received
+        //set_intphyid: Elements that will be sent
+        const auto &set_intphyid = ld[neighbor_part_id].map_phyid_recv[p];
+
+        // Create phyid_neighbor
+        py_phyid_neighbor->get2(neighbor_size, 0) = neighbor_part_id;
+        py_phyid_neighbor->get2(neighbor_size, 1) = static_cast<int32_t>(set_halophyid.size());
+        py_phyid_neighbor->get2(neighbor_size, 2) = static_cast<int32_t>(set_intphyid.size());
+
+        // Create phyid_recv
+        for (const int32_t halophyid: set_halophyid) {
+            py_phyid_recv->get(recv_size) = halophyid;
+            map_halophyid[halophyid] = recv_size;
+            recv_size++;
         }
-        if (old_part != part) {
-            l_phyid_recv_part_size->get(counter) = part;
-            l_phyid_recv_part_size->get(counter + 1) = 0;
-            old_part = part;
-            counter += 2;
+
+        // Create phyid_send
+        for (const int32_t intphyid: set_intphyid) {
+            py_phyid_send->get(send_size) = l_map_phy_faces.at(intphyid);
+            send_size++;
         }
-        l_phyid_recv_part_size->get(counter - 1) += 1;
     }
-    if (!p_has_halo_phyid) {
-        l_phyid_recv_part_size->get(counter) = p;
-        l_phyid_recv_part_size->get(counter + 1) = 0;
+    //*** end phyid_neighbor, phyid_recv, phyid_send
+
+    //*** start node_halophyid
+    node_halophyid_size = 0;
+    for (const auto& [node_id, set_node_halophyid] : l_map_node_halophyid) {
+        py_node_halophyid->get(node_halophyid_size) = vec_map_nodes[node_id].at(p);
+        node_halophyid_size++;
+        for (const int32_t halophyid: set_node_halophyid) {
+            py_node_halophyid->get(node_halophyid_size) = map_halophyid[halophyid];
+            node_halophyid_size++;
+        }
+        py_node_halophyid->get(node_halophyid_size) = static_cast<int32_t>(set_node_halophyid.size());
+        node_halophyid_size++;
     }
-    //*** end phyid_recv phyid_recv_part_size
-
-
+    //*** end node_halophyid
 
     // #########################################################
     // l_node_oldname, l_node_halophyid
     // #########################################################
 
     ld[p].node_oldname = new PyArray<int32_t, 1>(make_npy_dims(l_nb_nodes));
-    ld[p].node_halophyid = new PyArray<int32_t, 2>(make_npy_dims(l_nb_nodes, max_node_halophyid + 1));
     auto l_node_oldname = ld[p].node_oldname;
-    auto l_node_halophyid = ld[p].node_halophyid;
 
     for (int32_t l_id = 0; l_id < l_nb_nodes; l_id++) {
         const int32_t g_id = l_node_loctoglob->get(l_id);
 
         //*** node_oldname
         l_node_oldname->get(l_id) = vec_node_oldname[g_id];
-
-        //*** start node_halophyid
-        const auto sub_node_phyid = node_phyid->sub_array(g_id);
-        auto sub_l_node_halophyid = l_node_halophyid->sub_array(l_id);
-        int32_t node_halophyid_counter = 0;
-        for (int32_t j = 0; j < sub_node_phyid.last(); j++) {
-            const int32_t neighbor_phyid = sub_node_phyid.get(j);
-            const int32_t neighbor_part = part_phyid[neighbor_phyid];
-            if (p != neighbor_part) {
-                sub_l_node_halophyid.get(node_halophyid_counter) = map_phyids.at(neighbor_phyid);
-                node_halophyid_counter++;
-            }
-        }
-        sub_l_node_halophyid.last() = node_halophyid_counter;
-        //*** end node_halophyid
     }
 
 
@@ -302,49 +304,6 @@ static void create_phy(
     }
 }
 
-static void create_phyid_send(LocalDomainStruct *ld, const int32_t nb_parts) {
-    /*
-     * RETURN: (description at LocalDomainStruct.h)
-     * ld[x].phyid_send
-     */
-
-    // For each partition X, store a vector that contains:
-    // [PartitionY1, SizeY1, PartitionY2, SizeY2, ...]
-    // i.e. for every other partition Y, we store its ID and the size of
-    // the elements that partition X will receive from that partition.
-    std::vector<std::vector<int32_t>> vec_list_phyid_send(nb_parts);
-
-    for (int32_t p = 0; p < nb_parts; p++) {
-        auto &vec_phyids = ld[p].vec_phyids;
-        auto phyid_recv_part_size = ld[p].phyid_recv_part_size;
-        int32_t counter = 0;
-
-        for (int32_t i = 0; i < phyid_recv_part_size->shape[0]; i += 2) {
-            const int32_t part = phyid_recv_part_size->get(i);
-            const int32_t size = phyid_recv_part_size->get(i + 1);
-            if (part != p) {
-                auto &list_phyid_send = vec_list_phyid_send[part];
-                auto &map_phyids = ld[part].map_phyids;
-                list_phyid_send.push_back(p);
-                list_phyid_send.push_back(size);
-                for (int32_t j = 0; j < size; j++) {
-                    const int32_t phy_id = vec_phyids[counter + j];
-                    const int32_t index = map_phyids[phy_id];
-                    list_phyid_send.push_back(index);
-                }
-            }
-            counter += size;
-        }
-    }
-
-    for (int32_t p = 0; p < nb_parts; p++) {
-        auto &list_phyid_send = vec_list_phyid_send[p];
-        ld[p].phyid_send = new PyArray<int32_t, 1>(make_npy_dims(list_phyid_send.size()));
-        for (int32_t i = 0; i < list_phyid_send.size(); i++) {
-            ld[p].phyid_send->get(i) = list_phyid_send[i];
-        }
-    }
-}
 
 static void loop_through_nodes(
     LocalDomainStruct *ld,
@@ -509,7 +468,7 @@ static void loop_through_physical_faces(
             ld[p].max_phy_face_nodeid = std::max(size, ld[p].max_phy_face_nodeid);
 
             //*** local_max_phy_face_nodeid
-            auto &tmp_map = ld[p].map_phy_faces;
+            auto &tmp_map = ld[p].map_phyid;
             tmp_map[i] = (int32_t)tmp_map.size();
 
             //*** part_phyid
@@ -660,29 +619,25 @@ const int32_t nb_parts
                 }
             }
 
-            //*** start max_node_halophyid, set_phyid, set_halo_phyid_neighsub
-            int32_t nb_node_halophyid = 0;
+            //*** start map_phyid_recv, map_node_halophyid
             auto sub_node_phyid = node_phyid->sub_array(nodeid);
             for (int32_t k = 0; k < sub_node_phyid.last(); k++) {
                 const int32_t phy_id = sub_node_phyid.get(k);
                 const int32_t phy_id_part = part_phyid[phy_id];
-                if (ld[part].set_phyids.count(phy_id) == 0) {
-                    ld[part].set_phyids.insert(phy_id);
-                }
+
+                // This is deliberately placed inside loop_through_cells and not loop_through_nodes because a node can belong to two subdomains, and part_phyid is initialized after loop_through_nodes.
+                // It is ok to use map and set here the access is rare, does not affect performance.
                 if (part != phy_id_part) {
-                    nb_node_halophyid += 1;
-                    ld[part].set_halo_phyid_neighsub.insert(phy_id_part);
+                    ld[part].map_phyid_recv[phy_id_part].insert(phy_id);
+                    ld[part].map_node_halophyid[nodeid].insert(phy_id);
                 }
             }
-            ld[part].max_node_halophyid = std::max(nb_node_halophyid, ld[part].max_node_halophyid);
-            //*** End max_node_halophyid, set_phyid, set_halo_phyid_neighsub
+            //*** End map_phyid_recv, map_node_halophyid
         }
         sub_l_cells.last() = sub_cells.last();
 
-        //*** assign local_max_cell_halonid
+        //*** assign max_cell_halonid
         ld[part].max_cell_halonid = std::max(ld[part].max_cell_halonid, nb_cell_halonid);
-
-
 
         local_nb_cells[part]++;
     }
@@ -724,7 +679,7 @@ PyObject *create_sub_domains(
     std::vector<bool> node_is_boundary(nodes->shape[0], false); // for every g_node assign True if g_node has neighboring cells form different parts.
     std::vector<std::map<int32_t, int32_t> > vec_map_nodes(nodes->shape[0]); // for every g_node store local id of a specific partition
     std::vector<int32_t> vec_cell_to_halo(cells->shape[0], -1); // cells to haloext_id used by `create_halos` for `ld[p].node_halos`
-
+    
     //part1
     DEBUG_TIME_IT("");
     loop_through_nodes(ld, part_vert, node_cellid, nodes, node_is_boundary, vec_map_nodes, nb_parts);
@@ -735,10 +690,9 @@ PyObject *create_sub_domains(
     DEBUG_TIME_IT("");
     for (int32_t p = 0; p < nb_parts; p++) {
         create_halos(ld, cells, nodes, vec_cell_to_halo, p, dim);
-        create_phy(ld, p, node_phyid, phy_faces_name, phy_faces, part_phyid, vec_node_oldname, vec_map_nodes);
+        create_phy(ld, p, phy_faces_name, phy_faces, vec_node_oldname, vec_map_nodes);
     }
-    create_phyid_send(ld, nb_parts);
-    DEBUG_TIME_IT("create_halos, create_phy, create_phyid_send");
+    DEBUG_TIME_IT("create_halos, create_phy");
 
     return get_result_as_py_list(ld, nb_parts);
 }
