@@ -85,13 +85,13 @@ class PartitioningUtils:
       obj.node_oldname = c_res[i][k]; k+=1
       obj.halo_neighsub = c_res[i][k]; k+=1
       obj.node_halos = c_res[i][k]; k+=1
-      obj.node_halophyid = c_res[i][k]; k+=1
-      obj.phyid_recv = c_res[i][k]; k+=1
-      obj.phyid_recv_part_size = c_res[i][k]; k+=1
-      obj.phyid_send = c_res[i][k]; k+=1
       obj.halo_halosext = c_res[i][k]; k+=1
       obj.halo_halosint = c_res[i][k]; k+=1
       obj.halo_centvol = c_res[i][k]; k+=1
+      obj.phyid_neighbor = c_res[i][k]; k+=1
+      obj.phyid_recv = c_res[i][k]; k+=1
+      obj.phyid_send = c_res[i][k]; k+=1
+      obj.node_halophyid = c_res[i][k]; k+=1
       obj.max_cell_nodeid = c_res[i][k]; k+=1
       obj.max_cell_faceid = c_res[i][k]; k+=1
       obj.max_face_nodeid = c_res[i][k]; k+=1
