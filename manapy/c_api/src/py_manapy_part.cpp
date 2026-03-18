@@ -606,7 +606,7 @@ list[tuple]
     The *p*-th element (``parts[p]``) is a **17-item tuple** containing
     every array that belongs to partition *p*, in the exact order below:
 
-    0. **nodes**               – float32|float64 ``(n_nodes_p, ndim)``
+    0. **nodes**               – fdx_t ``(n_nodes_p, ndim)``
     1. **cells**               – int32 ``(n_cells_p, max_nodes_per_cell)``
     2. **cells_type**          – int8  ``(n_cells_p,)``
     3. **phy_faces**           – int32 ``(n_phy_faces_p, max_nodes_per_face)``
@@ -616,13 +616,13 @@ list[tuple]
     7. **node_oldname**        – int32 ``(n_nodes_p,)``
     8. **halo_neighsub**       – int32 ``(2, n_neigh_parts_p)``
     9. **node_halos**          – int32 ``(2 * n_ext_halo_nodes_p,)``
-   10. **node_halophyid**      – int32 ``(n_nodes_p, max_node_halobf + 1)``
    11. **halo_halosext**       – int32 ``(n_halos_p, max_cell_nodeid + 2)``
    12. **halo_halosint**       – int32 ``(n_halos_int_p,)``
-   13. **halo_centvol**        – float32|float64 ``(n_halos_p, ndim + 1)``
-   14. **phyid_recv**          – int32 ``(n_recv_faces_p,)``
-   15. **phyid_recv_part_size**– int32 ``(2, n_neighbor_parts_p)``
-   16. **phyid_send**          – int32 ``(≥ 1,)``  (layout: ``[recv_part_id, size, …]``)
+   13. **halo_centvol**        – fdx_t ``(n_halos_p, ndim + 1)``
+   10. **phyid_neighbor**      – int32 ``[[Neighbor partition ID, nb_recv, nb_send] ...]``
+   14. **phyid_recv**          – int32 ``[PhyFaceGlobalId, ...]``
+   15. **phyid_send**          – int32 ``[PhyFaceLocalId], ...``
+   16. **node_halophyid**      – int32 ``[NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]``)
 
 Notes
 -----

@@ -83,13 +83,21 @@ struct LocalDomainStruct {
     // Phyid Communication
     // =========================================================================
 
-    /// @brief Links local nodes to exterior physical boundary conditions. shape=(nb_nodes, max_node_halophyid + 1) layout: [[LocalPhysicalId1, LocalPhysicalId2, ..., NbConnectedPhysicalId], ...]
-    /// @details LocalPhysicalId1 represent the localId of physical boundary conditions at the *neighbor* part as the index can't be mapped in *this* partition.
-    PyArray<int32_t, 2> *node_halophyid = nullptr;
 
-    PyArray<int32_t, 1> *phyid_recv = nullptr; // int32[:] [boundary faces global index, ...] description="store physical faces of this partition by its local index and for the other partitions by global index, all other tables that will use boundary faces must point to this table"
-    PyArray<int32_t, 1> *phyid_recv_part_size = nullptr; // int32[:] [boundary faces partId, size]
-    PyArray<int32_t, 1> *phyid_send = nullptr;  // int32[:] self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, `size` indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
+    /// @brief Store neighbor partition ID; number of phyids received from this neighbor; number of phyids sent from this part. [[Neighbor partition ID, nb_recv, nb_send] ...]
+    PyArray<int32_t, 2> *phyid_neighbor = nullptr;
+
+    /// @brief Exterior phyid by globalId (phyid receuved from neighbors), fallowing the same order of neighbors as in phyid_neighbor
+    PyArray<int32_t, 1> *phyid_recv = nullptr;
+
+    /// @brief These are local phyids inside *this* partition that need to be packaged and sent off to neighboring partitions to serve as *their* exterior phyids. Store phyids by it localId for every partition.
+    /// @details The order of neighbors matches that in `phyid_neighbor` [LocalPhyIdOfP0, ... LocalPhyIdOfPn]
+    PyArray<int32_t, 1> *phyid_send = nullptr;
+
+    /// @brief Links local nodes to exterior physical boundary conditions. layout: [NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]
+    /// @details IndexPointToPhyId_recv point to phyid_recv.
+    PyArray<int32_t, 1> *node_halophyid = nullptr;
+
     PyObject *tuple_res = nullptr;
 
     // =========================================================================
@@ -106,17 +114,13 @@ struct LocalDomainStruct {
 
     // =========================================================================
     // Temporary Construction Variables
-    // Used exclusively during the domain allocation phases; destroyed afterward.
     // =========================================================================
-    std::map<int, std::vector<int> > map_int_halos; ///< Neighbor partitionId => List of interior halos by local cellID
-    int max_node_halophyid = 0;                     ///< Max exterior physical IDs on a node
-    int max_phy_face_nodeid = 0;                    ///< Max nodes on a physical face
-    std::map<int, int> map_phy_faces;               ///< Global ID of phy_face => Local ID of phy_face
-    std::set<int> set_phyids;                       ///< Set of all global Ids of phyids required by this partition (local + exterior)
-    std::set<int> set_halo_phyid_neighsub;          ///< Set of partition IDs corresponding to exterior phyids
-    std::vector<int32_t> vec_phyids;                ///< Sorted version of `set_phyids` by partitionId of the physical face
-    std::map<int32_t, int32_t> map_phyids;          ///< Global phyid => Index inside `vec_phyids`
+    std::map<int32_t, std::vector<int32_t> > map_int_halos; ///< Neighbor partitionId => List of interior halos by local cellID
     std::vector<int32_t> vec_node_halos;            ///< Vector equivalent to `node_halos` storing global cell IDs directly (LocalNodeID, GlobalCellId)
+    int32_t max_phy_face_nodeid = 0;                    ///< Max nodes on any physical face
+    std::map<int32_t, int32_t> map_phyid;               ///< Global ID of phy_face => Local ID of phy_face
+    std::map<int32_t, std::set<int32_t> > map_phyid_recv; ///< PartitionId => Set(global id of exterior phyids)
+    std::map<int32_t, std::set<int32_t> > map_node_halophyid; ///< GlobalNodeId => Set(global id of exterior phyids)
 
 
 

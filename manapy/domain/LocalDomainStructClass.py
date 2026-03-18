@@ -12,18 +12,22 @@ class LocalDomainStruct:
     self.cells_type = np.zeros(1, dtype=np.int8) # [cell type]
     self.phy_faces = np.zeros((1, 1), dtype=np.int32) # [[physical face nodes]]
     self.phy_faces_name = np.zeros(1, dtype=np.int32) # [physical face name]
+
     self.cell_loctoglob = np.zeros(1, dtype=np.int32) # [cell global index]
     self.node_loctoglob = np.zeros(1, dtype=np.int32) # [node global index]
     self.node_oldname = np.zeros(1, dtype=np.int32) # [node old name, ...]
+
     self.halo_neighsub = np.zeros((1, 1), dtype=np.int32) # [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
     self.node_halos = np.zeros(1, dtype=np.int32) # int32[:] [NodiId, haloId, ...] shape=(2 * nb_halos) couple (NodeId, haloId) for each exthalo, HaloId is an index point to halo_halosext, nodeId is the local nodeId.
-    self.node_halophyid = np.zeros((1, 1), dtype=np.int32) # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
     self.halo_halosext = np.zeros((1, 1), dtype=np.int32) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2) Halos of a partition P is the Concatenation of Interiors of the neighbor parts that are connected to P.
     self.halo_halosint = np.zeros(1, dtype=np.int32) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
     self.halo_centvol = np.zeros((1, 1), dtype=np.float64)  # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
+
+    self.phyid_neighbor = np.zeros((1, 1), dtype=np.int32) # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
     self.phyid_recv = np.zeros(1, dtype=np.int32) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other partitions, all other tables that will use boundary faces must point to this table"
-    self.phyid_recv_part_size = np.zeros(1, dtype=np.int32) # [boundary faces part, size]
     self.phyid_send = np.zeros(1, dtype=np.int32) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
+    self.node_halophyid = np.zeros(1, dtype=np.int32)
+
     self.cell_tc = np.zeros(1, dtype=np.int32) # Array stored only on rank0, its size = number of cells of global domain [rank0 loctoglob..., rank1 loctoglob..., rank2 loc.......]
 
     # Scalars
