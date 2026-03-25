@@ -616,14 +616,18 @@ list[tuple]
     7. **node_oldname**        – int32 ``(n_nodes_p,)``
     8. **halo_neighsub**       – int32 ``(2, n_neigh_parts_p)``
     9. **node_halos**          – int32 ``(2 * n_ext_halo_nodes_p,)``
-   11. **halo_halosext**       – int32 ``(n_halos_p, max_cell_nodeid + 2)``
-   12. **halo_halosint**       – int32 ``(n_halos_int_p,)``
-   13. **halo_centvol**        – fdx_t ``(n_halos_p, ndim + 1)``
-   10. **phyid_neighbor**      – int32 ``[[Neighbor partition ID, nb_recv, nb_send] ...]``
+   10. **halo_halosext**       – int32 ``(n_halos_p, max_cell_nodeid + 2)``
+   11. **halo_halosint**       – int32 ``(n_halos_int_p,)``
+   12. **halo_centvol**        – fdx_t ``(n_halos_p, ndim + 1)``
+   13. **phyid_neighbor**      – int32 ``[[Neighbor partition ID, nb_recv, nb_send] ...]``
    14. **phyid_recv**          – int32 ``[PhyFaceGlobalId, ...]``
    15. **phyid_send**          – int32 ``[PhyFaceLocalId], ...``
    16. **node_halophyid**      – int32 ``[NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]``)
-
+   17. **cell_halophyid**      - int32[]
+   18. **max_node_phyid**
+   19. **max_node_halophyid**
+   18. **max_cell_phyid**
+   19. **max_cell_halophyid**
 Notes
 -----
 * All arrays are new NumPy objects; none of the inputs are modified.

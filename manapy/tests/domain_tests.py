@@ -82,7 +82,7 @@ mesh_list = [
   (3, 'tetrahedron_big.msh', None),
 ]
 root_file = os.getcwd()
-dim, mesh_name, test_function = mesh_list[0] # also modify dim variable accordingly
+dim, mesh_name, test_function = mesh_list[1] # also modify dim variable accordingly
 mesh_path = os.path.join(root_file, 'meshes', mesh_name) #tests/domain/primary/mesh
 
 def create_domain(nb_parts):
@@ -98,7 +98,7 @@ def create_domain(nb_parts):
 
 mpi_test = False
 if not mpi_test:
-  l_domains, domain_tables = create_domain(4)
+  l_domains, domain_tables = create_domain(12)
   g_domains, unified_domain = create_domain(1)
 else:
   domain_tables  = DomainTables(4, mesh_name, 'float32', dim, None)
