@@ -84,7 +84,7 @@ struct LocalDomainStruct {
     // =========================================================================
 
 
-    /// @brief Store neighbor partition ID; number of phyids received from this neighbor; number of phyids sent from this part. [[Neighbor partition ID, nb_recv, nb_send] ...]
+    /// @brief Store neighbor partition ID; number of phyids received from this neighbor; number of phyids sent from this part. [[Neighbor partition ID, nb_send, nb_recv] ...]
     PyArray<int32_t, 2> *phyid_neighbor = nullptr;
 
     /// @brief Exterior phyid by globalId (phyid receuved from neighbors), fallowing the same order of neighbors as in phyid_neighbor
@@ -98,6 +98,8 @@ struct LocalDomainStruct {
     /// @details IndexPointToPhyId_recv point to phyid_recv.
     PyArray<int32_t, 1> *node_halophyid = nullptr;
 
+    PyArray<int32_t, 1> *cell_halophyid = nullptr;
+
     PyObject *tuple_res = nullptr;
 
     // =========================================================================
@@ -109,7 +111,10 @@ struct LocalDomainStruct {
     int max_node_haloid = 0;       ///< Max neighbor halo cells connected across any single node
     int max_cell_halonid = 0;      ///< Max neighbor halo cells connected across any single cell
     int max_halo_cell_nodeid = 0;  ///< Max node count for any exterior halo cell
-
+    int max_node_phyid = 0;
+    int max_node_halophyid = 0;
+    int max_cell_phyid = 0;
+    int max_cell_halophyid = 0;
 
 
     // =========================================================================
@@ -121,6 +126,7 @@ struct LocalDomainStruct {
     std::map<int32_t, int32_t> map_phyid;               ///< Global ID of phy_face => Local ID of phy_face
     std::map<int32_t, std::set<int32_t> > map_phyid_recv; ///< PartitionId => Set(global id of exterior phyids)
     std::map<int32_t, std::set<int32_t> > map_node_halophyid; ///< GlobalNodeId => Set(global id of exterior phyids)
+    std::map<int32_t, std::set<int32_t> > map_cell_halophyid;
 
 
 

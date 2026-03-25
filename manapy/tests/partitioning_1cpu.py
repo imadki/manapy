@@ -206,6 +206,7 @@ class LocalDomain1Cpu(LocalDomain):
 
       self.rank = rank
       self.size = size
+      self.dim = local_domain_struct.dim
       self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
       self.nodes = local_domain_struct.nodes.astype(self.float_precision)
       self.cells = local_domain_struct.cells
@@ -218,19 +219,23 @@ class LocalDomain1Cpu(LocalDomain):
       self.node_oldname = local_domain_struct.node_oldname
       self.halo_neighsub = local_domain_struct.halo_neighsub
       self.halo_halosint = local_domain_struct.halo_halosint
-      self.node_halos = local_domain_struct.node_halos
-      self.node_halophyid = local_domain_struct.node_halophyid
-      self.phyid_recv = local_domain_struct.phyid_recv
-      self.phyid_recv_part_size = local_domain_struct.phyid_recv_part_size
-      self.phyid_send = local_domain_struct.phyid_send
       self.halo_halosext = local_domain_struct.halo_halosext
       self.halo_centvol = local_domain_struct.halo_centvol.astype(self.float_precision)
-      self.dim = local_domain_struct.dim
+      self.node_halos = local_domain_struct.node_halos
+      self.phyid_neighbor = local_domain_struct.phyid_neighbor
+      self.phyid_recv = local_domain_struct.phyid_recv
+      self.phyid_send = local_domain_struct.phyid_send
+      self.node_halophyid = local_domain_struct.node_halophyid
+      self.cell_halophyid = local_domain_struct.cell_halophyid
       self.max_cell_nodeid = local_domain_struct.max_cell_nodeid
       self.max_cell_faceid = local_domain_struct.max_cell_faceid
       self.max_face_nodeid = local_domain_struct.max_face_nodeid
       self.max_node_haloid = local_domain_struct.max_node_haloid
       self.max_cell_halonid = local_domain_struct.max_cell_halonid
+      self.max_node_phyid = local_domain_struct.max_node_phyid
+      self.max_node_halophyid = local_domain_struct.max_node_halophyid
+      self.max_cell_phyid = local_domain_struct.max_cell_phyid
+      self.max_cell_halophyid = local_domain_struct.max_cell_halophyid
       self.nb_nodes = np.int32(len(self.nodes))
       self.nb_cells = np.int32(len(self.cells))
       self.nb_phy_faces = np.int32(len(self.phy_faces))
@@ -238,6 +243,8 @@ class LocalDomain1Cpu(LocalDomain):
 
       self.start = time.time()
 
+
+      self.phy_faces_comm = None
       log_step.log("Prepare communication")
       (
         self.halo_scount,
@@ -305,26 +312,17 @@ class LocalDomain1Cpu(LocalDomain):
       log_step.out()
 
 
-      log_step.log("create_bf_cellid")
-      (
-        self.ghost_part_size,
-        self.bf_cellid
-      ) = self._create_bf_cellid(self.phy_faces, self.phyid_recv, self.phyid_recv_part_size, self.node_cellid,
-                                 self.phyid_to_faceid, self.cell_faceid, self.rank)
+      log_step.log("_create_shared_ghost_info")
+      (self.ghost_info_int, self.ghost_info_flt) = self._create_shared_ghost_info(self.cell_center, self.cell_faceid,
+                                                                                  self.cell_loctoglob,
+                                                                                  self.face_oldname, self.face_normal,
+                                                                                  self.face_center, self.face_measure,
+                                                                                  self.phyid_send, self.faces,
+                                                                                  self.nodes, self.phy_faces,
+                                                                                  self.node_cellid,
+                                                                                  self.phyid_to_faceid)
       log_step.out()
 
-      log_step.log("_create_shared_ghost_info")
-      (self.shared_ghost_info_int, self.shared_ghost_info_flt) = self._create_shared_ghost_info(self.bf_cellid,
-                                                                                                self.ghost_part_size,
-                                                                                                self.cell_center,
-                                                                                                self.cell_faceid,
-                                                                                                self.cell_loctoglob,
-                                                                                                self.face_oldname,
-                                                                                                self.face_normal,
-                                                                                                self.face_center,
-                                                                                                self.face_measure,
-                                                                                                len(self.phyid_recv))
-      log_step.out()
 
       log_step.log("_create_ghost_tables")
       (
@@ -334,15 +332,13 @@ class LocalDomain1Cpu(LocalDomain):
         self.node_ghostcenter_info,
         self.face_ghostcenter,
         self.node_ghostfaceinfo
-      ) = self._create_ghost_tables(self.shared_ghost_info_int, self.shared_ghost_info_flt, self.cells, self.faces,
-                                    self.cell_faceid, self.ghost_part_size)
+      ) = self._create_ghost_tables(self.ghost_info_int, self.ghost_info_flt, self.cells, self.faces, self.cell_faceid)
       log_step.out()
 
     # ------------------------------------------------------------------
     # Share
     # ------------------------------------------------------------------
     LocalDomain._local_share_ghost_info(local_domain_objs)
-
     # ------------------------------------------------------------------
     # Part 2
     # ------------------------------------------------------------------
@@ -358,9 +354,8 @@ class LocalDomain1Cpu(LocalDomain):
         self.node_haloghostcenter_info,
         self.node_haloghostfaceinfo,
         self.halo_sizehaloghost
-      ) = self._create_halo_ghost_tables(self.shared_ghost_info_int, self.shared_ghost_info_flt, self.cells,
-                                         self.node_cellid, self.node_halophyid, self.node_haloid, self.halo_halosext,
-                                         self.ghost_part_size, self.node_oldname)
+      ) = self._create_halo_ghost_tables(self.ext_ghost_info_flt, self.ext_ghost_info_int, self.node_halophyid,
+                                         self.cell_halophyid, self.node_haloid, self.halo_halosext)
       log_step.out()
 
       ## TODO the use of this tables !?

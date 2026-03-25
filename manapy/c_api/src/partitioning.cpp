@@ -168,9 +168,12 @@ static void create_phy(
      * ld[x].phyid_recv
      * ld[x].phyid_send
      * ld[x].node_halophyid
+     * ld[x].cell_halophyid
      * ld[x].node_oldname
      * ld[x].phy_faces
      * ld[x].phy_faces_name
+     * ld[x].max_cell_halophyid
+     * ld[x].max_node_halophyid
      */
 
     //read only variables
@@ -181,12 +184,13 @@ static void create_phy(
     const auto l_nb_nodes = static_cast<int32_t>(l_node_loctoglob->shape[0]);
     const auto &l_map_phyid_recv = ld[p].map_phyid_recv;
     const auto &l_map_node_halophyid = ld[p].map_node_halophyid;
+    const auto &l_map_cell_halophyid = ld[p].map_cell_halophyid;
 
     /// Write variables
     std::map<int32_t, int32_t> map_halophyid; ///< Map halophyid to its location inside phyid_recv
 
     // #########################################################
-    // phyid_neighbor phyid_recv phyid_send node_halophyid
+    // phyid_neighbor phyid_recv phyid_send node_halophyid cell_halophyid
     // #########################################################
 
     // Assumption: The neighbors to send are equal to those to receive.
@@ -194,6 +198,7 @@ static void create_phy(
     int32_t recv_size = 0;
     int32_t send_size = 0;
     int32_t node_halophyid_size = 0;
+    int32_t cell_halophyid_size = 0;
 
     //*** Compute sizes for phyid_neighbor phyid_recv phyid_send node_halophyid
     for (const auto &[neighbor_part_id, set_halophyid]: l_map_phyid_recv) {
@@ -201,8 +206,15 @@ static void create_phy(
         send_size += static_cast<int32_t>(ld[neighbor_part_id].map_phyid_recv[p].size());
         neighbor_size++;
     }
-    for (const auto& [node_id, set_node_halophyid] : l_map_node_halophyid) {
-        node_halophyid_size += static_cast <int32_t>(set_node_halophyid.size()) + 2; // 1 for node, 1 for size
+    for (const auto& [_, set_node_halophyid] : l_map_node_halophyid) {
+        const auto size = static_cast <int32_t>(set_node_halophyid.size());
+        ld[p].max_node_halophyid = std::max(ld[p].max_node_halophyid, size);
+        node_halophyid_size += size + 2; // 1 for node, 1 for size
+    }
+    for (const auto& [_, set_cell_halophyid] : l_map_cell_halophyid) {
+        const auto size = static_cast <int32_t>(set_cell_halophyid.size());
+        ld[p].max_cell_halophyid = std::max(ld[p].max_cell_halophyid, size);
+        cell_halophyid_size += size + 2; // 1 for cell, 1 for size
     }
     //*** End Compute sizes
 
@@ -212,29 +224,38 @@ static void create_phy(
     auto *py_phyid_recv = new PyArray<int32_t, 1>(make_npy_dims(recv_size));
     auto *py_phyid_send = new PyArray<int32_t, 1>(make_npy_dims(send_size));
     auto *py_node_halophyid = new PyArray<int32_t, 1>(make_npy_dims(node_halophyid_size));
+    auto *py_cell_halophyid = new PyArray<int32_t, 1>(make_npy_dims(cell_halophyid_size));
     ld[p].phyid_neighbor = py_phyid_neighbor;
     ld[p].phyid_recv = py_phyid_recv;
     ld[p].phyid_send = py_phyid_send;
     ld[p].node_halophyid = py_node_halophyid;
+    ld[p].cell_halophyid = py_cell_halophyid;
     //*** End Allocate
 
     //*** start phyid_neighbor, phyid_recv, phyid_send
     neighbor_size = 0;
     recv_size = 0;
     send_size = 0;
+
+    // the problem is: if a part does not receive from a neighbor anything, it will cause the neighbor to not be appended therefor not send anything.
     for (const auto& [neighbor_part_id, set_halophyid]: l_map_phyid_recv) {
         //set_halophyid: Elements that will be received
         //set_intphyid: Elements that will be sent
-        const auto &set_intphyid = ld[neighbor_part_id].map_phyid_recv[p];
+        const auto &set_intphyid = ld[neighbor_part_id].map_phyid_recv.at(p);
+
+        auto a = ld[p].map_phyid_recv.at(neighbor_part_id);
 
         // Create phyid_neighbor
         py_phyid_neighbor->get2(neighbor_size, 0) = neighbor_part_id;
-        py_phyid_neighbor->get2(neighbor_size, 1) = static_cast<int32_t>(set_halophyid.size());
-        py_phyid_neighbor->get2(neighbor_size, 2) = static_cast<int32_t>(set_intphyid.size());
+        py_phyid_neighbor->get2(neighbor_size, 1) = static_cast<int32_t>(set_intphyid.size());
+        py_phyid_neighbor->get2(neighbor_size, 2) = static_cast<int32_t>(set_halophyid.size());
+        neighbor_size++;
 
         // Create phyid_recv
         for (const int32_t halophyid: set_halophyid) {
             py_phyid_recv->get(recv_size) = halophyid;
+            //py_phyid_recv->get(recv_size) = ld[neighbor_part_id].map_phyid.at(halophyid);
+
             map_halophyid[halophyid] = recv_size;
             recv_size++;
         }
@@ -249,17 +270,31 @@ static void create_phy(
 
     //*** start node_halophyid
     node_halophyid_size = 0;
-    for (const auto& [node_id, set_node_halophyid] : l_map_node_halophyid) {
-        py_node_halophyid->get(node_halophyid_size) = vec_map_nodes[node_id].at(p);
+    for (const auto& [local_node_id, set_node_halophyid] : l_map_node_halophyid) {
+        py_node_halophyid->get(node_halophyid_size) = local_node_id;
         node_halophyid_size++;
-        for (const int32_t halophyid: set_node_halophyid) {
-            py_node_halophyid->get(node_halophyid_size) = map_halophyid[halophyid];
-            node_halophyid_size++;
-        }
         py_node_halophyid->get(node_halophyid_size) = static_cast<int32_t>(set_node_halophyid.size());
         node_halophyid_size++;
+        for (const int32_t halophyid: set_node_halophyid) {
+            py_node_halophyid->get(node_halophyid_size) = map_halophyid.at(halophyid);
+            node_halophyid_size++;
+        }
     }
     //*** end node_halophyid
+
+    //*** start cell_halophyid
+    cell_halophyid_size = 0;
+    for (const auto& [local_cell_id, set_cell_halophyid] : l_map_cell_halophyid) {
+        py_cell_halophyid->get(cell_halophyid_size) = local_cell_id;
+        cell_halophyid_size++;
+        py_cell_halophyid->get(cell_halophyid_size) = static_cast<int32_t>(set_cell_halophyid.size());
+        cell_halophyid_size++;
+        for (const int32_t halophyid: set_cell_halophyid) {
+            py_cell_halophyid->get(cell_halophyid_size) = map_halophyid.at(halophyid);
+            cell_halophyid_size++;
+        }
+    }
+    //*** end cell_halophyid
 
     // #########################################################
     // l_node_oldname, l_node_halophyid
@@ -510,13 +545,17 @@ const int32_t nb_parts
      * ld[x].max_cell_halonid
      * ld[x].max_halo_cell_nodeid
      * ld[x].max_node_halophyid
-     * ld[x].set_phyid
-     * ld[x].set_halo_phyid_neighsub
      * ld[x].map_int_halos
+     * ld[x].map_phyid_recv
+     * ld[x].map_node_halophyid
+     * ld[x].map_cell_halophyid
      * ld[x].vec_node_halos
+     * ld[x].max_node_phyid
+     * ld[x].max_cell_phyid
      */
 
     std::vector<int32_t> local_nb_cells(nb_parts, 0); // for every local domain count the number of local cells
+    std::vector<int32_t> visited_phyid(part_phyid.size(), -1); // used to count max_cell_phyid
 
     // #########################################################
     // Counting
@@ -567,6 +606,7 @@ const int32_t nb_parts
         const auto sub_cells = cells->sub_array(g_id);
         auto sub_l_cells = ld[part].cells->sub_array(l_id);
         int32_t nb_cell_halonid = 0;
+        int32_t nb_cell_phyid = 0;
         for (int32_t j = 0; j < sub_cells.last(); j++) {
             const int32_t nodeid = sub_cells.get(j);
             const int32_t local_nodeid = vec_map_nodes[nodeid].at(part);
@@ -588,10 +628,10 @@ const int32_t nb_parts
                         nb_cell_halonid++;
 
                         //*** start map_int_halos
-                        if (map_int_halos.find(neighbor_part) == map_int_halos.end()) {
-                            map_int_halos[neighbor_part] = std::vector<int32_t>();
+                        //if (map_int_halos.find(neighbor_part) == map_int_halos.end()) {
+                          //  map_int_halos[neighbor_part] = std::vector<int32_t>();
                             // map_int_halos[neighbor_part].reserve(1000);
-                        }
+                        //}
                         auto &vec_int_halos = map_int_halos[neighbor_part];
                         if (vec_int_halos.empty() or vec_int_halos.back() != l_id) {
                             vec_int_halos.push_back(l_id);
@@ -621,6 +661,8 @@ const int32_t nb_parts
 
             //*** start map_phyid_recv, map_node_halophyid
             auto sub_node_phyid = node_phyid->sub_array(nodeid);
+            int32_t nb_node_phyid = 0;
+
             for (int32_t k = 0; k < sub_node_phyid.last(); k++) {
                 const int32_t phy_id = sub_node_phyid.get(k);
                 const int32_t phy_id_part = part_phyid[phy_id];
@@ -629,11 +671,21 @@ const int32_t nb_parts
                 // It is ok to use map and set here the access is rare, does not affect performance.
                 if (part != phy_id_part) {
                     ld[part].map_phyid_recv[phy_id_part].insert(phy_id);
-                    ld[part].map_node_halophyid[nodeid].insert(phy_id);
+                    ld[phy_id_part].map_phyid_recv[part];//create a neighborship, this trait the case when this partition when this partition only receive and does not send to a neighbor.
+                    ld[part].map_node_halophyid[local_nodeid].insert(phy_id);
+                    ld[part].map_cell_halophyid[l_id].insert(phy_id);
+                } else {
+                    nb_node_phyid++;
+                    if (visited_phyid[phy_id] != g_id) {
+                        visited_phyid[phy_id] = g_id;
+                        nb_cell_phyid++;
+                    }
                 }
             }
+            ld[part].max_node_phyid = std::max(ld[part].max_node_phyid, nb_node_phyid);
             //*** End map_phyid_recv, map_node_halophyid
         }
+        ld[part].max_cell_phyid = std::max(ld[part].max_cell_phyid, nb_cell_phyid);
         sub_l_cells.last() = sub_cells.last();
 
         //*** assign max_cell_halonid

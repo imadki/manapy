@@ -11,7 +11,7 @@ LocalDomainStruct::~LocalDomainStruct() {
 }
 
 void LocalDomainStruct::create_tuple() {
-    PyObject *tuple = Py_BuildValue("(OOOOOOOOOOOOOOOOOiiiii)",
+    PyObject *tuple = Py_BuildValue("(OOOOOOOOOOOOOOOOOOiiiiiiiii)",
         this->nodes->ref_holder,
         this->cells->ref_holder,
         this->cells_type->ref_holder,
@@ -32,12 +32,18 @@ void LocalDomainStruct::create_tuple() {
         this->phyid_recv->ref_holder,
         this->phyid_send->ref_holder,
         this->node_halophyid->ref_holder,
+        this->cell_halophyid->ref_holder,
 
         this->max_cell_nodeid,
         this->max_cell_faceid,
         this->max_face_nodeid,
         this->max_node_haloid,
-        this->max_cell_halonid);
+        this->max_cell_halonid,
+        this->max_node_phyid,
+        this->max_node_halophyid,
+        this->max_cell_phyid,
+        this->max_cell_halophyid
+        );
     if (!tuple) {
         throw std::bad_alloc();
     }
@@ -71,5 +77,6 @@ void LocalDomainStruct::free_tables() {
     delete this->phyid_recv; this->phyid_recv = nullptr;
     delete this->phyid_send; this->phyid_send = nullptr;
     delete this->node_halophyid; this->node_halophyid = nullptr;
+    delete this->cell_halophyid; this->cell_halophyid = nullptr;
 
 }

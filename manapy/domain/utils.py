@@ -17,7 +17,6 @@ def create_node_phyid(phy_faces: 'int[:, :]', nb_nodes: 'int'):
   # Create node boundary faceid
   return create_node_cellid(phy_faces, nb_nodes)
 
-
 def create_cell_cellnid(cells: 'int[:, :]', node_cellid: 'int[:, :]'):
   # Count max cell cellnid
   i_visited = np.ones(cells.shape[0], dtype=np.int32) * -1
