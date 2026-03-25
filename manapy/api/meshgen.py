@@ -4,8 +4,8 @@ Built-in structured mesh generator — no gmsh or pygmsh required.
 Writes gmsh 2.2 ASCII files (.msh) that manapy can read directly.
 
 Boundary tag convention (matches existing manapy meshes):
-  2D:  1=in (x=0), 2=out (x=Lx), 3=upper (y=Ly), 4=bottom (y=0)
-  3D:  + 5=front (z=Lz), 6=back (z=0)
+  2D:  1=in (x_min), 2=out (x_max), 3=upper (y_max), 4=bottom (y_min)
+  3D:  + 5=front (z_max), 6=back (z_min)
 
 Cell types:
   2D: "triangle" (default) — each quad split into 2 triangles
@@ -55,19 +55,20 @@ def _temp_file(prefix):
 
 
 # ---------------------------------------------------------------------------
-# 2D rectangle  [0,Lx] x [0,Ly]
+# 2D
 # ---------------------------------------------------------------------------
 
-def rectangle(Lx=1.0, Ly=1.0, nx=10, ny=10,
+def rectangle(bounds=((0,1),(0,1)), n=(10,10),
               cell_type="triangle", filename=None):
     """
-    Structured rectangle mesh.
+    Structured 2D mesh.
 
     Parameters
     ----------
-    Lx, Ly    : float — dimensions
-    nx, ny    : int   — cells per direction
-    cell_type : str   — "triangle" (default) or "quad"
+    bounds    : pair of (min, max) per axis, e.g. ((0,2),(0,1))
+                Default: ((0,1),(0,1))
+    n         : int or (nx, ny) — cells per direction (default 10)
+    cell_type : "triangle" (default) or "quad"
     filename  : str, optional — output path; temp file if None
 
     Returns
@@ -77,10 +78,13 @@ def rectangle(Lx=1.0, Ly=1.0, nx=10, ny=10,
     if cell_type not in ("triangle", "quad"):
         raise ValueError(f"cell_type must be 'triangle' or 'quad', got '{cell_type}'")
     if filename is None:
-        filename = _temp_file("manapy_rect_")
+        filename = _temp_file("manapy_2d_")
 
-    dx = Lx / nx
-    dy = Ly / ny
+    (x0, x1), (y0, y1) = bounds
+    nx, ny = (n, n) if isinstance(n, int) else n
+
+    dx = (x1 - x0) / nx
+    dy = (y1 - y0) / ny
 
     def nid(i, j):          # 1-based
         return i * (ny + 1) + j + 1
@@ -118,7 +122,7 @@ def rectangle(Lx=1.0, Ly=1.0, nx=10, ny=10,
         f.write(f"$Nodes\n{nnodes}\n")
         for i in range(nx + 1):
             for j in range(ny + 1):
-                f.write(f"{nid(i,j)} {i*dx:.10g} {j*dy:.10g} 0\n")
+                f.write(f"{nid(i,j)} {x0+i*dx:.10g} {y0+j*dy:.10g} 0\n")
         f.write("$EndNodes\n")
 
         total = len(edges) + len(cells)
@@ -136,27 +140,22 @@ def rectangle(Lx=1.0, Ly=1.0, nx=10, ny=10,
     return filename
 
 
-def square(L=1.0, n=10, cell_type="triangle", filename=None):
-    """Square mesh — shortcut for rectangle(L, L, n, n, cell_type)."""
-    return rectangle(Lx=L, Ly=L, nx=n, ny=n,
-                     cell_type=cell_type, filename=filename)
-
-
 # ---------------------------------------------------------------------------
-# 3D box  [0,Lx] x [0,Ly] x [0,Lz]
+# 3D
 # ---------------------------------------------------------------------------
 
-def box(Lx=1.0, Ly=1.0, Lz=1.0, nx=5, ny=5, nz=5,
+def box(bounds=((0,1),(0,1),(0,1)), n=(5,5,5),
         cell_type="tetra", filename=None):
     """
-    Structured box mesh.
+    Structured 3D mesh.
 
     Parameters
     ----------
-    Lx, Ly, Lz : float — dimensions
-    nx, ny, nz : int   — cells per direction
-    cell_type  : str   — "tetra" (default) or "hex"
-    filename   : str, optional
+    bounds    : triple of (min, max) per axis, e.g. ((0,2),(0,1),(0,1))
+                Default: ((0,1),(0,1),(0,1))
+    n         : int or (nx, ny, nz) — cells per direction (default 5)
+    cell_type : "tetra" (default) or "hex"
+    filename  : str, optional
 
     Returns
     -------
@@ -165,11 +164,14 @@ def box(Lx=1.0, Ly=1.0, Lz=1.0, nx=5, ny=5, nz=5,
     if cell_type not in ("tetra", "hex"):
         raise ValueError(f"cell_type must be 'tetra' or 'hex', got '{cell_type}'")
     if filename is None:
-        filename = _temp_file("manapy_box_")
+        filename = _temp_file("manapy_3d_")
 
-    dx = Lx / nx
-    dy = Ly / ny
-    dz = Lz / nz
+    (x0,x1), (y0,y1), (z0,z1) = bounds
+    nx, ny, nz = (n, n, n) if isinstance(n, int) else n
+
+    dx = (x1 - x0) / nx
+    dy = (y1 - y0) / ny
+    dz = (z1 - z0) / nz
 
     def nid(i, j, k):          # 1-based
         return i * (ny + 1) * (nz + 1) + j * (nz + 1) + k + 1
@@ -260,7 +262,7 @@ def box(Lx=1.0, Ly=1.0, Lz=1.0, nx=5, ny=5, nz=5,
         for i in range(nx + 1):
             for j in range(ny + 1):
                 for k in range(nz + 1):
-                    f.write(f"{nid(i,j,k)} {i*dx:.10g} {j*dy:.10g} {k*dz:.10g}\n")
+                    f.write(f"{nid(i,j,k)} {x0+i*dx:.10g} {y0+j*dy:.10g} {z0+k*dz:.10g}\n")
         f.write("$EndNodes\n")
 
         total = len(bnd_faces) + len(vol_cells)
@@ -281,6 +283,6 @@ def box(Lx=1.0, Ly=1.0, Lz=1.0, nx=5, ny=5, nz=5,
 
 
 def cube(L=1.0, n=5, cell_type="tetra", filename=None):
-    """Cube mesh — shortcut for box(L, L, L, n, n, n, cell_type)."""
-    return box(Lx=L, Ly=L, Lz=L, nx=n, ny=n, nz=n,
+    """Cube [0,L]³ — shortcut for box with equal bounds and n."""
+    return box(bounds=((0,L),(0,L),(0,L)), n=n,
                cell_type=cell_type, filename=filename)

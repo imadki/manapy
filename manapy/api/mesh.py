@@ -70,79 +70,52 @@ class Mesh:
     # ------------------------------------------------------------------
 
     @classmethod
-    def rectangle(cls, Lx=1.0, Ly=1.0, nx=20, ny=20,
-                  cell_type="triangle", **kwargs):
+    def generate(cls, dim=2, bounds=None, n=20,
+                 cell_type=None, **kwargs):
         """
-        Structured rectangle [0,Lx] × [0,Ly].
+        Generate a structured mesh on the fly — no .msh file needed.
 
         Parameters
         ----------
-        Lx, Ly    : float — dimensions (default 1.0)
-        nx, ny    : int   — cells per direction (default 20)
-        cell_type : str   — "triangle" (default) or "quad"
-        **kwargs          — forwarded to Mesh() (backend, cache, precision, …)
+        dim       : int — 2 or 3
+        bounds    : list of (min, max) per axis.
+                    Default: ((0,1),(0,1)) in 2D, ((0,1),(0,1),(0,1)) in 3D.
+        n         : int or tuple — cells per direction.
+                    int  → same value for all axes.
+                    tuple → (nx, ny) in 2D, (nx, ny, nz) in 3D.
+        cell_type : str, optional
+                    2D: "triangle" (default) or "quad"
+                    3D: "tetra"    (default) or "hex"
+        **kwargs  — forwarded to Mesh() (backend, cache, precision, …)
 
         Examples
         --------
-        mesh = Mesh.rectangle(Lx=2.0, Ly=1.0, nx=40, ny=20)
-        mesh = Mesh.rectangle(Lx=1.0, Ly=1.0, nx=20, ny=20, cell_type="quad")
+        # 2D unit square, triangles
+        mesh = Mesh.generate(dim=2)
+
+        # 2D rectangle with quads
+        mesh = Mesh.generate(dim=2, bounds=((0,2),(0,1)), n=(40,20),
+                             cell_type="quad")
+
+        # 3D unit cube, hexahedra
+        mesh = Mesh.generate(dim=3, n=10, cell_type="hex")
+
+        # 3D box with custom bounds
+        mesh = Mesh.generate(dim=3, bounds=((0,2),(0,1),(0,0.5)), n=(20,10,5))
         """
-        from manapy.api.meshgen import rectangle as _gen
-        path = _gen(Lx=Lx, Ly=Ly, nx=nx, ny=ny, cell_type=cell_type)
-        return cls(path, dim=2, **kwargs)
+        if dim == 2:
+            from manapy.api.meshgen import rectangle as _gen
+            if bounds is None:
+                bounds = ((0, 1), (0, 1))
+            path = _gen(bounds=bounds, n=n,
+                        cell_type=cell_type or "triangle")
+        elif dim == 3:
+            from manapy.api.meshgen import box as _gen
+            if bounds is None:
+                bounds = ((0, 1), (0, 1), (0, 1))
+            path = _gen(bounds=bounds, n=n,
+                        cell_type=cell_type or "tetra")
+        else:
+            raise ValueError(f"dim must be 2 or 3, got {dim}")
 
-    @classmethod
-    def square(cls, L=1.0, n=20, cell_type="triangle", **kwargs):
-        """
-        Structured square [0,L] × [0,L].
-
-        Parameters
-        ----------
-        cell_type : "triangle" (default) or "quad"
-
-        Examples
-        --------
-        mesh = Mesh.square(n=30)
-        mesh = Mesh.square(n=30, cell_type="quad")
-        """
-        from manapy.api.meshgen import square as _gen
-        path = _gen(L=L, n=n, cell_type=cell_type)
-        return cls(path, dim=2, **kwargs)
-
-    @classmethod
-    def cube(cls, L=1.0, n=8, cell_type="tetra", **kwargs):
-        """
-        Structured cube [0,L]³.
-
-        Parameters
-        ----------
-        cell_type : "tetra" (default) or "hex"
-
-        Examples
-        --------
-        mesh = Mesh.cube(n=10)
-        mesh = Mesh.cube(n=8, cell_type="hex")
-        """
-        from manapy.api.meshgen import cube as _gen
-        path = _gen(L=L, n=n, cell_type=cell_type)
-        return cls(path, dim=3, **kwargs)
-
-    @classmethod
-    def box(cls, Lx=1.0, Ly=1.0, Lz=1.0, nx=8, ny=8, nz=8,
-            cell_type="tetra", **kwargs):
-        """
-        Structured box [0,Lx] × [0,Ly] × [0,Lz].
-
-        Parameters
-        ----------
-        cell_type : "tetra" (default) or "hex"
-
-        Examples
-        --------
-        mesh = Mesh.box(Lx=2.0, Ly=1.0, Lz=1.0, nx=20, ny=10, nz=10)
-        mesh = Mesh.box(nx=10, ny=10, nz=10, cell_type="hex")
-        """
-        from manapy.api.meshgen import box as _gen
-        path = _gen(Lx=Lx, Ly=Ly, Lz=Lz, nx=nx, ny=ny, nz=nz,
-                    cell_type=cell_type)
-        return cls(path, dim=3, **kwargs)
+        return cls(path, dim=dim, **kwargs)
