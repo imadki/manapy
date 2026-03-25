@@ -70,59 +70,79 @@ class Mesh:
     # ------------------------------------------------------------------
 
     @classmethod
-    def rectangle(cls, Lx=1.0, Ly=1.0, nx=20, ny=20, **kwargs):
+    def rectangle(cls, Lx=1.0, Ly=1.0, nx=20, ny=20,
+                  cell_type="triangle", **kwargs):
         """
-        Structured triangulated rectangle [0,Lx] × [0,Ly].
+        Structured rectangle [0,Lx] × [0,Ly].
 
         Parameters
         ----------
-        Lx, Ly : float — dimensions (default 1.0)
-        nx, ny : int   — cells per direction (default 20)
-        **kwargs       — forwarded to Mesh() (backend, cache, precision, …)
+        Lx, Ly    : float — dimensions (default 1.0)
+        nx, ny    : int   — cells per direction (default 20)
+        cell_type : str   — "triangle" (default) or "quad"
+        **kwargs          — forwarded to Mesh() (backend, cache, precision, …)
 
-        Example
-        -------
+        Examples
+        --------
         mesh = Mesh.rectangle(Lx=2.0, Ly=1.0, nx=40, ny=20)
+        mesh = Mesh.rectangle(Lx=1.0, Ly=1.0, nx=20, ny=20, cell_type="quad")
         """
         from manapy.api.meshgen import rectangle as _gen
-        path = _gen(Lx=Lx, Ly=Ly, nx=nx, ny=ny)
+        path = _gen(Lx=Lx, Ly=Ly, nx=nx, ny=ny, cell_type=cell_type)
         return cls(path, dim=2, **kwargs)
 
     @classmethod
-    def square(cls, L=1.0, n=20, **kwargs):
+    def square(cls, L=1.0, n=20, cell_type="triangle", **kwargs):
         """
-        Structured triangulated square [0,L] × [0,L].
+        Structured square [0,L] × [0,L].
 
-        Example
-        -------
-        mesh = Mesh.square(L=1.0, n=30)
+        Parameters
+        ----------
+        cell_type : "triangle" (default) or "quad"
+
+        Examples
+        --------
+        mesh = Mesh.square(n=30)
+        mesh = Mesh.square(n=30, cell_type="quad")
         """
         from manapy.api.meshgen import square as _gen
-        path = _gen(L=L, n=n)
+        path = _gen(L=L, n=n, cell_type=cell_type)
         return cls(path, dim=2, **kwargs)
 
     @classmethod
-    def cube(cls, L=1.0, n=8, **kwargs):
+    def cube(cls, L=1.0, n=8, cell_type="tetra", **kwargs):
         """
-        Structured tetrahedral cube [0,L]³.
+        Structured cube [0,L]³.
 
-        Example
-        -------
-        mesh = Mesh.cube(L=1.0, n=10)
+        Parameters
+        ----------
+        cell_type : "tetra" (default) or "hex"
+
+        Examples
+        --------
+        mesh = Mesh.cube(n=10)
+        mesh = Mesh.cube(n=8, cell_type="hex")
         """
         from manapy.api.meshgen import cube as _gen
-        path = _gen(L=L, n=n)
+        path = _gen(L=L, n=n, cell_type=cell_type)
         return cls(path, dim=3, **kwargs)
 
     @classmethod
-    def box(cls, Lx=1.0, Ly=1.0, Lz=1.0, nx=8, ny=8, nz=8, **kwargs):
+    def box(cls, Lx=1.0, Ly=1.0, Lz=1.0, nx=8, ny=8, nz=8,
+            cell_type="tetra", **kwargs):
         """
-        Structured tetrahedral box [0,Lx] × [0,Ly] × [0,Lz].
+        Structured box [0,Lx] × [0,Ly] × [0,Lz].
 
-        Example
-        -------
+        Parameters
+        ----------
+        cell_type : "tetra" (default) or "hex"
+
+        Examples
+        --------
         mesh = Mesh.box(Lx=2.0, Ly=1.0, Lz=1.0, nx=20, ny=10, nz=10)
+        mesh = Mesh.box(nx=10, ny=10, nz=10, cell_type="hex")
         """
         from manapy.api.meshgen import box as _gen
-        path = _gen(Lx=Lx, Ly=Ly, Lz=Lz, nx=nx, ny=ny, nz=nz)
+        path = _gen(Lx=Lx, Ly=Ly, Lz=Lz, nx=nx, ny=ny, nz=nz,
+                    cell_type=cell_type)
         return cls(path, dim=3, **kwargs)
