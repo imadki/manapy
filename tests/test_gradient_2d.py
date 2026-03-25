@@ -12,6 +12,9 @@ We verify this property on three mesh types:
 
 We also test the face gradient (diamond scheme) for the same functions.
 
+For sinusoidal functions the reconstruction is approximate; we check
+convergence in L2 norm against the analytical gradient.
+
 Ghost cell values are initialised from the analytical function so that
 boundary cells are not penalised.
 """
@@ -22,6 +25,9 @@ from manapy.ast import Variable
 
 # Absolute tolerance for "exact" gradient reconstruction on linear functions
 ATOL_LINEAR = 1e-6
+
+# Relative L2 tolerance for smooth (sinusoidal) functions
+RTOL_SMOOTH = 0.05
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +46,45 @@ def _set_linear(domain, a, b):
     var.cell[:] = a * c[:, 0] + b * c[:, 1]
     var.ghost[:] = a * g[:, 0] + b * g[:, 1]
     return var
+
+
+def _set_sinusoidal(domain, kx, ky):
+    """
+    Create a Variable with f(x,y) = sin(kx*x) * sin(ky*y).
+    Analytical gradient:
+      df/dx = kx * cos(kx*x) * sin(ky*y)
+      df/dy = ky * sin(kx*x) * cos(ky*y)
+    """
+    var = Variable(domain=domain)
+    c = domain.cells.center
+    g = domain.faces.ghostcenter
+
+    var.cell[:] = np.sin(kx * c[:, 0]) * np.sin(ky * c[:, 1])
+    var.ghost[:] = np.sin(kx * g[:, 0]) * np.sin(ky * g[:, 1])
+    return var
+
+
+def _l2_relative_error(computed, exact):
+    return np.linalg.norm(computed - exact) / (np.linalg.norm(exact) + 1e-12)
+
+
+def _check_sinusoidal_gradient(domain, kx, ky, rtol=RTOL_SMOOTH):
+    """
+    Compute cell gradient of sin(kx*x)*sin(ky*y) and compare with
+    the analytical gradient in L2 norm.
+    """
+    var = _set_sinusoidal(domain, kx, ky)
+    var.compute_cell_gradient()
+
+    c = domain.cells.center
+    exact_gx = kx * np.cos(kx * c[:, 0]) * np.sin(ky * c[:, 1])
+    exact_gy = ky * np.sin(kx * c[:, 0]) * np.cos(ky * c[:, 1])
+
+    err_x = _l2_relative_error(var.gradcellx, exact_gx)
+    err_y = _l2_relative_error(var.gradcelly, exact_gy)
+
+    assert err_x < rtol, f"sin grad L2 err on x: {err_x:.3e} (kx={kx}, ky={ky})"
+    assert err_y < rtol, f"sin grad L2 err on y: {err_y:.3e} (kx={kx}, ky={ky})"
 
 
 def _check_cell_gradient(domain, a, b, atol=ATOL_LINEAR):
@@ -177,3 +222,56 @@ class TestFaceGradientRectangle2D:
 
     def test_face_grad_f_equals_x_plus_y(self, domain_rectangle_2d):
         _check_face_gradient(domain_rectangle_2d, a=1.0, b=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Sinusoidal gradient — cell gradient
+# f(x,y) = sin(kx*x) * sin(ky*y)
+# df/dx  = kx * cos(kx*x) * sin(ky*y)
+# df/dy  = ky * sin(kx*x) * cos(ky*y)
+# ---------------------------------------------------------------------------
+class TestSinusoidalGradientRectangle2D:
+
+    def test_sin_x_only(self, domain_rectangle_2d):
+        """f = sin(pi*x)  →  df/dx = pi*cos(pi*x), df/dy = 0"""
+        _check_sinusoidal_gradient(domain_rectangle_2d, kx=np.pi, ky=0.0)
+
+    def test_sin_y_only(self, domain_rectangle_2d):
+        """f = sin(pi*y)  →  df/dx = 0, df/dy = pi*cos(pi*y)"""
+        _check_sinusoidal_gradient(domain_rectangle_2d, kx=0.0, ky=np.pi)
+
+    def test_sin_xy(self, domain_rectangle_2d):
+        """f = sin(pi*x) * sin(pi*y)"""
+        _check_sinusoidal_gradient(domain_rectangle_2d, kx=np.pi, ky=np.pi)
+
+    def test_sin_xy_different_wavenumbers(self, domain_rectangle_2d):
+        """f = sin(2*pi*x) * sin(pi*y)  — asymmetric wavenumbers"""
+        _check_sinusoidal_gradient(domain_rectangle_2d, kx=2 * np.pi, ky=np.pi)
+
+    def test_sin_low_wavenumber(self, domain_rectangle_2d):
+        """Low wavenumber: easier to resolve, expect tighter error."""
+        _check_sinusoidal_gradient(domain_rectangle_2d, kx=1.0, ky=1.0, rtol=0.02)
+
+
+class TestSinusoidalGradientHybrid2D:
+
+    def test_sin_xy(self, domain_hybrid_2d):
+        """f = sin(pi*x) * sin(pi*y) on hybrid mesh."""
+        _check_sinusoidal_gradient(domain_hybrid_2d, kx=np.pi, ky=np.pi)
+
+    def test_sin_x_only(self, domain_hybrid_2d):
+        _check_sinusoidal_gradient(domain_hybrid_2d, kx=np.pi, ky=0.0)
+
+    def test_sin_y_only(self, domain_hybrid_2d):
+        _check_sinusoidal_gradient(domain_hybrid_2d, kx=0.0, ky=np.pi)
+
+
+class TestSinusoidalGradientStructured2D:
+
+    def test_sin_xy(self, domain_structured_2d):
+        """f = sin(pi*x) * sin(pi*y) on structured mesh."""
+        _check_sinusoidal_gradient(domain_structured_2d, kx=np.pi, ky=np.pi)
+
+    def test_sin_low_wavenumber(self, domain_structured_2d):
+        """Structured mesh is regular: expect better accuracy at low wavenumber."""
+        _check_sinusoidal_gradient(domain_structured_2d, kx=1.0, ky=1.0, rtol=0.02)
