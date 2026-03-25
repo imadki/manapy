@@ -60,6 +60,7 @@ S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 ####Initialisation
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z: Pinit * (1. - x)
+COMM.Barrier()
 
 ts = MPI.Wtime()
 

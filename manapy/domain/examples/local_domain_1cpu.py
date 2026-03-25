@@ -3,17 +3,13 @@ from manapy.tests import LocalDomain1Cpu
 from manapy.tests.meshes import get_mesh
 
 # To change float type go to manapy/backends/types.py
-dim, mesh_path, mesh_name = get_mesh(6)
+dim, mesh_path, mesh_name = get_mesh(5)
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh)
-nb_parts = 4
-partitioning.make_n_part_mesh_nodal(nb_parts)
+nb_parts = 140
+partitioning.make_n_part_old(nb_parts)
 local_domains = partitioning.create_sub_domains() # intermediate step
 
 
-print(len(local_domains), local_domains[1].nodes.dtype)
-
-
-#ld = LocalDomain1Cpu.create_local_domains(local_domains) # list of local domains
-
+ld = LocalDomain1Cpu.create_local_domains(local_domains) # list of local domains
 

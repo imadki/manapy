@@ -15,17 +15,17 @@ dim, mesh_path, mesh_name = get_mesh(2)
 def create_domain(nb_parts):
   mesh = Mesh(mesh_path, dim)
   partitioning = Partitioning(mesh)
-  partitioning.make_n_part_old(nb_parts)
+  partitioning.make_n_part_mesh_nodal(nb_parts)
   local_domain_data = partitioning.create_sub_domains()
 
   local_domains = LocalDomain1Cpu.create_local_domains(local_domain_data)
-  domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
+  #domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
 
-  return domains, local_domains
+  return None, local_domains
 
-size = 1
+size = 4
 l_domains, l = create_domain(size)
-g_domains, g = create_domain(size)
+g_domains, g = create_domain(1)
 
 
 ########################################################
@@ -41,7 +41,7 @@ class   Renderer:
     self.height = 1000 * 2
     self.font_size = 12 * 2
     self.x_scale = 100 // 2.0 * 2
-    self.x_offset = 100 // 2.0 * 2
+    self.x_offset = 200 // 2.0 * 2
     self.y_scale = 100 // 2.0 * 2
     self.y_offset = 100 // 2.0 * 2
 
@@ -56,7 +56,7 @@ class   Renderer:
 
     def on_right_arrow(event):
       global g_index
-      if g_index >= g_domains[0].nbcells:
+      if g_index >= len(l[0].cells):
         return
       g_index += 1
 
@@ -112,7 +112,7 @@ class   Renderer:
     ])
 
   def ft_put_item(self, p, item, color):
-    a = self.get_rect_point(p, 0.6, 0.3)
+    a = self.get_rect_point(p, 0.3, 0.3)
     self.create_polygon(a, self.specialColor(1))
 
     p = self.scale(p)
@@ -235,6 +235,11 @@ def cell_ghostnid(k):
       ghost_info = l[k].shared_ghost_info[ghosts[j]]
       render.ft_put_item(ghost_info, f"{j}", render.getColor(0))
 
+def hhh(k):
+  for i in range(len(l[k].ext_ghost_info_flt)):
+    center = l[k].ext_ghost_info_flt[i, 0:3]
+    render.ft_put_item(center, f"{i}", render.getColor(k+1))
+
 def test():
   for k in range(size):
     # Mesh
@@ -242,16 +247,21 @@ def test():
       cell_nodeid = l[k].cells[i][0:l[k].cells[i, -1]]
       p = l[k].nodes[cell_nodeid][:, 0:2].flatten()
       render.create_polygon(p, render.getColor(k+1))
-      if i == g_index:
-        render.create_polygon(p, render.getColor(k))
+      # if i == g_index:
+      #   render.create_polygon(p, render.getColor(k))
 
+    for i in range(len(l[k].cells)):
+      cell_center = l[k].cell_center[i]
+      gl =  l[k].cell_loctoglob[i]
+      render.ft_put_item(cell_center, f"{k},{i}", render.getColor(0))
+    hhh(k)
     # draw_center(k)
     # draw_area(k)
     # draw_cellfid(k)
     # draw_cellnid(k)
     # draw_cellfaceid(k)
     # draw_face_cellid(k)
-    draw_face_oldname(k)
+    # draw_face_oldname(k)
     # draw_face_to_phyid(k)
     # draw_face_normal(k)
     # draw_face_measure(k)

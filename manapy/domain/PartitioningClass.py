@@ -1,5 +1,6 @@
 import os
-from manapy.domain.compute import *
+import numpy as np
+import manapy.domain.compute as compute
 from numba.typed import Dict, List
 import manapy.c_api.manapy_c_api as manapy_c_api
 from manapy.backends.types import FLOAT_TYPE
@@ -26,6 +27,10 @@ class PartitioningUtils:
     self.nb_phy_faces = np.int32(len(self.phy_faces))
     self.node_cellid = utils.create_node_cellid(self.cells, self.nb_nodes)
     self.node_phyid = utils.create_node_phyid(self.phy_faces, self.nb_nodes)
+
+    (max_node_phyid, max_cell_phyid) = self.get_max_phyid(len(self.cells), self.phy_faces, self.node_cellid, self.node_phyid)
+    self.max_node_phyid = np.int32(max_node_phyid)
+    self.max_cell_phyid = np.int32(max_cell_phyid)
     # Initialized when calling one of these functions (make_n_part_graph_k_way, make_n_part_mesh_dual, make_n_part_mesh_nodal)
     self.part_vert = None
     self.nb_parts = 1 # default value for one partition
@@ -47,7 +52,7 @@ class PartitioningUtils:
     # tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
     cell_cellfid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
 
-    create_cellfid(
+    compute.create_cellfid(
       cells,
       node_cellid,
       cell_type,
@@ -58,10 +63,18 @@ class PartitioningUtils:
 
     return cell_cellfid
 
+  def get_max_phyid(self, nb_cells: 'int32', phy_faces: 'int32[:, :]', node_cellid: 'int32[:, :]', node_phyid: 'int32[:, :]'):
+    i_visited = np.ones(shape=nb_cells, dtype=np.int32) * -1
+    cell_nb_phyid = np.zeros(shape=nb_cells, dtype=np.int32)
+
+    compute.get_cell_nb_phyid(phy_faces, node_cellid, i_visited, cell_nb_phyid)
+    node_max_phyid = np.max(node_phyid[:, -1])
+    cell_max_phyid = np.max(cell_nb_phyid)
+    return node_max_phyid, cell_max_phyid
 
   def _define_node_oldname(self, phy_faces, phy_faces_name):
     node_oldname = np.zeros(shape=self.nb_nodes, dtype=np.int32)
-    define_node_oldname(phy_faces, phy_faces_name, node_oldname)
+    compute.define_node_oldname(phy_faces, phy_faces_name, node_oldname)
 
     return node_oldname
 
@@ -92,11 +105,16 @@ class PartitioningUtils:
       obj.phyid_recv = c_res[i][k]; k+=1
       obj.phyid_send = c_res[i][k]; k+=1
       obj.node_halophyid = c_res[i][k]; k+=1
+      obj.cell_halophyid = c_res[i][k]; k+=1
       obj.max_cell_nodeid = c_res[i][k]; k+=1
       obj.max_cell_faceid = c_res[i][k]; k+=1
       obj.max_face_nodeid = c_res[i][k]; k+=1
       obj.max_node_haloid = c_res[i][k]; k+=1
       obj.max_cell_halonid = c_res[i][k]; k+=1
+      obj.max_node_phyid = c_res[i][k]; k+=1
+      obj.max_node_halophyid = c_res[i][k]; k+=1
+      obj.max_cell_phyid = c_res[i][k]; k+=1
+      obj.max_cell_halophyid = c_res[i][k]; k+=1
       obj.dim = dim
       obj.float_precision = float_precision
 
@@ -184,6 +202,8 @@ class Partitioning(PartitioningUtils):
     local_domain.max_cell_nodeid = self.max_cell_nodeid
     local_domain.max_cell_faceid = self.max_cell_faceid
     local_domain.max_face_nodeid = self.max_face_nodeid
+    local_domain.max_cell_phyid = self.max_cell_phyid
+    local_domain.max_node_phyid = self.max_node_phyid
     local_domain.dim = self.dim
     local_domain.float_precision = 32 if self.float_precision == 'float32' else 64
 
@@ -204,8 +224,11 @@ class Partitioning(PartitioningUtils):
     local_domain.node_halophyid = np.zeros(shape=(1, 1), dtype=np.int32)
     #local_domain.phyid_send = np.zeros(shape=1, dtype=np.int32)
 
+
     local_domain.max_node_haloid = 0 # NONE
     local_domain.max_cell_halonid = 0 # NONE
+    local_domain.max_cell_halophyid = 0 # NONE
+    local_domain.max_node_halophyid = 0 # NONE
 
 
 
