@@ -64,3 +64,65 @@ class Mesh:
     @property
     def dim(self):
         return self._domain.dim
+
+    # ------------------------------------------------------------------
+    # Factory methods — generate mesh on the fly, no .msh file needed
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def rectangle(cls, Lx=1.0, Ly=1.0, nx=20, ny=20, **kwargs):
+        """
+        Structured triangulated rectangle [0,Lx] × [0,Ly].
+
+        Parameters
+        ----------
+        Lx, Ly : float — dimensions (default 1.0)
+        nx, ny : int   — cells per direction (default 20)
+        **kwargs       — forwarded to Mesh() (backend, cache, precision, …)
+
+        Example
+        -------
+        mesh = Mesh.rectangle(Lx=2.0, Ly=1.0, nx=40, ny=20)
+        """
+        from manapy.api.meshgen import rectangle as _gen
+        path = _gen(Lx=Lx, Ly=Ly, nx=nx, ny=ny)
+        return cls(path, dim=2, **kwargs)
+
+    @classmethod
+    def square(cls, L=1.0, n=20, **kwargs):
+        """
+        Structured triangulated square [0,L] × [0,L].
+
+        Example
+        -------
+        mesh = Mesh.square(L=1.0, n=30)
+        """
+        from manapy.api.meshgen import square as _gen
+        path = _gen(L=L, n=n)
+        return cls(path, dim=2, **kwargs)
+
+    @classmethod
+    def cube(cls, L=1.0, n=8, **kwargs):
+        """
+        Structured tetrahedral cube [0,L]³.
+
+        Example
+        -------
+        mesh = Mesh.cube(L=1.0, n=10)
+        """
+        from manapy.api.meshgen import cube as _gen
+        path = _gen(L=L, n=n)
+        return cls(path, dim=3, **kwargs)
+
+    @classmethod
+    def box(cls, Lx=1.0, Ly=1.0, Lz=1.0, nx=8, ny=8, nz=8, **kwargs):
+        """
+        Structured tetrahedral box [0,Lx] × [0,Ly] × [0,Lz].
+
+        Example
+        -------
+        mesh = Mesh.box(Lx=2.0, Ly=1.0, Lz=1.0, nx=20, ny=10, nz=10)
+        """
+        from manapy.api.meshgen import box as _gen
+        path = _gen(Lx=Lx, Ly=Ly, Lz=Lz, nx=nx, ny=ny, nz=nz)
+        return cls(path, dim=3, **kwargs)
