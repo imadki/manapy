@@ -1,5 +1,5 @@
 """
-Parallel (MPI) tests for domain decomposition.
+Parallel (MPI) tests for domain decomposition and gradient operators.
 
 Run with:
     mpirun -n 2 pytest tests/test_parallel.py -m parallel
@@ -9,11 +9,17 @@ These tests are skipped when running on a single process.
 
 What is tested
 --------------
-- Sum of local cell volumes == global volume (domain decomposition preserves volume)
-- Sum of local cell counts == global cell count
-- Halo cells exist on every process when N > 1 processes
-- Local gradient of a linear function equals the analytical value,
-  even across partition boundaries
+Domain:
+  - Sum of local cell volumes == global volume (decomposition preserves volume)
+  - Halo cells exist when N > 1 processes
+
+Gradient (2D and 3D, on every rank including partition boundaries):
+  - Linear functions    : exact reconstruction (atol 1e-4)
+  - Quadratic functions : L2 relative error < 5 %
+  - Sinusoidal functions: L2 relative error < 5 %
+
+The key guarantee is that halo synchronisation (update_halo_value) does not
+corrupt the gradient computation across partition boundaries.
 """
 import os
 import pytest
@@ -40,6 +46,26 @@ PARALLEL_CONF = Struct(
 )
 
 requires_mpi = pytest.mark.skipif(SIZE == 1, reason="requires MPI (mpirun -n N)")
+
+ATOL_LINEAR  = 1e-4   # tolerance for linear gradient (partition boundaries add noise)
+RTOL_SMOOTH  = 0.05   # L2 relative tolerance for quadratic / sinusoidal
+
+
+# ---------------------------------------------------------------------------
+# Shared gradient helpers
+# ---------------------------------------------------------------------------
+def _l2_rel(computed, exact):
+    return np.linalg.norm(computed - exact) / (np.linalg.norm(exact) + 1e-12)
+
+
+def _make_var(domain, cell_vals, ghost_vals):
+    """Create and initialise a Variable, sync halos, return it."""
+    Variable.is_called = False
+    var = Variable(domain=domain)
+    var.cell[:] = cell_vals
+    var.ghost[:] = ghost_vals
+    var.update_halo_value()
+    return var
 
 
 # ---------------------------------------------------------------------------
@@ -177,18 +203,191 @@ class TestParallelDomain3D:
 
     def test_gradient_linear_across_partitions(self, par_domain_cube_3d):
         """f(x,y,z) = x+y+z  →  grad = (1,1,1) on all ranks."""
-        Variable.is_called = False
         domain = par_domain_cube_3d
-        var = Variable(domain=domain)
-
-        c = domain.cells.center
-        g = domain.faces.ghostcenter
-        var.cell[:] = c[:, 0] + c[:, 1] + c[:, 2]
-        var.ghost[:] = g[:, 0] + g[:, 1] + g[:, 2]
-
-        var.update_halo_value()
+        c, g = domain.cells.center, domain.faces.ghostcenter
+        var = _make_var(domain, c[:, 0] + c[:, 1] + c[:, 2],
+                                g[:, 0] + g[:, 1] + g[:, 2])
         var.compute_cell_gradient()
-
         for grad, name in [(var.gradcellx, "x"), (var.gradcelly, "y"), (var.gradcellz, "z")]:
-            assert np.allclose(grad, 1.0, atol=1e-4), \
+            assert np.allclose(grad, 1.0, atol=ATOL_LINEAR), \
                 f"[rank {RANK}] grad{name} max err = {np.max(np.abs(grad - 1.0)):.2e}"
+
+
+# ---------------------------------------------------------------------------
+# 2D parallel gradient tests
+# ---------------------------------------------------------------------------
+@requires_mpi
+class TestParallelGradient2D:
+    """
+    All gradient functions tested on the partitioned rectangle mesh.
+    update_halo_value() is called before compute_cell_gradient() to ensure
+    halo cells carry correct values across partition boundaries.
+    """
+
+    # --- Linear ---
+    def test_linear_x(self, par_domain_rect_2d):
+        """f = x  →  grad = (1, 0) on all ranks."""
+        d = par_domain_rect_2d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, c[:, 0], g[:, 0])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx, 1.0, atol=ATOL_LINEAR), \
+            f"[rank {RANK}] gradx err={np.max(np.abs(var.gradcellx-1)):.2e}"
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR), \
+            f"[rank {RANK}] grady err={np.max(np.abs(var.gradcelly)):.2e}"
+
+    def test_linear_y(self, par_domain_rect_2d):
+        """f = y  →  grad = (0, 1) on all ranks."""
+        d = par_domain_rect_2d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, c[:, 1], g[:, 1])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, 1.0, atol=ATOL_LINEAR)
+
+    def test_linear_general(self, par_domain_rect_2d):
+        """f = 3x - 2y  →  grad = (3, -2) on all ranks."""
+        d = par_domain_rect_2d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, 3*c[:, 0] - 2*c[:, 1], 3*g[:, 0] - 2*g[:, 1])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx,  3.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, -2.0, atol=ATOL_LINEAR)
+
+    # --- Quadratic ---
+    def test_quadratic_l2_error(self, par_domain_rect_2d):
+        """f = x²+y²  →  exact grad = (2x, 2y). L2 err < 5 % on each rank."""
+        d = par_domain_rect_2d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, c[:,0]**2 + c[:,1]**2, g[:,0]**2 + g[:,1]**2)
+        var.compute_cell_gradient()
+        err_x = _l2_rel(var.gradcellx, 2*c[:, 0])
+        err_y = _l2_rel(var.gradcelly, 2*c[:, 1])
+        assert err_x < RTOL_SMOOTH, f"[rank {RANK}] quadratic gradx L2={err_x:.3e}"
+        assert err_y < RTOL_SMOOTH, f"[rank {RANK}] quadratic grady L2={err_y:.3e}"
+
+    # --- Sinusoidal ---
+    def test_sin_x(self, par_domain_rect_2d):
+        """f = sin(pi*x)  →  df/dx = pi*cos(pi*x), df/dy = 0."""
+        d = par_domain_rect_2d
+        c, g = d.cells.center, d.faces.ghostcenter
+        kx = np.pi
+        var = _make_var(d, np.sin(kx*c[:,0]), np.sin(kx*g[:,0]))
+        var.compute_cell_gradient()
+        exact_gx = kx * np.cos(kx * c[:, 0])
+        err_x = _l2_rel(var.gradcellx, exact_gx)
+        err_y = _l2_rel(var.gradcelly, np.zeros_like(c[:,0]))
+        assert err_x < RTOL_SMOOTH, f"[rank {RANK}] sin(x) gradx L2={err_x:.3e}"
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR), \
+            f"[rank {RANK}] sin(x) grady err={np.max(np.abs(var.gradcelly)):.2e}"
+
+    def test_sin_xy(self, par_domain_rect_2d):
+        """f = sin(pi*x)*sin(pi*y)  →  L2 error < 5 % on each rank."""
+        d = par_domain_rect_2d
+        c, g = d.cells.center, d.faces.ghostcenter
+        kx = ky = np.pi
+        var = _make_var(d,
+                        np.sin(kx*c[:,0]) * np.sin(ky*c[:,1]),
+                        np.sin(kx*g[:,0]) * np.sin(ky*g[:,1]))
+        var.compute_cell_gradient()
+        exact_gx = kx * np.cos(kx*c[:,0]) * np.sin(ky*c[:,1])
+        exact_gy = ky * np.sin(kx*c[:,0]) * np.cos(ky*c[:,1])
+        assert _l2_rel(var.gradcellx, exact_gx) < RTOL_SMOOTH, \
+            f"[rank {RANK}] sin(xy) gradx L2={_l2_rel(var.gradcellx, exact_gx):.3e}"
+        assert _l2_rel(var.gradcelly, exact_gy) < RTOL_SMOOTH, \
+            f"[rank {RANK}] sin(xy) grady L2={_l2_rel(var.gradcelly, exact_gy):.3e}"
+
+
+# ---------------------------------------------------------------------------
+# 3D parallel gradient tests
+# ---------------------------------------------------------------------------
+@requires_mpi
+class TestParallelGradient3D:
+
+    # --- Linear ---
+    def test_linear_x(self, par_domain_cube_3d):
+        """f = x  →  grad = (1, 0, 0) on all ranks."""
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, c[:, 0], g[:, 0])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx, 1.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcellz, 0.0, atol=ATOL_LINEAR)
+
+    def test_linear_y(self, par_domain_cube_3d):
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, c[:, 1], g[:, 1])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, 1.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcellz, 0.0, atol=ATOL_LINEAR)
+
+    def test_linear_z(self, par_domain_cube_3d):
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, c[:, 2], g[:, 2])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcellz, 1.0, atol=ATOL_LINEAR)
+
+    def test_linear_general(self, par_domain_cube_3d):
+        """f = 2x - y + 3z  →  grad = (2, -1, 3) on all ranks."""
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d, 2*c[:,0] - c[:,1] + 3*c[:,2],
+                           2*g[:,0] - g[:,1] + 3*g[:,2])
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx,  2.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, -1.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcellz,  3.0, atol=ATOL_LINEAR)
+
+    # --- Quadratic ---
+    def test_quadratic_l2_error(self, par_domain_cube_3d):
+        """f = x²+y²+z²  →  exact grad = (2x, 2y, 2z). L2 err < 5 %."""
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        var = _make_var(d,
+                        c[:,0]**2 + c[:,1]**2 + c[:,2]**2,
+                        g[:,0]**2 + g[:,1]**2 + g[:,2]**2)
+        var.compute_cell_gradient()
+        for grad, exact, name in [
+            (var.gradcellx, 2*c[:,0], "x"),
+            (var.gradcelly, 2*c[:,1], "y"),
+            (var.gradcellz, 2*c[:,2], "z"),
+        ]:
+            err = _l2_rel(grad, exact)
+            assert err < RTOL_SMOOTH, f"[rank {RANK}] quadratic grad{name} L2={err:.3e}"
+
+    # --- Sinusoidal ---
+    def test_sin_xyz(self, par_domain_cube_3d):
+        """f = sin(pi*x)*sin(pi*y)*sin(pi*z)  →  L2 error < 5 % on each rank."""
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        k = np.pi
+        var = _make_var(d,
+                        np.sin(k*c[:,0]) * np.sin(k*c[:,1]) * np.sin(k*c[:,2]),
+                        np.sin(k*g[:,0]) * np.sin(k*g[:,1]) * np.sin(k*g[:,2]))
+        var.compute_cell_gradient()
+        exact_gx = k * np.cos(k*c[:,0]) * np.sin(k*c[:,1]) * np.sin(k*c[:,2])
+        exact_gy = k * np.sin(k*c[:,0]) * np.cos(k*c[:,1]) * np.sin(k*c[:,2])
+        exact_gz = k * np.sin(k*c[:,0]) * np.sin(k*c[:,1]) * np.cos(k*c[:,2])
+        for grad, exact, name in [
+            (var.gradcellx, exact_gx, "x"),
+            (var.gradcelly, exact_gy, "y"),
+            (var.gradcellz, exact_gz, "z"),
+        ]:
+            err = _l2_rel(grad, exact)
+            assert err < RTOL_SMOOTH, f"[rank {RANK}] sin(xyz) grad{name} L2={err:.3e}"
+
+    def test_sin_x_only(self, par_domain_cube_3d):
+        """f = sin(pi*x)  →  df/dy = df/dz = 0 on all ranks."""
+        d = par_domain_cube_3d
+        c, g = d.cells.center, d.faces.ghostcenter
+        k = np.pi
+        var = _make_var(d, np.sin(k*c[:,0]), np.sin(k*g[:,0]))
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcellz, 0.0, atol=ATOL_LINEAR)
