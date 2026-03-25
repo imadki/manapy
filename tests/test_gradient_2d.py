@@ -193,6 +193,72 @@ class TestCellGradientHybrid2D:
         assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
 
+    def test_grad_quadratic_l2_error(self, domain_hybrid_2d):
+        """f = x² + y²  →  exact grad = (2x, 2y), L2 err < 5%"""
+        domain = domain_hybrid_2d
+        var = Variable(domain=domain)
+        c = domain.cells.center
+        g = domain.faces.ghostcenter
+        var.cell[:] = c[:, 0] ** 2 + c[:, 1] ** 2
+        var.ghost[:] = g[:, 0] ** 2 + g[:, 1] ** 2
+        var.compute_cell_gradient()
+        err_x = _l2_relative_error(var.gradcellx, 2.0 * c[:, 0])
+        err_y = _l2_relative_error(var.gradcelly, 2.0 * c[:, 1])
+        assert err_x < 0.05, f"grad x L2 err: {err_x:.3e}"
+        assert err_y < 0.05, f"grad y L2 err: {err_y:.3e}"
+
+
+# ---------------------------------------------------------------------------
+# Cell gradient — carre mesh (pure quads)
+# ---------------------------------------------------------------------------
+class TestCellGradientCarre2D:
+
+    def test_grad_f_equals_x(self, domain_carre_2d):
+        """f = x  →  grad = (1, 0)"""
+        _check_cell_gradient(domain_carre_2d, a=1.0, b=0.0)
+
+    def test_grad_f_equals_y(self, domain_carre_2d):
+        """f = y  →  grad = (0, 1)"""
+        _check_cell_gradient(domain_carre_2d, a=0.0, b=1.0)
+
+    def test_grad_f_equals_x_plus_y(self, domain_carre_2d):
+        _check_cell_gradient(domain_carre_2d, a=1.0, b=1.0)
+
+    def test_grad_f_general_linear(self, domain_carre_2d):
+        _check_cell_gradient(domain_carre_2d, a=3.0, b=-2.0)
+
+    def test_grad_constant_is_zero(self, domain_carre_2d):
+        var = Variable(domain=domain_carre_2d)
+        var.cell[:] = 4.0
+        var.ghost[:] = 4.0
+        var.compute_cell_gradient()
+        assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
+
+    def test_sin_xy(self, domain_carre_2d):
+        """f = sin(pi*x) * sin(pi*y) on pure quad mesh."""
+        _check_sinusoidal_gradient(domain_carre_2d, kx=np.pi, ky=np.pi)
+
+    def test_sin_x_only(self, domain_carre_2d):
+        _check_sinusoidal_gradient(domain_carre_2d, kx=np.pi, ky=0.0)
+
+    def test_sin_low_wavenumber(self, domain_carre_2d):
+        _check_sinusoidal_gradient(domain_carre_2d, kx=1.0, ky=1.0, rtol=0.02)
+
+    def test_grad_quadratic_l2_error(self, domain_carre_2d):
+        """f = x² + y²  →  exact grad = (2x, 2y), L2 err < 5%"""
+        domain = domain_carre_2d
+        var = Variable(domain=domain)
+        c = domain.cells.center
+        g = domain.faces.ghostcenter
+        var.cell[:] = c[:, 0] ** 2 + c[:, 1] ** 2
+        var.ghost[:] = g[:, 0] ** 2 + g[:, 1] ** 2
+        var.compute_cell_gradient()
+        err_x = _l2_relative_error(var.gradcellx, 2.0 * c[:, 0])
+        err_y = _l2_relative_error(var.gradcelly, 2.0 * c[:, 1])
+        assert err_x < 0.05, f"grad x L2 err: {err_x:.3e}"
+        assert err_y < 0.05, f"grad y L2 err: {err_y:.3e}"
+
 
 # ---------------------------------------------------------------------------
 # Cell gradient — structured mesh
@@ -207,6 +273,20 @@ class TestCellGradientStructured2D:
 
     def test_grad_f_general_linear(self, domain_structured_2d):
         _check_cell_gradient(domain_structured_2d, a=-1.0, b=4.0)
+
+    def test_grad_quadratic_l2_error(self, domain_structured_2d):
+        """f = x² + y²  →  exact grad = (2x, 2y), L2 err < 5%"""
+        domain = domain_structured_2d
+        var = Variable(domain=domain)
+        c = domain.cells.center
+        g = domain.faces.ghostcenter
+        var.cell[:] = c[:, 0] ** 2 + c[:, 1] ** 2
+        var.ghost[:] = g[:, 0] ** 2 + g[:, 1] ** 2
+        var.compute_cell_gradient()
+        err_x = _l2_relative_error(var.gradcellx, 2.0 * c[:, 0])
+        err_y = _l2_relative_error(var.gradcelly, 2.0 * c[:, 1])
+        assert err_x < 0.05, f"grad x L2 err: {err_x:.3e}"
+        assert err_y < 0.05, f"grad y L2 err: {err_y:.3e}"
 
 
 # ---------------------------------------------------------------------------

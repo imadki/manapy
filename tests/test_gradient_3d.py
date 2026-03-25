@@ -161,6 +161,23 @@ class TestCellGradientCubeBis3D:
     def test_grad_f_general_linear(self, domain_cube_bis_3d):
         _check_cell_gradient_3d(domain_cube_bis_3d, a=1.0, b=-2.0, c_coef=0.5)
 
+    def test_grad_quadratic_l2_error(self, domain_cube_bis_3d):
+        """f = x² + y² + z²  →  exact grad = (2x, 2y, 2z), L2 err < 5%"""
+        domain = domain_cube_bis_3d
+        var = Variable(domain=domain)
+        c = domain.cells.center
+        g = domain.faces.ghostcenter
+        var.cell[:] = c[:, 0] ** 2 + c[:, 1] ** 2 + c[:, 2] ** 2
+        var.ghost[:] = g[:, 0] ** 2 + g[:, 1] ** 2 + g[:, 2] ** 2
+        var.compute_cell_gradient()
+        for grad, exact, name in [
+            (var.gradcellx, 2.0 * c[:, 0], "x"),
+            (var.gradcelly, 2.0 * c[:, 1], "y"),
+            (var.gradcellz, 2.0 * c[:, 2], "z"),
+        ]:
+            err = _l2_relative_error(grad, exact)
+            assert err < 0.05, f"grad {name} L2 err: {err:.3e}"
+
 
 # ---------------------------------------------------------------------------
 # Sinusoidal gradient — cell gradient
