@@ -18,8 +18,20 @@ Gradient (2D and 3D, on every rank including partition boundaries):
   - Quadratic functions : L2 relative error < 5 %
   - Sinusoidal functions: L2 relative error < 5 %
 
-The key guarantee is that halo synchronisation (update_halo_value) does not
-corrupt the gradient computation across partition boundaries.
+Why haloghost matters
+---------------------
+When a node sits on both a physical boundary and a partition interface, its
+associated ghost cell (mirror image of an interior cell) belongs to the
+neighbouring partition — it becomes a "haloghost".
+
+cell_gradient_2d uses w_haloghost in its stencil for these corner nodes.
+If haloghost is left at zero, the gradient reconstruction is wrong for
+every cell touching such a node.
+
+Fix: define Dirichlet BCs with the analytical function as value and call
+update_ghost_value() after update_halo_value().  update_ghost_value()
+populates both ghost[] (local boundary faces) and haloghost[]
+(boundary faces whose ghost is in a neighbour partition).
 """
 import os
 import pytest
@@ -58,13 +70,38 @@ def _l2_rel(computed, exact):
     return np.linalg.norm(computed - exact) / (np.linalg.norm(exact) + 1e-12)
 
 
-def _make_var(domain, cell_vals, ghost_vals):
-    """Create and initialise a Variable, sync halos, return it."""
+_BC_LOCS_2D = ("in", "out", "upper", "bottom")
+_BC_LOCS_3D = ("in", "out", "upper", "bottom", "front", "back")
+
+
+def _make_var(domain, func):
+    """
+    Create a Variable with Dirichlet BCs = func(x, y, z).
+
+    The BC lambda is used by update_ghost_value() to populate:
+      - ghost[]     : boundary faces whose ghost is LOCAL to this rank
+      - haloghost[] : boundary faces whose ghost belongs to a NEIGHBOUR
+                      partition (node at both physical boundary and
+                      partition interface — the "corner haloghost" case)
+
+    Call sequence:
+      1. var.cell[:] = func at cell centres
+      2. update_halo_value()   → sync w_halo across partitions
+      3. update_ghost_value()  → set ghost + haloghost from the BC lambda
+    """
     Variable.is_called = False
-    var = Variable(domain=domain)
-    var.cell[:] = cell_vals
-    var.ghost[:] = ghost_vals
-    var.update_halo_value()
+
+    locs = _BC_LOCS_3D if domain.dim == 3 else _BC_LOCS_2D
+    boundaries = {loc: "dirichlet" for loc in locs}
+    values     = {loc: lambda x, y, z, f=func: f(x, y, z) for loc in locs}
+
+    var = Variable(domain=domain, BC=boundaries, values=values)
+
+    c = domain.cells.center
+    var.cell[:] = func(c[:, 0], c[:, 1], c[:, 2])
+
+    var.update_halo_value()    # w_halo  ← neighbour cell values
+    var.update_ghost_value()   # ghost + haloghost ← BC lambda
     return var
 
 
@@ -156,23 +193,15 @@ class TestParallelDomain2D:
     def test_gradient_linear_across_partitions(self, par_domain_rect_2d):
         """
         f(x,y) = x  →  grad = (1, 0) on every rank, including partition boundaries.
-        This verifies that halo communication does not corrupt the gradient.
+        This verifies that halo + haloghost communication does not corrupt the gradient.
         """
-        Variable.is_called = False
         domain = par_domain_rect_2d
-        var = Variable(domain=domain)
-
-        c = domain.cells.center
-        g = domain.faces.ghostcenter
-        var.cell[:] = c[:, 0]
-        var.ghost[:] = g[:, 0]
-
-        var.update_halo_value()       # synchronise halos across ranks
+        var = _make_var(domain, lambda x, y, z: x)
         var.compute_cell_gradient()
 
-        assert np.allclose(var.gradcellx, 1.0, atol=1e-4), \
+        assert np.allclose(var.gradcellx, 1.0, atol=ATOL_LINEAR), \
             f"[rank {RANK}] max gradcellx error = {np.max(np.abs(var.gradcellx - 1.0)):.2e}"
-        assert np.allclose(var.gradcelly, 0.0, atol=1e-4), \
+        assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR), \
             f"[rank {RANK}] max gradcelly error = {np.max(np.abs(var.gradcelly)):.2e}"
 
 
@@ -204,9 +233,7 @@ class TestParallelDomain3D:
     def test_gradient_linear_across_partitions(self, par_domain_cube_3d):
         """f(x,y,z) = x+y+z  →  grad = (1,1,1) on all ranks."""
         domain = par_domain_cube_3d
-        c, g = domain.cells.center, domain.faces.ghostcenter
-        var = _make_var(domain, c[:, 0] + c[:, 1] + c[:, 2],
-                                g[:, 0] + g[:, 1] + g[:, 2])
+        var = _make_var(domain, lambda x, y, z: x + y + z)
         var.compute_cell_gradient()
         for grad, name in [(var.gradcellx, "x"), (var.gradcelly, "y"), (var.gradcellz, "z")]:
             assert np.allclose(grad, 1.0, atol=ATOL_LINEAR), \
@@ -228,8 +255,7 @@ class TestParallelGradient2D:
     def test_linear_x(self, par_domain_rect_2d):
         """f = x  →  grad = (1, 0) on all ranks."""
         d = par_domain_rect_2d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, c[:, 0], g[:, 0])
+        var = _make_var(d, lambda x, y, z: x)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx, 1.0, atol=ATOL_LINEAR), \
             f"[rank {RANK}] gradx err={np.max(np.abs(var.gradcellx-1)):.2e}"
@@ -239,8 +265,7 @@ class TestParallelGradient2D:
     def test_linear_y(self, par_domain_rect_2d):
         """f = y  →  grad = (0, 1) on all ranks."""
         d = par_domain_rect_2d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, c[:, 1], g[:, 1])
+        var = _make_var(d, lambda x, y, z: y)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, 1.0, atol=ATOL_LINEAR)
@@ -248,8 +273,7 @@ class TestParallelGradient2D:
     def test_linear_general(self, par_domain_rect_2d):
         """f = 3x - 2y  →  grad = (3, -2) on all ranks."""
         d = par_domain_rect_2d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, 3*c[:, 0] - 2*c[:, 1], 3*g[:, 0] - 2*g[:, 1])
+        var = _make_var(d, lambda x, y, z: 3*x - 2*y)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx,  3.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, -2.0, atol=ATOL_LINEAR)
@@ -258,9 +282,9 @@ class TestParallelGradient2D:
     def test_quadratic_l2_error(self, par_domain_rect_2d):
         """f = x²+y²  →  exact grad = (2x, 2y). L2 err < 5 % on each rank."""
         d = par_domain_rect_2d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, c[:,0]**2 + c[:,1]**2, g[:,0]**2 + g[:,1]**2)
+        var = _make_var(d, lambda x, y, z: x**2 + y**2)
         var.compute_cell_gradient()
+        c = d.cells.center
         err_x = _l2_rel(var.gradcellx, 2*c[:, 0])
         err_y = _l2_rel(var.gradcelly, 2*c[:, 1])
         assert err_x < RTOL_SMOOTH, f"[rank {RANK}] quadratic gradx L2={err_x:.3e}"
@@ -270,26 +294,23 @@ class TestParallelGradient2D:
     def test_sin_x(self, par_domain_rect_2d):
         """f = sin(pi*x)  →  df/dx = pi*cos(pi*x), df/dy = 0."""
         d = par_domain_rect_2d
-        c, g = d.cells.center, d.faces.ghostcenter
         kx = np.pi
-        var = _make_var(d, np.sin(kx*c[:,0]), np.sin(kx*g[:,0]))
+        var = _make_var(d, lambda x, y, z: np.sin(kx*x))
         var.compute_cell_gradient()
+        c = d.cells.center
         exact_gx = kx * np.cos(kx * c[:, 0])
-        err_x = _l2_rel(var.gradcellx, exact_gx)
-        err_y = _l2_rel(var.gradcelly, np.zeros_like(c[:,0]))
-        assert err_x < RTOL_SMOOTH, f"[rank {RANK}] sin(x) gradx L2={err_x:.3e}"
+        assert _l2_rel(var.gradcellx, exact_gx) < RTOL_SMOOTH, \
+            f"[rank {RANK}] sin(x) gradx L2={_l2_rel(var.gradcellx, exact_gx):.3e}"
         assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR), \
             f"[rank {RANK}] sin(x) grady err={np.max(np.abs(var.gradcelly)):.2e}"
 
     def test_sin_xy(self, par_domain_rect_2d):
         """f = sin(pi*x)*sin(pi*y)  →  L2 error < 5 % on each rank."""
         d = par_domain_rect_2d
-        c, g = d.cells.center, d.faces.ghostcenter
         kx = ky = np.pi
-        var = _make_var(d,
-                        np.sin(kx*c[:,0]) * np.sin(ky*c[:,1]),
-                        np.sin(kx*g[:,0]) * np.sin(ky*g[:,1]))
+        var = _make_var(d, lambda x, y, z: np.sin(kx*x) * np.sin(ky*y))
         var.compute_cell_gradient()
+        c = d.cells.center
         exact_gx = kx * np.cos(kx*c[:,0]) * np.sin(ky*c[:,1])
         exact_gy = ky * np.sin(kx*c[:,0]) * np.cos(ky*c[:,1])
         assert _l2_rel(var.gradcellx, exact_gx) < RTOL_SMOOTH, \
@@ -308,8 +329,7 @@ class TestParallelGradient3D:
     def test_linear_x(self, par_domain_cube_3d):
         """f = x  →  grad = (1, 0, 0) on all ranks."""
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, c[:, 0], g[:, 0])
+        var = _make_var(d, lambda x, y, z: x)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx, 1.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
@@ -317,8 +337,7 @@ class TestParallelGradient3D:
 
     def test_linear_y(self, par_domain_cube_3d):
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, c[:, 1], g[:, 1])
+        var = _make_var(d, lambda x, y, z: y)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, 1.0, atol=ATOL_LINEAR)
@@ -326,8 +345,7 @@ class TestParallelGradient3D:
 
     def test_linear_z(self, par_domain_cube_3d):
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, c[:, 2], g[:, 2])
+        var = _make_var(d, lambda x, y, z: z)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx, 0.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
@@ -336,9 +354,7 @@ class TestParallelGradient3D:
     def test_linear_general(self, par_domain_cube_3d):
         """f = 2x - y + 3z  →  grad = (2, -1, 3) on all ranks."""
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d, 2*c[:,0] - c[:,1] + 3*c[:,2],
-                           2*g[:,0] - g[:,1] + 3*g[:,2])
+        var = _make_var(d, lambda x, y, z: 2*x - y + 3*z)
         var.compute_cell_gradient()
         assert np.allclose(var.gradcellx,  2.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcelly, -1.0, atol=ATOL_LINEAR)
@@ -348,11 +364,9 @@ class TestParallelGradient3D:
     def test_quadratic_l2_error(self, par_domain_cube_3d):
         """f = x²+y²+z²  →  exact grad = (2x, 2y, 2z). L2 err < 5 %."""
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
-        var = _make_var(d,
-                        c[:,0]**2 + c[:,1]**2 + c[:,2]**2,
-                        g[:,0]**2 + g[:,1]**2 + g[:,2]**2)
+        var = _make_var(d, lambda x, y, z: x**2 + y**2 + z**2)
         var.compute_cell_gradient()
+        c = d.cells.center
         for grad, exact, name in [
             (var.gradcellx, 2*c[:,0], "x"),
             (var.gradcelly, 2*c[:,1], "y"),
@@ -365,12 +379,10 @@ class TestParallelGradient3D:
     def test_sin_xyz(self, par_domain_cube_3d):
         """f = sin(pi*x)*sin(pi*y)*sin(pi*z)  →  L2 error < 5 % on each rank."""
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
         k = np.pi
-        var = _make_var(d,
-                        np.sin(k*c[:,0]) * np.sin(k*c[:,1]) * np.sin(k*c[:,2]),
-                        np.sin(k*g[:,0]) * np.sin(k*g[:,1]) * np.sin(k*g[:,2]))
+        var = _make_var(d, lambda x, y, z: np.sin(k*x) * np.sin(k*y) * np.sin(k*z))
         var.compute_cell_gradient()
+        c = d.cells.center
         exact_gx = k * np.cos(k*c[:,0]) * np.sin(k*c[:,1]) * np.sin(k*c[:,2])
         exact_gy = k * np.sin(k*c[:,0]) * np.cos(k*c[:,1]) * np.sin(k*c[:,2])
         exact_gz = k * np.sin(k*c[:,0]) * np.sin(k*c[:,1]) * np.cos(k*c[:,2])
@@ -385,9 +397,8 @@ class TestParallelGradient3D:
     def test_sin_x_only(self, par_domain_cube_3d):
         """f = sin(pi*x)  →  df/dy = df/dz = 0 on all ranks."""
         d = par_domain_cube_3d
-        c, g = d.cells.center, d.faces.ghostcenter
         k = np.pi
-        var = _make_var(d, np.sin(k*c[:,0]), np.sin(k*g[:,0]))
+        var = _make_var(d, lambda x, y, z: np.sin(k*x))
         var.compute_cell_gradient()
         assert np.allclose(var.gradcelly, 0.0, atol=ATOL_LINEAR)
         assert np.allclose(var.gradcellz, 0.0, atol=ATOL_LINEAR)
