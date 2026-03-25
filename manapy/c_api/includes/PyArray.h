@@ -134,7 +134,8 @@ public:
     }
 
     Type &get(const int32_t i) const noexcept {
-        return *(Type *)(this->data + i * this->strides[0]);
+        return *(reinterpret_cast<Type *>(this->data) + i);
+        // return *(Type *)(this->data + i * this->strides[0]);
     }
 
     Type &get2(const int32_t i, const int32_t j) const noexcept {
