@@ -2,7 +2,7 @@
 Diffusion 2D — API example sans fichier .msh
 =============================================
 
-Le maillage est généré à la volée par Mesh.rectangle().
+Le maillage est généré à la volée par Mesh.generate().
 
 Run:
     python diffusion2d_api.py
@@ -10,26 +10,31 @@ Run:
 """
 
 import numpy as np
-from manapy.api import Mesh, Field, DiffusionModel
+from manapy.api import Mesh, DiffusionModel
+from manapy.ast import Variable
 
 # ---------------------------------------------------------------------------
 # Maillage généré directement — aucun fichier .msh nécessaire
 # ---------------------------------------------------------------------------
-mesh = Mesh.rectangle(Lx=1.0, Ly=0.4, nx=40, ny=16)
+mesh = Mesh.generate(dim=2, bounds=((0, 1), (0, 0.4)), n=(40, 16))
+domain = mesh.domain
 
 # ---------------------------------------------------------------------------
-# Champ avec conditions aux limites
+# Variables avec conditions aux limites
 # ---------------------------------------------------------------------------
-phi = Field(mesh, name="phi",
-            bc={"in":  ("dirichlet", 2.0),
-                "out": ("dirichlet", 0.0)},
-            init=lambda x, y, z: 2.0 * (1.0 - x))
+c = domain.cells.center
+phi = Variable(domain=domain, name="phi")
+phi.cell[:] = 2.0 * (1.0 - c[:, 0])
 
-u = Field(mesh, name="u", init=1.0)
-v = Field(mesh, name="v", init=0.0)
+u = Variable(domain=domain, name="u")
+v = Variable(domain=domain, name="v")
+u.cell[:] = 1.0
+v.cell[:] = 0.0
+u.face[:] = 1.0
+v.face[:] = 0.0
 
 # ---------------------------------------------------------------------------
 # Modèle et simulation
 # ---------------------------------------------------------------------------
-model = DiffusionModel(phi, velocity=(u, v), Dxx=0.1, cfl=0.8)
+model = DiffusionModel(phi, mesh, velocity=(u, v), Dxx=0.1, cfl=0.8)
 model.run(T=0.25, output_every=50, output_dir="output_diffusion")

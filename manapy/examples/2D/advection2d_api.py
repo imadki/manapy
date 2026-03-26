@@ -14,7 +14,8 @@ Run in parallel:
 import os
 import numpy as np
 
-from manapy.api import Mesh, Field, AdvectionModel
+from manapy.api import Mesh, AdvectionModel
+from manapy.ast import Variable
 from manapy.solvers.advec.tools_utils import initialisation_gaussian_2d
 
 # ---------------------------------------------------------------------------
@@ -24,24 +25,27 @@ BASE_DIR  = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 MESH_FILE = os.path.join(BASE_DIR, "mesh", "carre.msh")
 
 mesh = Mesh(MESH_FILE, dim=2, backend="numba", cache=True)
+domain = mesh.domain
 
 # ---------------------------------------------------------------------------
-# Fields
+# Variables
 # ---------------------------------------------------------------------------
 Pinit = 2.0
 
-ne = Field(mesh, name="ne", init=0.0)
-u  = Field(mesh, name="u",  init=0.0)
-v  = Field(mesh, name="v",  init=0.0)
-P  = Field(mesh, name="P",
-           bc={"in":  ("dirichlet", Pinit),
-               "out": ("dirichlet", 0.0)},
-           init=0.0)
+ne = Variable(domain=domain, name="ne")
+u  = Variable(domain=domain, name="u")
+v  = Variable(domain=domain, name="v")
+P  = Variable(domain=domain, name="P")
+
+ne.cell[:] = 0.0
+u.cell[:]  = 0.0
+v.cell[:]  = 0.0
+P.cell[:]  = 0.0
 
 # Custom initialisation (Gaussian profile)
 initialisation_gaussian_2d(
     ne.cell, u.cell, v.cell, P.cell,
-    mesh.domain.cells.center, Pinit
+    domain.cells.center, Pinit
 )
 
 # Constant velocity on faces (needed by the flux scheme)
@@ -52,11 +56,11 @@ v.face[:] = 0.0
 # Model and run
 # ---------------------------------------------------------------------------
 model = AdvectionModel(
-    field=ne,
+    ne, mesh,
     velocity=(u, v),
     cfl=0.8,
     order=1,
-    output=[ne, u, v, P],
+    output=[(ne, "ne"), (u, "u"), (v, "v"), (P, "P")],
 )
 
 model.run(T=0.25, output_every=50, output_dir="output_advection")

@@ -1,24 +1,24 @@
 """
-Integration tests for manapy.api (Mesh.generate + Field + AdvectionModel).
+Integration tests for manapy.api (Mesh.generate + AdvectionModel).
 
 What is tested
 --------------
 - Mesh.generate() produces a valid domain for all cell types
-- Field initialisation sets correct cell values
 - AdvectionModel runs without error and conserves mass
   (∑ φ·vol = const across time steps for a pure advection)
 
 These tests use the python backend (no Numba) for fast startup.
 """
-import os
 import pytest
 import numpy as np
 
-from manapy.api import Mesh, Field, AdvectionModel
+from manapy.api import Mesh, AdvectionModel
+from manapy.ast import Variable
+from manapy.base.base import Struct
 
 
 # ---------------------------------------------------------------------------
-# Fixtures — generated meshes (session scope for speed)
+# Fixtures — generated meshes (module scope for speed)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
@@ -98,30 +98,6 @@ class TestMeshGenerate2D:
 
 
 # ---------------------------------------------------------------------------
-# Field initialisation tests
-# ---------------------------------------------------------------------------
-
-class TestField:
-
-    def test_constant_init(self, mesh_tri):
-        phi = Field(mesh_tri, init=3.14)
-        assert np.allclose(phi.cell, 3.14)
-
-    def test_callable_init(self, mesh_tri):
-        phi = Field(mesh_tri, init=lambda x, y, z: x + y)
-        c = mesh_tri.domain.cells.center
-        assert np.allclose(phi.cell, c[:, 0] + c[:, 1])
-
-    def test_bc_dirichlet(self, mesh_tri):
-        phi = Field(mesh_tri,
-                    bc={"in": ("dirichlet", 1.0), "out": ("dirichlet", 0.0)},
-                    init=0.0)
-        # Variable is created without error and ghost is allocated
-        assert phi.var.ghost is not None
-        assert len(phi.var.ghost) == mesh_tri.domain.nbfaces
-
-
-# ---------------------------------------------------------------------------
 # Advection integration test — mass conservation
 # ---------------------------------------------------------------------------
 
@@ -130,35 +106,30 @@ def _run_advection(mesh, nsteps=5):
     Run nsteps of advection with constant velocity (1,0) on mesh.
     Returns (initial_mass, final_mass).
     """
-    phi = Field(mesh, name="phi",
-                bc={"in":  ("dirichlet", 0.0),
-                    "out": ("dirichlet", 0.0),
-                    "upper":  ("dirichlet", 0.0),
-                    "bottom": ("dirichlet", 0.0)},
-                init=lambda x, y, z: np.exp(-((x - 0.3)**2 + (y - 0.5)**2) / 0.02))
+    domain = mesh.domain
+    c = domain.cells.center
 
-    u = Field(mesh, name="u", init=0.0)
-    v = Field(mesh, name="v", init=0.0)
+    phi = Variable(domain=domain, name="phi")
+    phi.cell[:] = np.exp(-((c[:, 0] - 0.3)**2 + (c[:, 1] - 0.5)**2) / 0.02)
+
+    u = Variable(domain=domain, name="u")
+    v = Variable(domain=domain, name="v")
     u.face[:] = 1.0
     v.face[:] = 0.0
+    u.cell[:] = 1.0
+    v.cell[:] = 0.0
 
-    vol = mesh.domain.cells.volume
+    vol = domain.cells.volume
     mass0 = np.dot(phi.cell, vol)
 
-    solver_conf = type("C", (), {"order": 1, "cfl": 0.5})()
-
-    from manapy.base.base import Struct
-    from manapy.solvers.advec import AdvectionSolver
-    from manapy.ast import Variable
     Variable.is_called = False
-
-    from manapy.base.base import Struct
+    from manapy.solvers.advec import AdvectionSolver
     conf = Struct(order=1, cfl=0.5)
-    solver = AdvectionSolver(phi.var, vel=(u.var, v.var), conf=conf)
+    solver = AdvectionSolver(phi, vel=(u, v), conf=conf)
 
     for _ in range(nsteps):
-        u.var.interpolate_facetocell()
-        v.var.interpolate_facetocell()
+        u.interpolate_facetocell()
+        v.interpolate_facetocell()
         solver.stepper()
         solver.compute_fluxes()
         solver.compute_new_val()
