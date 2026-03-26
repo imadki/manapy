@@ -114,8 +114,6 @@ def _run_advection(mesh, nsteps=5):
 
     u = Variable(domain=domain, name="u")
     v = Variable(domain=domain, name="v")
-    u.face[:] = 1.0
-    v.face[:] = 0.0
     u.cell[:] = 1.0
     v.cell[:] = 0.0
 
@@ -128,8 +126,6 @@ def _run_advection(mesh, nsteps=5):
     solver = AdvectionSolver(phi, vel=(u, v), conf=conf)
 
     for _ in range(nsteps):
-        u.interpolate_facetocell()
-        v.interpolate_facetocell()
         solver.stepper()
         solver.compute_fluxes()
         solver.compute_new_val()

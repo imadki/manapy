@@ -30,8 +30,6 @@ u = Variable(domain=domain, name="u")
 v = Variable(domain=domain, name="v")
 u.cell[:] = 1.0
 v.cell[:] = 0.0
-u.face[:] = 1.0
-v.face[:] = 0.0
 
 # ---------------------------------------------------------------------------
 # Modèle et simulation

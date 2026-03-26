@@ -25,6 +25,7 @@ def _to_variable(val, mesh, name=""):
       - callable  → f(x, y, z) evaluated on cell and face centres
     """
     if isinstance(val, Variable):
+        val.interpolate_celltoface()
         return val
 
     domain = mesh.domain

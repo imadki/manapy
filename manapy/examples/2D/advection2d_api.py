@@ -48,10 +48,6 @@ initialisation_gaussian_2d(
     domain.cells.center, Pinit
 )
 
-# Constant velocity on faces (needed by the flux scheme)
-u.face[:] = 2.0
-v.face[:] = 0.0
-
 # ---------------------------------------------------------------------------
 # Model and run
 # ---------------------------------------------------------------------------
