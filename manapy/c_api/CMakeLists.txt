@@ -1,24 +1,106 @@
-cmake_minimum_required(VERSION 3.31)
-project(manapy_domain)
+cmake_minimum_required(VERSION 3.17)
+project(manapy_part LANGUAGES C CXX)
 
+# =========================================================
+# Global settings
+# =========================================================
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# python3 -m pybind11 --includes
-# np.get_include()
-INCLUDE_DIRECTORIES(
-        "/home/aben-ham/anaconda3/envs/work/include/python3.8" ,
-        "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/pybind11/include" ,
-        "/home/aben-ham/anaconda3/envs/work/lib/python3.8/site-packages/numpy/core/include" ,
-        "/home/aben-ham/local/include",
-        "includes"
+# Static linking (important for Python wheels)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(SHARED OFF CACHE BOOL "" FORCE)
+
+# =========================================================
+# Python
+# =========================================================
+find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+
+# =========================================================
+# NumPy include path
+# =========================================================
+execute_process(
+        COMMAND "${Python_EXECUTABLE}" -c "import numpy; print(numpy.get_include())"
+        OUTPUT_VARIABLE NumPy_INCLUDE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
+if(NOT NumPy_INCLUDE_DIR)
+    message(FATAL_ERROR "NumPy not found")
+endif()
 
+# =========================================================
+# GKlib / METIS configuration
+# =========================================================
 
-add_executable(manapy_domain
+# Add our custom third_party CMakeLists.txt that builds metis_32 (int32) and metis_64 (int64)
+add_subdirectory(third_party EXCLUDE_FROM_ALL)
+
+# =========================================================
+# Source files
+# =========================================================
+set(SOURCES
         src/py_manapy_part.cpp
-        src/utils.cpp
-        includes/manapy_part.h
         src/partitioning.cpp
-        includes/PyArray.h
+        src/utils.cpp
+        src/LocalDomainStruct.cpp
+        src/compute_cell_center_volume.cpp
+)
+
+# =========================================================
+# Common include directories
+# =========================================================
+set(INCLUDE_DIRS
+        ${NumPy_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/includes
+)
+
+# =========================================================
+# Function to create Python module
+# =========================================================
+function(create_manapy_module target_name int_type float_type metis_target)
+    python_add_library(${target_name} MODULE ${SOURCES})
+
+    target_include_directories(${target_name} PRIVATE ${INCLUDE_DIRS})
+
+    target_compile_definitions(${target_name} PRIVATE
+            MODULE_NAME=${target_name}
+            FLOAT_TYPE=${float_type}
+            INT_TYPE=${int_type}
+            NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
+    )
+
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target_name} PRIVATE -O3) #-Wall -Wextra
+    endif()
+
+    target_link_libraries(${target_name} PRIVATE
+            ${metis_target}
+    )
+
+    # Remove lib prefix (Python expects module.so)
+    set_target_properties(${target_name} PROPERTIES
+            PREFIX ""
+    )
+endfunction()
+
+# =========================================================
+# Build modules
+# =========================================================
+create_manapy_module(manapy_part32_32 int32 float metis_32)
+create_manapy_module(manapy_part32_64 int32 double metis_32)
+# TODO need to add support for int64 indexing
+#create_manapy_module(manapy_part64_32 int64 float metis_64)
+#create_manapy_module(manapy_part64_64 int64 double metis_64)
+
+# =========================================================
+# Install (required for wheel packaging)
+# =========================================================
+install(TARGETS
+        manapy_part32_32
+        manapy_part32_64
+# TODO need to add support for int64 indexing
+#        manapy_part64_32
+#        manapy_part64_64
+        LIBRARY DESTINATION .
 )

@@ -2,19 +2,21 @@
 #include <numpy/arrayobject.h>
 #include "manapy_part.h"
 
-/* Graph representation in compressed Sparse Row (CSR) format
- * graph a 2D int32 numpy array of size (number of cells, max cell neighbors)
- * Example (4 vertices):
- *   [[1, 2, 0, 2],   // v0 → {1,2}
- *    [0, 2, 3, 3],   // v1 → {0,2,3}
- *    [0, 1, 0, 2],   // v2 → {0,1}
- *    [1, 0, 0, 1]]   // v3 → {1}
- * xadj -> is a 1D array of size nvtxs + 1 It tells you where the list of neighbors starts for each vertex in the flat `adjncy` array.
- * adjncy is a 1D array storing all neighbors of all vertices, flattened. Length of adjncy = total number of edges
- * nvtxs -> number of vertecies
- * total_deg -> total degree of the graph. Somme of all edges
- * idx_t is the integer type that METIS uses for every “index-like” quantity— vertex IDs ...
-*/
+/**
+ * @brief Converts a nested integer NumPy array representation of a graph into a Compressed Sparse Row (CSR) format.
+ *
+ * @details This function takes a 2D NumPy array where each row represents a vertex, and the columns contain
+ * the neighbor indices, and the last column explicitly holds the degree (size) of that vertex's neighborhood.
+ * It allocates and populates the `xadj` (row pointer) and `adjncy` (column indices) arrays required by METIS.
+ *
+ * @param graph A 2D NumPy array of size (nb_vertices, max_cols).
+ * @param xadj Output pointer for the xadj array of size `nvtxs + 1` allocated by malloc.
+ * @param adjncy Output pointer for the adjncy array of size `total_deg` allocated by malloc.
+ * @param nvtxs Output pointer representing the total number of vertices in the mesh.
+ * @param nb_nodes Output pointer storing the maximum node id encountered + 1.
+ * @param total_deg Output pointer representing the total number of edges (sum of degrees).
+ * @return int 0 on success, or -1 on error (e.g., MemoryError or ValueError).
+ */
 static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_t *nvtxs, idx_t *nb_nodes, idx_t *total_deg) {
     const npy_intp *dims = PyArray_DIMS(graph);
     const idx_t nb_vertices = (idx_t) dims[0];
@@ -68,7 +70,17 @@ static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_
 
 }
 
-
+/**
+ * @brief Partitions a graph into `k` parts using the METIS standard k-way partitioning algorithm.
+ *
+ * @details Translates the input dense structure into CSR format and runs `METIS_PartGraphKway`.
+ * The resulting partitioning scheme is returned as a 1D array allocated internally.
+ *
+ * @param graph 2D PyArrayObject holding adjacency and degree data.
+ * @param nb_part Number of partitions to divide the graph into.
+ * @param part_vert Output pointer to a newly allocated array of size `nvtxs` containing partition IDs per vertex.
+ * @return int 0 on success, -1 on failure.
+ */
 static int make_n_part_graph_k_way(PyArrayObject *graph, idx_t nb_part, idx_t **part_vert) {
     idx_t *xadj;
     idx_t *adjncy;
@@ -117,7 +129,17 @@ static int make_n_part_graph_k_way(PyArrayObject *graph, idx_t nb_part, idx_t **
     return 0;
 }
 
-
+/**
+ * @brief Partitions a mesh using its dual graph formulation via METIS.
+ *
+ * @details Two elements are connected in the dual graph if they share at least `n_common` nodes.
+ *
+ * @param cells 2D PyArrayObject defining the elements and their constituent nodes.
+ * @param nb_part Number of partitions to create.
+ * @param n_common Minimum number of shared nodes required to form an edge in the dual graph.
+ * @param part_vert Output pointer to a dynamically allocated array for element partition assignments.
+ * @return int 0 on success, -1 on array allocation failure or METIS runtime error.
+ */
 static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_common, idx_t **part_vert) {
     idx_t *eptr;
     idx_t *eind;
@@ -180,7 +202,16 @@ static int make_n_part_mesh_dual(PyArrayObject *cells, idx_t nb_part, idx_t n_co
     return 0;
 }
 
-
+/**
+ * @brief Partitions a mesh using a nodal graph formulation via METIS.
+ *
+ * @details Creates partitions focusing on balancing nodes among the partitions and minimizing node connection cuts.
+ *
+ * @param cells 2D PyArrayObject holding the element/node connectivity and degrees.
+ * @param nb_part Number of partitions.
+ * @param part_vert Output pointer for the resulting element partition IDs.
+ * @return int 0 on success, -1 on array allocation failure or METIS runtime error.
+ */
 static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **part_vert) {
     idx_t *eptr;
     idx_t *eind;
@@ -212,7 +243,7 @@ static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **p
     // options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT; // or METIS_OBJTYPE_VOL
     // options[METIS_OPTION_CONTIG] = 1; // enforce contiguous partitions
 
-    DEBUG_PRINT_INSTANT("METIS_PartMeshNodal");
+    DEBUG_PRINT_INSTANT("METIS_PartMeshNodal\n");
     ret = METIS_PartMeshNodal(
         &ne, // number of elements
         &nb_nodes, // number of nodes
@@ -242,7 +273,17 @@ static int make_n_part_mesh_nodal(PyArrayObject *cells, idx_t nb_part, idx_t **p
     return 0;
 }
 
+//---------------------------------------------------------------------------------------
+//Python Binding functions
+//---------------------------------------------------------------------------------------
 
+/**
+ * @brief Python binding for `make_n_part_graph_k_way`.
+ * @details Exposed Python interface taking `graph` (numpy matrix) and `nb_parts` (int).
+ * @param self The module object.
+ * @param args Python tuple `(graph, nb_parts)`.
+ * @return PyObject* A 1D integer NumPy array of partition IDs.
+ */
 static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
     PyObject *graph_obj = nullptr;
     int nb_parts = 0;
@@ -261,7 +302,9 @@ static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
     idx_t *part_vert = nullptr;
     idx_t ret;
 
+    DEBUG_TIME_IT("");
     ret = make_n_part_graph_k_way(graph, nb_parts, &part_vert);
+    DEBUG_TIME_IT("make_n_part_graph_k_way");
     if (ret == -1) {
         Py_DECREF(graph);
         return nullptr;
@@ -283,6 +326,13 @@ static PyObject *py_make_n_part_graph_k_way(PyObject *self, PyObject *args) {
     return ret_data;
 }
 
+/**
+ * @brief Python binding for `make_n_part_mesh_dual`.
+ * @details Exposed Python interface taking `cells` (numpy matrix), `nb_parts`, and `n_common`.
+ * @param self The module object.
+ * @param args Python tuple `(cells, nb_parts, n_common)`.
+ * @return PyObject* A 1D integer NumPy array of partition IDs.
+ */
 static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
     PyObject *cells_obj = nullptr;
     int nb_parts = 0;
@@ -303,7 +353,9 @@ static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
     idx_t ret;
 
 
+    DEBUG_TIME_IT("");
     ret = make_n_part_mesh_dual(cells, nb_parts, n_common, &part_vert);
+    DEBUG_TIME_IT("make_n_part_mesh_dual");
     if (ret == -1) {
         Py_DECREF(cells);
         return nullptr;
@@ -325,6 +377,13 @@ static PyObject *py_make_n_part_mesh_dual(PyObject *self, PyObject *args) {
     return ret_data;
 }
 
+/**
+ * @brief Python binding for `make_n_part_mesh_nodal`.
+ * @details Exposed Python interface taking `cells` (numpy matrix) and `nb_parts`.
+ * @param self The module object.
+ * @param args Python tuple `(cells, nb_parts)`.
+ * @return PyObject* A 1D integer NumPy array of partition IDs.
+ */
 static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
     PyObject *cells_obj = nullptr;
     int nb_parts = 0;
@@ -344,7 +403,9 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
     idx_t ret;
 
 
+    DEBUG_TIME_IT("");
     ret = make_n_part_mesh_nodal(cells, nb_parts, &part_vert);
+    DEBUG_TIME_IT("make_n_part_mesh_nodal");
     if (ret == -1) {
         Py_DECREF(cells);
         return nullptr;
@@ -367,6 +428,14 @@ static PyObject *py_make_n_part_mesh_nodal(PyObject *self, PyObject *args) {
     return ret_data;
 }
 
+/**
+ * @brief Python binding to partition an unstructured mesh and build sub-domain representations.
+ * @details Gathers global inputs such as node-to-cell maps, node coordinate arrays, connectivity tables,
+ * and distributes them into domain-local tables arrays. Uses PyArrayObject to efficiently interface with Python.
+ * @param self The module object.
+ * @param args Python tuple containing elements matching `create_local_domains` documentation.
+ * @return PyObject* A Python list containing a sequence of tuples storing arrays for each sub-domain.
+ */
 static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
     PyObject *part_vert_obj = nullptr;
     PyObject *node_cellid_obj = nullptr;
@@ -402,10 +471,11 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
     PyArrayObject *node_phyid = (PyArrayObject *)PyArray_FROM_OTF(node_phyid_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *cells_type = (PyArrayObject *)PyArray_FROM_OTF(cells_type_obj, NPY_INT8, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);
+    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, NPY_FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *phy_faces = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     PyArrayObject *phy_faces_name = (PyArrayObject *)PyArray_FROM_OTF(phy_faces_name_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
     auto *local_domains = new(std::nothrow) LocalDomainStruct[nb_parts];
+
 
     const auto free_tables = [&]() {
         Py_XDECREF(part_vert); part_vert = nullptr;
@@ -450,6 +520,14 @@ static PyObject *py_create_local_domains(PyObject *self, PyObject *args) {
     }
 }
 
+/**
+ * @brief General (2D/3D) geometric utility binding to calculate cell centroids and size (area or volume).
+ * @details Invokes the internal C++ template methods based on the `dim` parameter.
+ * @param self The module object.
+ * @param args Python tuple containing `cells`, `nodes`, `cell_size_array`, `cell_center_array`.
+ * @param dim Spatial dimension count (2 or 3) indicating flat area vs solid volume compute.
+ * @return PyObject* Always returns Py_NAN, but executes in-place operations on the geometry buffers.
+ */
 static PyObject *py_compute_cell_center_area_volume_general(PyObject *self, PyObject *args, const int32_t dim) {
     PyObject *cells_obj = nullptr;
     PyObject *nodes_obj = nullptr;
@@ -460,9 +538,9 @@ static PyObject *py_compute_cell_center_area_volume_general(PyObject *self, PyOb
         return nullptr;
 
     PyArrayObject *cells = (PyArrayObject *)PyArray_FROM_OTF(cells_obj, NPY_INT32, NPY_ARRAY_IN_ARRAY);
-    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);// read only and c-contiguous
-    PyArrayObject *cell_area = (PyArrayObject *)PyArray_FROM_OTF(cell_area_obj, FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY); //read, write and c-contiguous
-    PyArrayObject *cell_center = (PyArrayObject *)PyArray_FROM_OTF(cell_center_obj, FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY);
+    PyArrayObject *nodes = (PyArrayObject *)PyArray_FROM_OTF(nodes_obj, NPY_FLOAT_TYPE, NPY_ARRAY_IN_ARRAY);// read only and c-contiguous
+    PyArrayObject *cell_area = (PyArrayObject *)PyArray_FROM_OTF(cell_area_obj, NPY_FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY); //read, write and c-contiguous
+    PyArrayObject *cell_center = (PyArrayObject *)PyArray_FROM_OTF(cell_center_obj, NPY_FLOAT_TYPE, NPY_ARRAY_INOUT_ARRAY);
 
     const auto free_tables = [&]() {
         Py_XDECREF(cells); cells = nullptr;
@@ -500,10 +578,24 @@ static PyObject *py_compute_cell_center_area_volume_general(PyObject *self, PyOb
     return PyFloat_FromDouble(Py_NAN);
 }
 
+/**
+ * @brief Specific geometric Python binding for 2D cell area and centroid computations.
+ * @details Wraps `py_compute_cell_center_area_volume_general` with `dim = 2`.
+ * @param self The module object.
+ * @param args Python tuple of function arguments.
+ * @return PyObject* In-place mutation wrapper.
+ */
 static PyObject *py_compute_cell_center_area_2d(PyObject *self, PyObject *args) {
     return py_compute_cell_center_area_volume_general(self, args, 2);
 }
 
+/**
+ * @brief Specific geometric Python binding for 3D cell volume and centroid computations.
+ * @details Wraps `py_compute_cell_center_area_volume_general` with `dim = 3`.
+ * @param self The module object.
+ * @param args Python tuple of function arguments.
+ * @return PyObject* In-place mutation wrapper.
+ */
 static PyObject *py_compute_cell_center_volume_3d(PyObject *self, PyObject *args) {
     return py_compute_cell_center_area_volume_general(self, args, 3);
 }
@@ -511,54 +603,65 @@ static PyObject *py_compute_cell_center_volume_3d(PyObject *self, PyObject *args
 /* -------- module definition --------------------------------------- */
 // ----------------- Method Table -----------------------
 
-static const char *doc_make_n_part_graph_k_way =
-    "make_n_part_graph_k_way(graph, nb_part) -> np.ndarray\n"
-    "\n"
-    "Partition a graph into `nb_part` parts using METIS_PartGraphKway.\n"
-    "\n"
-    "Parameters\n"
-    "----------\n"
-    "graph : numpy.ndarray\n"
-    "    2D adjacency matrix.\n"
-    "nb_part : int\n"
-    "    Number of partitions.\n"
-    "\n"
-    "Returns\n"
-    "-------\n"
-    "numpy.ndarray\n"
-    "    Array of partition IDs for each vertex.";
+static const char doc_make_n_part_graph_k_way[] = R"doc(
+make_n_part_graph_k_way(graph, nb_part) -> numpy.ndarray
 
-static const char *doc_make_n_part_mesh_dual =
-    "make_n_part_mesh_dual(cells, nb_parts, n_common) -> np.ndarray\n"
-    "\n"
-    "Partition a mesh into `nb_part` parts using METIS_PartMeshDual.\n"
-    "\n"
-    "Parameters\n"
-    "----------\n"
-    "cells : numpy.ndarray\n"
-    "nb_parts : int\n"
-    "n_common : int\n"
-    "\n"
-    "Returns\n"
-    "-------\n"
-    "numpy.ndarray\n"
-    "    Array of partition IDs for each vertex.";
+Partition a graph into `nb_part` parts using METIS_PartGraphKway.
 
+Parameters
+----------
+graph : numpy.ndarray[int32]
+    A 2D adjacency matrix of size `(n_vertices, max_cell_neighbors)`.
+    The last element of each row contains the node degree (number of neighbors).
+nb_part : int
+    Number of partitions to create (must be >= 2).
 
-static const char *doc_make_n_part_mesh_nodal =
-    "make_n_part_mesh_nodal(cells, nb_parts) -> np.ndarray\n"
-    "\n"
-    "Partition a mesh into `nb_part` parts using METIS_PartMeshNodal.\n"
-    "\n"
-    "Parameters\n"
-    "----------\n"
-    "cells : numpy.ndarray\n"
-    "nb_parts : int\n"
-    "\n"
-    "Returns\n"
-    "-------\n"
-    "numpy.ndarray\n"
-    "    Array of partition IDs for each vertex.";
+Returns
+-------
+numpy.ndarray[int32]
+    A 1D array of shape `(n_vertices,)` containing the partition ID for each vertex.
+)doc";
+
+static const char doc_make_n_part_mesh_dual[] = R"doc(
+make_n_part_mesh_dual(cells, nb_parts, n_common) -> numpy.ndarray
+
+Partition a mesh into `nb_parts` parts using the dual graph formulation (METIS_PartMeshDual).
+Two elements are considered adjacent if they share at least `n_common` nodes.
+
+Parameters
+----------
+cells : numpy.ndarray[int32]
+    A 2D array of element connectivity of size `(n_elements, max_nodes_per_element)`.
+    The last element in each row contains the element degree (number of nodes).
+nb_parts : int
+    Number of partitions to create (must be >= 2).
+n_common : int
+    Number of common nodes required to define adjacency between two elements.
+
+Returns
+-------
+numpy.ndarray[int32]
+    A 1D array of shape `(n_elements,)` containing the partition ID for each element.
+)doc";
+
+static const char doc_make_n_part_mesh_nodal[] = R"doc(
+make_n_part_mesh_nodal(cells, nb_parts) -> numpy.ndarray
+
+Partition a mesh into `nb_parts` parts using the nodal graph formulation (METIS_PartMeshNodal).
+
+Parameters
+----------
+cells : numpy.ndarray[int32]
+    A 2D array of element connectivity of size `(n_elements, max_nodes_per_element)`.
+    The last element in each row contains the element degree (number of nodes).
+nb_parts : int
+    Number of partitions to create (must be >= 2).
+
+Returns
+-------
+numpy.ndarray[int32]
+    A 1D array of shape `(n_elements,)` containing the partition ID for each element.
+)doc";
 
 
 /* ------------------------------------------------------------------------- */
@@ -573,7 +676,8 @@ create_local_domains(part_vert,
                      nodes,
                      phy_faces,
                      phy_faces_name,
-                     nb_parts) -> list[tuple]
+                     nb_parts,
+                     dim) -> list[tuple]
 
 Partition an unstructured mesh into *nb_parts* sub-domains and build all
 per-partition connectivity / halo tables needed by the solver.
@@ -589,92 +693,72 @@ node_phyid : numpy.ndarray[int32]              (n_vertices,)
 cells : numpy.ndarray[int32]                   (n_cells, max_nodes_per_cell)
     Node connectivity of each cell (global node indices).
 cells_type : numpy.ndarray[int8]               (n_cells,)
-    Element-type code per cell (e.g. 5 = tetra, 9 = hex, …).
+    Element-type code per cell (e.g. 5 = tetra, 9 = hex, ...).
 nodes : numpy.ndarray[float32|float64]         (n_vertices, ndim)
-    Cartesian coordinates of every node (``z`` column present only for 3-D).
+    Cartesian coordinates of every node (`z` column present only for 3-D).
 phy_faces : numpy.ndarray[int32]               (n_phy_faces, max_nodes_per_face)
     Connectivity of boundary faces (global node indices).
 phy_faces_name : numpy.ndarray[int32]          (n_phy_faces,)
     Physical-name / BC id of each boundary face.
 nb_parts : int
-    Number of sub-domains to create (must be ≥ 2).
+    Number of sub-domains to create (must be >= 2).
+dim : int
+    Dimension of the mesh (2 or 3).
 
 Returns
 -------
 list[tuple]
-    A Python list of length ``nb_parts``.
-    The *p*-th element (``parts[p]``) is a **17-item tuple** containing
-    every array that belongs to partition *p*, in the exact order below:
+    A Python list of length `nb_parts`.
+    The `p`-th element (`parts[p]`) is a 22-item tuple containing
+    every array that belongs to partition `p`.
 
-    0. **nodes**               – fdx_t ``(n_nodes_p, ndim)``
-    1. **cells**               – int32 ``(n_cells_p, max_nodes_per_cell)``
-    2. **cells_type**          – int8  ``(n_cells_p,)``
-    3. **phy_faces**           – int32 ``(n_phy_faces_p, max_nodes_per_face)``
-    4. **phy_faces_name**      – int32 ``(n_phy_faces_p,)``
-    5. **cell_loctoglob**      – int32 ``(n_cells_p,)``
-    6. **node_loctoglob**      – int32 ``(n_nodes_p,)``
-    7. **node_oldname**        – int32 ``(n_nodes_p,)``
-    8. **halo_neighsub**       – int32 ``(2, n_neigh_parts_p)``
-    9. **node_halos**          – int32 ``(2 * n_ext_halo_nodes_p,)``
-   10. **halo_halosext**       – int32 ``(n_halos_p, max_cell_nodeid + 2)``
-   11. **halo_halosint**       – int32 ``(n_halos_int_p,)``
-   12. **halo_centvol**        – fdx_t ``(n_halos_p, ndim + 1)``
-   13. **phyid_neighbor**      – int32 ``[[Neighbor partition ID, nb_recv, nb_send] ...]``
-   14. **phyid_recv**          – int32 ``[PhyFaceGlobalId, ...]``
-   15. **phyid_send**          – int32 ``[PhyFaceLocalId], ...``
-   16. **node_halophyid**      – int32 ``[NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]``)
-   17. **cell_halophyid**      - int32[]
-   18. **max_node_phyid**
-   19. **max_node_halophyid**
-   18. **max_cell_phyid**
-   19. **max_cell_halophyid**
+    0. nodes               - fdx_t (n_nodes_p, ndim)
+    1. cells               - int32 (n_cells_p, max_nodes_per_cell)
+    2. cells_type          - int8  (n_cells_p,)
+    3. phy_faces           - int32 (n_phy_faces_p, max_nodes_per_face)
+    4. phy_faces_name      - int32 (n_phy_faces_p,)
+    5. cell_loctoglob      - int32 (n_cells_p,)
+    6. node_loctoglob      - int32 (n_nodes_p,)
+    7. node_oldname        - int32 (n_nodes_p,)
+    8. halo_neighsub       - int32 (2, n_neigh_parts_p)
+    9. node_halos          - int32 (2 * n_ext_halo_nodes_p,)
+   10. halo_halosext       - int32 (n_halos_p, max_cell_nodeid + 2)
+   11. halo_halosint       - int32 (n_halos_int_p,)
+   12. halo_centvol        - fdx_t (n_halos_p, ndim + 1)
+   13. phyid_neighbor      - int32 [[Neighbor partition ID, nb_recv, nb_send] ...]
+   14. phyid_recv          - int32 [PhyFaceGlobalId, ...]
+   15. phyid_send          - int32 [PhyFaceLocalId], ...
+   16. node_halophyid      - int32 [NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]
+   17. cell_halophyid      - int32 [...]
+   18. max_node_phyid      - int
+   19. max_node_halophyid  - int
+   20. max_cell_phyid      - int
+   21. max_cell_halophyid  - int
+
 Notes
 -----
 * All arrays are new NumPy objects; none of the inputs are modified.
-* ``ndim`` is 2 for 2-D meshes and 3 for 3-D.
 * Array dtypes and shapes are guaranteed as shown; callers may rely on them.
-
-Example
--------
->>> parts = mesh.create_local_domains(part_vert,
-...                                   node_cellid,
-...                                   node_phyid,
-...                                   cells,
-...                                   cells_type,
-...                                   nodes,
-...                                   phy_faces,
-...                                   phy_faces_name,
-...                                   4)
->>> nodes_p0, cells_p0, *_ = parts[0]
 )doc";
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  Docstring: compute_cell_center_area_2d                                   */
 /* ────────────────────────────────────────────────────────────────────────── */
 static const char cell_center_area_2d_doc[] = R"doc(
-compute_cell_center_area_2d(cells,
-                            nodes,
-                            cell_area,
-                            cell_center) -> None
+compute_cell_center_area_2d(cells, nodes, cell_area, cell_center) -> None
 
 Compute the geometric **area** and **centroid** of every 2-D cell.
 
 Parameters
 ----------
 cells : numpy.ndarray[int32]               (n_cells, n_nodes_per_cell)
-    Connectivity table – each row holds the global node indices of one cell.
+    Connectivity table - each row holds the global node indices of one cell.
 nodes : numpy.ndarray[float32 | float64]   (n_nodes, 2)
-    Cartesian coordinates ``[[x, y], …]`` of every vertex.
+    Cartesian coordinates `[[x, y], ...]` of every vertex.
 cell_area : numpy.ndarray[float32 | float64]  (n_cells,)
     **Output (modified in-place)**. Receives the area of each cell.
 cell_center : numpy.ndarray[float32 | float64] (n_cells, 2)
-    **Output (modified in-place)**. Receives the centroid ``[x_c, y_c]`` of
-    each cell.
-
-Notes
------
-* Supported cells
-  (Any closed 2d area).
+    **Output (modified in-place)**. Receives the centroid `[x_c, y_c]` of each cell.
 
 Returns
 -------
@@ -685,29 +769,20 @@ None
 /*  Docstring: compute_cell_center_volume_3d                                 */
 /* ────────────────────────────────────────────────────────────────────────── */
 static const char cell_center_volume_3d_doc[] = R"doc(
-compute_cell_center_volume_3d(cells,
-                              nodes,
-                              cell_volume,
-                              cell_center) -> None
+compute_cell_center_volume_3d(cells, nodes, cell_volume, cell_center) -> None
 
 Compute the geometric **volume** and **centroid** of every 3-D cell.
 
 Parameters
 ----------
 cells : numpy.ndarray[int32]               (n_cells, n_nodes_per_cell)
-    Connectivity table – each row holds the global node indices of one cell.
+    Connectivity table - each row holds the global node indices of one cell.
 nodes : numpy.ndarray[float32 | float64]   (n_nodes, 3)
-    Cartesian coordinates ``[[x, y, z], …]`` of every vertex.
+    Cartesian coordinates `[[x, y, z], ...]` of every vertex.
 cell_volume : numpy.ndarray[float32 | float64]  (n_cells,)
     **Output (modified in-place)**. Receives the volume of each cell.
 cell_center : numpy.ndarray[float32 | float64]  (n_cells, 3)
-    **Output (modified in-place)**. Receives the centroid ``[x_c, y_c, z_c]``
-    of each cell.
-
-Notes
------
-* Supported cells
-  (Tetra, Hexahedron, Pyramid, …).
+    **Output (modified in-place)**. Receives the centroid `[x_c, y_c, z_c]` of each cell.
 
 Returns
 -------
@@ -734,13 +809,15 @@ static struct PyModuleDef manapy_module = {
 };
 
 // ----------------- Dynamic Init Function -----------------------
-#define INIT_FUNC_NAME(module) PyInit_## module
-#define MAKE_INIT_FUNC(module) INIT_FUNC_NAME(module)
+#define CONCAT(a, b) a##b
+#define EXPAND_AND_CONCAT(a, b) CONCAT(a, b)
 
+#define MAKE_INIT_FUNC(name) EXPAND_AND_CONCAT(PyInit_, name)
+
+//EXPAND to PyInit_manapy_part32_32 Or PyInit_manapy_part32_64 PyInit_manapy_part64_32 PyInit_manapy_part64_64
 PyMODINIT_FUNC MAKE_INIT_FUNC(MODULE_NAME)(void)
 {
-    import_array();  // initialize NumPy C-API
+    import_array(); // initialize NumPy C-API
     return PyModule_Create(&manapy_module);
 }
-
 
