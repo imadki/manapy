@@ -26,16 +26,16 @@ SOURCE = ["src/py_manapy_part.cpp", "src/partitioning.cpp", "src/utils.cpp", "sr
 
 ext_modules = [
     Extension(
-        name="manapy_domain32",
+        name="manapy_part32_32",
         sources=SOURCE,
         include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
         extra_compile_args=["-O3"],
         define_macros=[
-            ("MODULE_NAME", "manapy_domain32"),
-            ("FDX_T", "npy_float32"),
-            ("FLOAT_TYPE", "NPY_FLOAT32")
+            ("FLOAT_TYPE", "float"),
+            ("INT_TYPE", "int32"),
+            ("MODULE_NAME", "manapy_part32_32")
         ],
         # extra_compile_args=["-O0", "-g", "-fsanitize=address"],
         # extra_compile_args=["-O0", "-g"],
@@ -44,16 +44,16 @@ ext_modules = [
     ),
 
     Extension(
-        name="manapy_domain64",
+        name="manapy_part32_64",
         sources=SOURCE,
         include_dirs=[np.get_include(), METIS_INCLUDE, "includes"],
         library_dirs=[METIS_LIB_DIR],
         libraries=["metis", "GKlib"],
         extra_compile_args=["-O3"],
         define_macros=[
-            ("MODULE_NAME", "manapy_domain64"),
-            ("FDX_T", "npy_float64"),
-            ("FLOAT_TYPE", "NPY_FLOAT64")
+            ("FLOAT_TYPE", "double"),
+            ("INT_TYPE", "int32"),
+            ("MODULE_NAME", "manapy_part32_64")
         ],
         # LD_PRELOAD=$(gcc -print-file-name=libasan.so) python3 program.py
         # extra_compile_args=["-O0", "-g", "-fsanitize=address"],

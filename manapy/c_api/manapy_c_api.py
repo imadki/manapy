@@ -1,11 +1,11 @@
-import manapy_domain32
-import manapy_domain64
+import manapy_part32_32
+import manapy_part32_64
 from manapy.backends.types import FLOAT_TYPE
 
 
-api = manapy_domain32
+api = manapy_part32_32
 if FLOAT_TYPE == "float64":
-  api = manapy_domain64
+  api = manapy_part32_64
 
 # Docs and more information are in src/py_manapy_part.cpp, includes/LocalDomainStruct.h
 
@@ -30,42 +30,48 @@ def make_n_part_mesh_nodal(cells, nb_parts):
 
 # 4. Domain builder ------------------------------------------------ #
 def create_local_domains(
-    part_vert,
-    node_cellid,
-    node_phyid,
-    cells,
-    cells_type,
-    nodes,
-    phy_faces,
-    phy_faces_name,
-    nb_parts,
-    dim,
+        part_vert,
+        node_cellid,
+        node_phyid,
+        cells,
+        cells_type,
+        nodes,
+        phy_faces,
+        phy_faces_name,
+        nb_parts,
+        dim,
 ):
     """Split the mesh into *nb_parts* local domains and return their data.
+
     Returns
     -------
     list[tuple]
-        A Python list of length ``nb_parts``.
-        The *p*-th element (``parts[p]``) is a **17-item tuple** containing
-        every array that belongs to partition *p*, in the exact order below:
+        A Python list of length `nb_parts`.
+        The `p`-th element (`parts[p]`) is a 22-item tuple containing
+        every array that belongs to partition `p`.
 
-        0. **nodes**               – float32|float64 ``(n_nodes_p, ndim)``
-        1. **cells**               – int32 ``(n_cells_p, max_nodes_per_cell)``
-        2. **cells_type**          – int8  ``(n_cells_p,)``
-        3. **phy_faces**           – int32 ``(n_phy_faces_p, max_nodes_per_face)``
-        4. **phy_faces_name**      – int32 ``(n_phy_faces_p,)``
-        5. **cell_loctoglob**      – int32 ``(n_cells_p,)``
-        6. **node_loctoglob**      – int32 ``(n_nodes_p,)``
-        7. **node_oldname**        – int32 ``(n_nodes_p,)``
-        8. **halo_neighsub**       – int32 ``(2, n_neigh_parts_p)``
-        9. **node_halos**          – int32 ``(2 * n_ext_halo_nodes_p,)``
-       10. **node_halophyid**      – int32 ``(n_nodes_p, max_node_halobf + 1)``
-       11. **halo_halosext**       – int32 ``(n_halos_p, max_cell_nodeid + 2)``
-       12. **halo_halosint**       – int32 ``(n_halos_int_p,)``
-       13. **halo_centvol**        – float32|float64 ``(n_halos_p, ndim + 1)``
-       14. **phyid_recv**          – int32 ``(n_recv_faces_p,)``
-       15. **phyid_recv_part_size**– int32 ``(2, n_neighbor_parts_p)``
-       16. **phyid_send**          – int32 ``(≥ 1,)``  (layout: ``[recv_part_id, size, …]``)
+        0. nodes               - float32|float64 (n_nodes_p, ndim)
+        1. cells               - int32 (n_cells_p, max_nodes_per_cell)
+        2. cells_type          - int8  (n_cells_p,)
+        3. phy_faces           - int32 (n_phy_faces_p, max_nodes_per_face)
+        4. phy_faces_name      - int32 (n_phy_faces_p,)
+        5. cell_loctoglob      - int32 (n_cells_p,)
+        6. node_loctoglob      - int32 (n_nodes_p,)
+        7. node_oldname        - int32 (n_nodes_p,)
+        8. halo_neighsub       - int32 (2, n_neigh_parts_p)
+        9. node_halos          - int32 (2 * n_ext_halo_nodes_p,)
+       10. halo_halosext       - int32 (n_halos_p, max_cell_nodeid + 2)
+       11. halo_halosint       - int32 (n_halos_int_p,)
+       12. halo_centvol        - float32|float64 (n_halos_p, ndim + 1)
+       13. phyid_neighbor      - int32 [[Neighbor partition ID, nb_recv, nb_send] ...]
+       14. phyid_recv          - int32 [PhyFaceGlobalId, ...]
+       15. phyid_send          - int32 [PhyFaceLocalId], ...
+       16. node_halophyid      - int32 [NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]
+       17. cell_halophyid      - int32 [...]
+       18. max_node_phyid      - int
+       19. max_node_halophyid  - int
+       20. max_cell_phyid      - int
+       21. max_cell_halophyid  - int
     """
     return api.create_local_domains(
         part_vert,

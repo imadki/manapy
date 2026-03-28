@@ -1,6 +1,9 @@
 #ifndef MANAPY_PART_H
 #define MANAPY_PART_H
 
+/*-----------------------------------------------------------------------*
+ *  Prevent deprecated NumPy API calls (keep only NPY_1_7_API_VERSION).   *
+ *-----------------------------------------------------------------------*/
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 #include <iostream>
@@ -17,7 +20,9 @@
 #include "LocalDomainStruct.h"
 #include "Types.h"
 
-
+/* ---------------------------------------------------------------------- *
+ *  Cell‑type enum – used to available geometry.                          *
+ *-----------------------------------------------------------------------*/
 enum CELL_TYPE {
     Triangle = 1,
     Quad = 2,
@@ -26,17 +31,21 @@ enum CELL_TYPE {
     Pyramid = 5
 };
 
-//utils.cpp
+/* ---------------------------------------------------------------------- *
+ *  utils.cpp
+ *-----------------------------------------------------------------------*/
 int32_t binary_search(const PyArray<int32_t, 1> &arr, int32_t item);
 void intersect_arr(PyArray<int32_t, 2> *arr, PyArray<int32_t, 1> *indices, int32_t size, std::vector<int32_t> &intersect_arr);
-std::vector<int32_t> get_max_info(int32_t cell_type);
+std::array<int32_t, 3> get_max_info(int32_t cell_type);
 void print_instant(const char *fmt, ...);
 void time_it(const std::string &);
 
-# define PRINT_DEBUG
-/* ------------------------------------------------------------------ */
-/*  Macros that are active ONLY in a debug build                       */
-/* ------------------------------------------------------------------ */
+
+/* ---------------------------------------------------------------------- *
+ *  Debug helpers – expand only in debug builds                          *
+ *-----------------------------------------------------------------------*/
+# define PRINT_DEBUG /* Uncomment to enable full debugging */
+
 #if defined( PRINT_DEBUG)
 /* Debug build → expand to real calls */
 #  define DEBUG_PRINT_INSTANT(fmt, ...) print_instant((fmt), ##__VA_ARGS__)
@@ -47,13 +56,17 @@ void time_it(const std::string &);
 #  define DEBUG_TIME_IT(msg)            ((void)0)
 #endif
 
-//compute_cell_center_volume.cpp
+/* ---------------------------------------------------------------------- *
+ *  compute_cell_center_volume.cpp
+ *-----------------------------------------------------------------------*/
 void compute_cell_center_area_2d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center);
 void compute_cell_center_volume_3d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center);
 void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol);
 void compute_halo_cell_center_volume_3d(PyArray<int32_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol);
 
-//partitioning.cpp
+/* ---------------------------------------------------------------------- *
+ *  partitioning.cpp
+ *-----------------------------------------------------------------------*/
 PyObject * create_sub_domains(
     LocalDomainStruct *ld,
     PyArray<int32_t, 1> *part_vert,
