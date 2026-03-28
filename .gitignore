@@ -39,3 +39,5 @@ benchmark_result
 Vagrant/*.log
 results
 .gdb_history
+dist
+wheelhouse

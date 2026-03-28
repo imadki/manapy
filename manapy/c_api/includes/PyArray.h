@@ -1,6 +1,7 @@
 #include <numpy/arrayobject.h>
 #include <array>
 #include <sstream>
+#include <metis.h>
 
 #ifndef PYARRAY_H
 #define PYARRAY_H
@@ -39,6 +40,11 @@ struct PyArrayType {
 template <>
 struct PyArrayType<int32_t> {
     static constexpr int valueType = NPY_INT32;
+};
+
+template <>
+struct PyArrayType<int64_t> {
+    static constexpr int valueType = NPY_INT64;
 };
 
 template <>
@@ -212,13 +218,13 @@ public:
     }
 
     /** @brief Return a reference to the last element at raw ``i`` in a two‑dimensional view. */
-    Type &last2(const int32_t i) const noexcept {
+    Type &last2(const idx_t i) const noexcept {
         return *(reinterpret_cast<Type *>(this->data) + (i + 1) * this->shape[1] - 1);
         //return *(Type *)(this->data + i * this->strides[0] + (this->shape[1] - 1) * this->strides[1]);
     }
 
     /** @brief Return a reference to the element at position ``i``. */
-    Type &get(const int32_t i) const noexcept {
+    Type &get(const idx_t i) const noexcept {
         return *(reinterpret_cast<Type *>(this->data) + i);
         // return *(Type *)(this->data + i * this->strides[0]);
     }
@@ -226,7 +232,7 @@ public:
     /**
      * @brief  Return a reference to the element at position ``(i,j)`` in a two‑dimensional view.
     */
-    Type &get2(const int32_t i, const int32_t j) const noexcept {
+    Type &get2(const idx_t i, const idx_t j) const noexcept {
         return *(reinterpret_cast<Type *>(this->data) + i * this->shape[1] + j);
         //return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1]);
     }

@@ -40,7 +40,7 @@ public:
     ~VecMapNodes() = default;
 
 private:
-    using Pair = std::pair<int32_t, int32_t>;
+    using Pair = std::pair<idx_t, idx_t>;
     std::vector<std::vector<Pair>> map_nodes;
 
 public:
@@ -50,11 +50,11 @@ public:
         }
     }
 
-    void insert(const int32_t node_id, const int32_t partition_id, const int32_t local_node_id) {
+    void insert(const idx_t node_id, const idx_t partition_id, const idx_t local_node_id) {
         map_nodes[node_id].emplace_back(partition_id, local_node_id);
     }
 
-    int32_t operator()(const int32_t node_id, const int32_t partition_id) const {
+    idx_t operator()(const idx_t node_id, const idx_t partition_id) const {
         const auto &vec = map_nodes[node_id];
 
         const Pair* data = vec.data();
@@ -94,12 +94,12 @@ public:
  */
 static void create_halos(
     LocalDomainStruct *ld,
-    PyArray<int32_t, 2> *cells,
+    PyArray<idx_t, 2> *cells,
     PyArray<fdx_t, 2> *nodes,
-    std::vector<int32_t> &vec_cell_to_halo,
-    std::vector<int32_t> &vec_max,// pre-allocated buffer, reset before used
-    const int32_t p,
-    const int32_t dim
+    std::vector<idx_t> &vec_cell_to_halo,
+    std::vector<idx_t> &vec_max,// pre-allocated buffer, reset before used
+    const idx_t p,
+    const idx_t dim
     ) {
 
     // Aliases for frequently accessed read-only members of this partition.
@@ -107,7 +107,7 @@ static void create_halos(
     const auto &vec_node_halos = ld[p].vec_node_halos;
 
     //write
-    int32_t &l_max_node_haloid = ld[p].max_node_haloid;
+    idx_t &l_max_node_haloid = ld[p].max_node_haloid;
     l_max_node_haloid = -1;
 
     // -------------------------------------------------------------------------
@@ -119,10 +119,10 @@ static void create_halos(
     // Global cell IDs are unique across partitions, so there are no duplicates.
 
     //local
-    int32_t nb_halos = 0;
+    idx_t nb_halos = 0;
 
     //reset vec_max
-    for (int32_t i = 0; i < vec_node_halos.size(); i += 2) {
+    for (idx_t i = 0; i < vec_node_halos.size(); i += 2) {
         vec_max[vec_node_halos[i]] = 0;
     }
 
@@ -130,21 +130,21 @@ static void create_halos(
     for (const auto &item: ld[p].map_int_halos) {
         const auto neighbor = item.first;
         const auto &halos_int = ld[neighbor].map_int_halos[p];
-        nb_halos += static_cast<int32_t>(halos_int.size());
+        nb_halos += static_cast<idx_t>(halos_int.size());
     }
 
     // Allocate halo_halosext
-    ld[p].halo_halosext = new PyArray<int32_t, 2>(make_npy_dims(nb_halos, ld[p].max_halo_cell_nodeid + 2));
+    ld[p].halo_halosext = new PyArray<idx_t, 2>(make_npy_dims(nb_halos, ld[p].max_halo_cell_nodeid + 2));
     const auto *l_halo_halosext = ld[p].halo_halosext;
 
     // Fill halo_halosext and populate vec_cell_to_halo (g_cell_id → halo row index).
-    int32_t counter = 0;
+    idx_t counter = 0;
     for (const auto &item: ld[p].map_int_halos) {
-        const int32_t neighbor = item.first;
+        const idx_t neighbor = item.first;
         const auto &halos_int = ld[neighbor].map_int_halos[p]; // interiors of the neighbor partition.
 
         for (const auto &halo: halos_int) {
-            const int32_t g_id = ld[neighbor].cell_loctoglob->get(halo);
+            const idx_t g_id = ld[neighbor].cell_loctoglob->get(halo);
 
             //*** vec_cell_to_halo
             vec_cell_to_halo[g_id] = counter;
@@ -154,8 +154,8 @@ static void create_halos(
             auto sub_l_halo_halosext = l_halo_halosext->sub_array(counter);
             sub_l_halo_halosext.get(0) = g_id;
             auto sub_cells = cells->sub_array(g_id);
-            for (int32_t j = 0; j < sub_cells.last(); j++) {
-                const int32_t nodeid = sub_cells.get(j);
+            for (idx_t j = 0; j < sub_cells.last(); j++) {
+                const idx_t nodeid = sub_cells.get(j);
                 sub_l_halo_halosext.get(j + 1) = nodeid;
             }
             sub_l_halo_halosext.last() = sub_cells.last() + 1;
@@ -169,20 +169,20 @@ static void create_halos(
     // vec_node_halos is a flat array of pairs built during loop_through_cells:
     //   even indices: local_node_id
     //   odd  indices: global_cell_id of the touching exterior halo cell
-    ld[p].node_halos = new PyArray<int32_t, 1>(make_npy_dims(vec_node_halos.size()));
+    ld[p].node_halos = new PyArray<idx_t, 1>(make_npy_dims(vec_node_halos.size()));
     const auto l_node_halos = ld[p].node_halos;
 
     //*** node_halos, max_node_haloid
     // Even pass: copy local_node_id and track how many halo cells touch each node.
-    for (int32_t i = 0; i < vec_node_halos.size(); i=i+2) {
-        const int32_t local_node_id = vec_node_halos[i];
+    for (idx_t i = 0; i < vec_node_halos.size(); i=i+2) {
+        const idx_t local_node_id = vec_node_halos[i];
         // copy node_id
         l_node_halos->get(i) = local_node_id;
         // determine max_node_haloid
         l_max_node_haloid = std::max(l_max_node_haloid, ++vec_max[local_node_id]);
     }
     // Odd pass: translate global_cell_id → exterior halo index using vec_cell_to_halo.
-    for (int32_t i = 1; i < vec_node_halos.size(); i=i+2) {
+    for (idx_t i = 1; i < vec_node_halos.size(); i=i+2) {
         l_node_halos->get(i) = vec_cell_to_halo[vec_node_halos[i]];
     }
 
@@ -194,25 +194,25 @@ static void create_halos(
     // halo_neighsub[1][k] = number of interior-halo cells this partition sends to neighbour k
     // halo_halosint        = flat list of local cell IDs to send, grouped by neighbour
 
-    int32_t nb_halos_int = 0;
+    idx_t nb_halos_int = 0;
     for (const auto &item : l_map_int_halos) {
-        nb_halos_int += (int32_t)item.second.size();
+        nb_halos_int += (idx_t)item.second.size();
     }
 
-    ld[p].halo_neighsub = new PyArray<int32_t, 2>(make_npy_dims(2, l_map_int_halos.size()));
-    ld[p].halo_halosint = new PyArray<int32_t, 1>(make_npy_dims(nb_halos_int));
+    ld[p].halo_neighsub = new PyArray<idx_t, 2>(make_npy_dims(2, l_map_int_halos.size()));
+    ld[p].halo_halosint = new PyArray<idx_t, 1>(make_npy_dims(nb_halos_int));
     const auto *l_halo_neighsub = ld[p].halo_neighsub;
     const auto *l_halo_halosint = ld[p].halo_halosint;
 
-    int32_t neighsub_counter = 0;
-    int32_t halosint_counter = 0;
+    idx_t neighsub_counter = 0;
+    idx_t halosint_counter = 0;
     for (const auto &item : l_map_int_halos) {
-        const int32_t partition = item.first;
+        const idx_t partition = item.first;
         const auto &set = item.second;// local cell IDs of interior halos for this neighbour
 
         //***halo_neighsub
         l_halo_neighsub->sub_array(0).get(neighsub_counter) = partition;
-        l_halo_neighsub->sub_array(1).get(neighsub_counter) = (int32_t)set.size();
+        l_halo_neighsub->sub_array(1).get(neighsub_counter) = (idx_t)set.size();
         neighsub_counter += 1;
         for (const auto interior_cell: set) {
             //*** halo_halosint
@@ -265,10 +265,10 @@ static void create_halos(
  */
 static void create_phy(
     LocalDomainStruct *ld,
-    const int32_t p,
-    const PyArray<int32_t, 1> *phy_faces_name,
-    const PyArray<int32_t, 2> *phy_faces,
-    const std::vector<int32_t> &vec_node_oldname,
+    const idx_t p,
+    const PyArray<idx_t, 1> *phy_faces_name,
+    const PyArray<idx_t, 2> *phy_faces,
+    const std::vector<idx_t> &vec_node_oldname,
     const VecMapNodes &vec_map_nodes
     ) {
 
@@ -277,13 +277,13 @@ static void create_phy(
     const auto &l_map_phy_faces = ld[p].map_phyid;
     const auto max_phy_face_nodeid = ld[p].max_phy_face_nodeid;
     const auto l_node_loctoglob = ld[p].node_loctoglob;
-    const auto l_nb_nodes = static_cast<int32_t>(l_node_loctoglob->shape[0]);
+    const auto l_nb_nodes = static_cast<idx_t>(l_node_loctoglob->shape[0]);
     const auto &l_map_phyid_recv = ld[p].map_phyid_recv;
     const auto &l_map_node_halophyid = ld[p].map_node_halophyid;
     const auto &l_map_cell_halophyid = ld[p].map_cell_halophyid;
 
     /// Temporary map: exterior phyid global id → offset inside phyid_recv (used to fill node/cell_halophyid).
-    std::map<int32_t, int32_t> map_halophyid; ///< Map halophyid to its location inside phyid_recv
+    std::map<idx_t, idx_t> map_halophyid; ///< Map halophyid to its location inside phyid_recv
 
     // -------------------------------------------------------------------------
     // Return phyid_neighbor phyid_recv phyid_send node_halophyid cell_halophyid, max_node_halophyid, max_cell_halophyid
@@ -293,26 +293,26 @@ static void create_phy(
     // -------------------------------------------------------------------------
     // Compute sizes for all output arrays
     // -------------------------------------------------------------------------
-    int32_t neighbor_size       = 0;
-    int32_t recv_size           = 0;
-    int32_t send_size           = 0;
-    int32_t node_halophyid_size = 0;
-    int32_t cell_halophyid_size = 0;
+    idx_t neighbor_size       = 0;
+    idx_t recv_size           = 0;
+    idx_t send_size           = 0;
+    idx_t node_halophyid_size = 0;
+    idx_t cell_halophyid_size = 0;
 
     //*** Compute sizes for phyid_neighbor phyid_recv phyid_send node_halophyid
     for (const auto &[neighbor_part_id, set_halophyid]: l_map_phyid_recv) {
-        recv_size += static_cast<int32_t>(set_halophyid.size());
+        recv_size += static_cast<idx_t>(set_halophyid.size());
         // The number of phyids to send equals those the neighbour receives from us.
-        send_size += static_cast<int32_t>(ld[neighbor_part_id].map_phyid_recv[p].size());
+        send_size += static_cast<idx_t>(ld[neighbor_part_id].map_phyid_recv[p].size());
         neighbor_size++;
     }
     for (const auto& [_, set_node_halophyid] : l_map_node_halophyid) {
-        const auto size = static_cast <int32_t>(set_node_halophyid.size());
+        const auto size = static_cast <idx_t>(set_node_halophyid.size());
         ld[p].max_node_halophyid = std::max(ld[p].max_node_halophyid, size);
         node_halophyid_size += size + 2; // +1 for node id, +1 for count
     }
     for (const auto& [_, set_cell_halophyid] : l_map_cell_halophyid) {
-        const auto size = static_cast <int32_t>(set_cell_halophyid.size());
+        const auto size = static_cast <idx_t>(set_cell_halophyid.size());
         ld[p].max_cell_halophyid = std::max(ld[p].max_cell_halophyid, size);
         cell_halophyid_size += size + 2; // +1 for cell id, +1 for count
     }
@@ -323,11 +323,11 @@ static void create_phy(
     // -------------------------------------------------------------------------
     //*** Allocate
     // Description in the header file
-    auto *py_phyid_neighbor = new PyArray<int32_t, 2>(make_npy_dims(neighbor_size, 3));
-    auto *py_phyid_recv = new PyArray<int32_t, 1>(make_npy_dims(recv_size));
-    auto *py_phyid_send = new PyArray<int32_t, 1>(make_npy_dims(send_size));
-    auto *py_node_halophyid = new PyArray<int32_t, 1>(make_npy_dims(node_halophyid_size));
-    auto *py_cell_halophyid = new PyArray<int32_t, 1>(make_npy_dims(cell_halophyid_size));
+    auto *py_phyid_neighbor = new PyArray<idx_t, 2>(make_npy_dims(neighbor_size, 3));
+    auto *py_phyid_recv = new PyArray<idx_t, 1>(make_npy_dims(recv_size));
+    auto *py_phyid_send = new PyArray<idx_t, 1>(make_npy_dims(send_size));
+    auto *py_node_halophyid = new PyArray<idx_t, 1>(make_npy_dims(node_halophyid_size));
+    auto *py_cell_halophyid = new PyArray<idx_t, 1>(make_npy_dims(cell_halophyid_size));
     ld[p].phyid_neighbor = py_phyid_neighbor;
     ld[p].phyid_recv = py_phyid_recv;
     ld[p].phyid_send = py_phyid_send;
@@ -352,12 +352,12 @@ static void create_phy(
 
         // phyid_neighbor row: [neighbour_partition_id, nb_phyids_we_send, nb_phyids_we_recv]
         py_phyid_neighbor->get2(neighbor_size, 0) = neighbor_part_id;
-        py_phyid_neighbor->get2(neighbor_size, 1) = static_cast<int32_t>(set_intphyid.size());
-        py_phyid_neighbor->get2(neighbor_size, 2) = static_cast<int32_t>(set_halophyid.size());
+        py_phyid_neighbor->get2(neighbor_size, 1) = static_cast<idx_t>(set_intphyid.size());
+        py_phyid_neighbor->get2(neighbor_size, 2) = static_cast<idx_t>(set_halophyid.size());
         neighbor_size++;
 
         // phyid_recv: global phyid of each exterior physical face we receive.
-        for (const int32_t halophyid: set_halophyid) {
+        for (const idx_t halophyid: set_halophyid) {
             py_phyid_recv->get(recv_size) = halophyid;
             //py_phyid_recv->get(recv_size) = ld[neighbor_part_id].map_phyid.at(halophyid);
 
@@ -367,7 +367,7 @@ static void create_phy(
         }
 
         // phyid_send: local phyid of each physical face we send to this neighbour.
-        for (const int32_t intphyid: set_intphyid) {
+        for (const idx_t intphyid: set_intphyid) {
             py_phyid_send->get(send_size) = l_map_phy_faces.at(intphyid);
             send_size++;
         }
@@ -383,9 +383,9 @@ static void create_phy(
     for (const auto& [local_node_id, set_node_halophyid] : l_map_node_halophyid) {
         py_node_halophyid->get(node_halophyid_size) = local_node_id;
         node_halophyid_size++;
-        py_node_halophyid->get(node_halophyid_size) = static_cast<int32_t>(set_node_halophyid.size());
+        py_node_halophyid->get(node_halophyid_size) = static_cast<idx_t>(set_node_halophyid.size());
         node_halophyid_size++;
-        for (const int32_t halophyid: set_node_halophyid) {
+        for (const idx_t halophyid: set_node_halophyid) {
             // Translate global phyid → phyid_recv offset.
             py_node_halophyid->get(node_halophyid_size) = map_halophyid.at(halophyid);
             node_halophyid_size++;
@@ -401,8 +401,8 @@ static void create_phy(
     cell_halophyid_size = 0;
     for (const auto& [local_cell_id, set_cell_halophyid] : l_map_cell_halophyid) {
         py_cell_halophyid->get(cell_halophyid_size++) = local_cell_id;
-        py_cell_halophyid->get(cell_halophyid_size++) = static_cast<int32_t>(set_cell_halophyid.size());
-        for (const int32_t halophyid: set_cell_halophyid) {
+        py_cell_halophyid->get(cell_halophyid_size++) = static_cast<idx_t>(set_cell_halophyid.size());
+        for (const idx_t halophyid: set_cell_halophyid) {
             py_cell_halophyid->get(cell_halophyid_size++) = map_halophyid.at(halophyid);
         }
     }
@@ -412,11 +412,11 @@ static void create_phy(
     // Return l_node_oldname, l_node_halophyid
     // #########################################################
 
-    ld[p].node_oldname = new PyArray<int32_t, 1>(make_npy_dims(l_nb_nodes));
+    ld[p].node_oldname = new PyArray<idx_t, 1>(make_npy_dims(l_nb_nodes));
     auto l_node_oldname = ld[p].node_oldname;
     // For each local node, store the original boundary name from the global mesh.
-    for (int32_t l_id = 0; l_id < l_nb_nodes; l_id++) {
-        const int32_t g_id = l_node_loctoglob->get(l_id);
+    for (idx_t l_id = 0; l_id < l_nb_nodes; l_id++) {
+        const idx_t g_id = l_node_loctoglob->get(l_id);
 
         //*** node_oldname
         l_node_oldname->get(l_id) = vec_node_oldname[g_id];
@@ -427,14 +427,14 @@ static void create_phy(
     // Return l_phy_faces, l_phy_faces_name
     // #########################################################
 
-    ld[p].phy_faces = new PyArray<int32_t, 2>(make_npy_dims(l_map_phy_faces.size(), max_phy_face_nodeid + 1));
-    ld[p].phy_faces_name = new PyArray<int32_t, 1>(make_npy_dims(l_map_phy_faces.size()));
+    ld[p].phy_faces = new PyArray<idx_t, 2>(make_npy_dims(l_map_phy_faces.size(), max_phy_face_nodeid + 1));
+    ld[p].phy_faces_name = new PyArray<idx_t, 1>(make_npy_dims(l_map_phy_faces.size()));
     auto l_phy_faces = ld[p].phy_faces;
     auto l_phy_faces_name = ld[p].phy_faces_name;
 
     for (const auto &item : l_map_phy_faces) {
-        const int32_t g_id = item.first; ///< global physical face id
-        const int32_t l_id = item.second; ///< local  physical face id
+        const idx_t g_id = item.first; ///< global physical face id
+        const idx_t l_id = item.second; ///< local  physical face id
 
         //*** phy_faces_name
         l_phy_faces_name->get(l_id) = phy_faces_name->get(g_id);
@@ -442,8 +442,8 @@ static void create_phy(
         //*** start phy_faces
         const auto sub_phy_faces = phy_faces->sub_array(g_id);
         auto sub_l_phy_faces = l_phy_faces->sub_array(l_id);
-        for (int32_t j = 0; j < sub_phy_faces.last(); j++) {
-            const int32_t nodeid = sub_phy_faces.get(j);
+        for (idx_t j = 0; j < sub_phy_faces.last(); j++) {
+            const idx_t nodeid = sub_phy_faces.get(j);
             // Translate global node ids → local node ids inside this partition.
             sub_l_phy_faces.get(j) = vec_map_nodes(nodeid, p);
         }
@@ -479,28 +479,28 @@ static void create_phy(
  */
 static void loop_through_nodes(
     LocalDomainStruct *ld,
-    PyArray<int32_t, 1> *part_vert,
-    PyArray<int32_t, 2> *node_cellid,
+    PyArray<idx_t, 1> *part_vert,
+    PyArray<idx_t, 2> *node_cellid,
     PyArray<fdx_t, 2> *nodes,
     std::vector<int8_t> &node_is_boundary,
     VecMapNodes &vec_map_nodes,
-    int32_t &max_local_nodes,
-    const int32_t nb_parts
+    idx_t &max_local_nodes,
+    const idx_t nb_parts
 ) {
 
     // #########################################################
     // Counting
     // #########################################################
-    std::vector<int32_t> parts; // temporarily vector to store node neighboring parts ID
+    std::vector<idx_t> parts; // temporarily vector to store node neighboring parts ID
     std::vector<int8_t> part_seen(nb_parts, false); // part_seen[p] == true means partition p was already seen for the current node.
-    std::vector<int32_t> local_nodes_counter(nb_parts, 0); // determine the number of nodes for each parts
+    std::vector<idx_t> local_nodes_counter(nb_parts, 0); // determine the number of nodes for each parts
 
 
-    for (int32_t i = 0; i < node_cellid->shape[0]; i++) {
+    for (idx_t i = 0; i < node_cellid->shape[0]; i++) {
         auto sub_node_cellid = node_cellid->sub_array(i);
-        for (int32_t j = 0; j < sub_node_cellid.last(); j++) {
-            const int32_t neighbor_cell = sub_node_cellid.get(j);
-            const int32_t neighbor_part = part_vert->get(neighbor_cell);
+        for (idx_t j = 0; j < sub_node_cellid.last(); j++) {
+            const idx_t neighbor_cell = sub_node_cellid.get(j);
+            const idx_t neighbor_part = part_vert->get(neighbor_cell);
 
             if (part_seen[neighbor_part] == false) {
                 // record this partition the first time we see it
@@ -509,8 +509,8 @@ static void loop_through_nodes(
 
             part_seen[neighbor_part] = true;
         }
-        for (int32_t j = 0; j < parts.size(); j++) {
-            const int32_t part = parts[j];
+        for (idx_t j = 0; j < parts.size(); j++) {
+            const idx_t part = parts[j];
             // count the number of nodes for every sub_domain
             local_nodes_counter[part]++;
 
@@ -526,11 +526,11 @@ static void loop_through_nodes(
     // #########################################################
     // Allocating
     // #########################################################
-    for (int32_t i = 0; i < nb_parts; i++) {
-        const int32_t nb_nodes = local_nodes_counter[i];
+    for (idx_t i = 0; i < nb_parts; i++) {
+        const idx_t nb_nodes = local_nodes_counter[i];
 
         ld[i].nodes = new PyArray<fdx_t, 2>(make_npy_dims(nb_nodes, 3), true);
-        ld[i].node_loctoglob = new PyArray<int32_t, 1>(make_npy_dims(nb_nodes));
+        ld[i].node_loctoglob = new PyArray<idx_t, 1>(make_npy_dims(nb_nodes));
         max_local_nodes = std::max(max_local_nodes, nb_nodes); // track maximum for create_sub_domains::vec_max size
     }
 
@@ -540,14 +540,14 @@ static void loop_through_nodes(
     std::fill(part_seen.begin(), part_seen.end(), false);
     std::fill(local_nodes_counter.begin(), local_nodes_counter.end(), 0);
 
-    for (int32_t i = 0; i < node_cellid->shape[0]; i++) {
+    for (idx_t i = 0; i < node_cellid->shape[0]; i++) {
         auto sub_node_cellid = node_cellid->sub_array(i);
         const auto sub_nodes = nodes->sub_array(i);
 
-        for (int32_t j = 0; j < sub_node_cellid.last(); j++) {
-            const int32_t neighbor_cell = sub_node_cellid.get(j);
-            const int32_t neighbor_part = part_vert->get(neighbor_cell);
-            const int32_t local_nodeid = local_nodes_counter[neighbor_part];
+        for (idx_t j = 0; j < sub_node_cellid.last(); j++) {
+            const idx_t neighbor_cell = sub_node_cellid.get(j);
+            const idx_t neighbor_part = part_vert->get(neighbor_cell);
+            const idx_t local_nodeid = local_nodes_counter[neighbor_part];
 
             if (part_seen[neighbor_part] == false) {
                 // record this partition the first time we see it
@@ -563,13 +563,13 @@ static void loop_through_nodes(
 
             //*** assign nodes
             const auto sub_l_nodes = ld[neighbor_part].nodes->sub_array(local_nodeid);
-            for (int32_t k = 0; k < nodes->shape[1]; k++) {
+            for (idx_t k = 0; k < nodes->shape[1]; k++) {
                 sub_l_nodes.get(k) = sub_nodes.get(k);
             }
         }
 
-        for (int32_t j = 0; j < parts.size(); j++) {
-            const int32_t part = parts[j];
+        for (idx_t j = 0; j < parts.size(); j++) {
+            const idx_t part = parts[j];
             if (parts.size() > 1) {
                 // Node is shared by multiple partitions → it lies on a boundary. (Not physical boundaries)
 
@@ -619,16 +619,16 @@ static void loop_through_nodes(
  */
 static void loop_through_physical_faces(
     LocalDomainStruct *ld,
-    PyArray<int32_t, 1> *part_vert,
-    PyArray<int32_t, 2> *node_cellid,
-    PyArray<int32_t, 2> *phy_faces,
-    PyArray<int32_t, 1> *phy_faces_name,
-    std::vector<int32_t> &vec_node_oldname,
-    std::vector<int32_t> &part_phyid
+    PyArray<idx_t, 1> *part_vert,
+    PyArray<idx_t, 2> *node_cellid,
+    PyArray<idx_t, 2> *phy_faces,
+    PyArray<idx_t, 1> *phy_faces_name,
+    std::vector<idx_t> &vec_node_oldname,
+    std::vector<idx_t> &part_phyid
 ) {
 
-    std::vector<int32_t> intersect_cell(2); // holds at most 2 cells touching a face
-    int total_nb_phyfaces = 0;
+    std::vector<idx_t> intersect_cell(2); // holds at most 2 cells touching a face
+    idx_t total_nb_phyfaces = 0;
 
     for (idx_t i = 0; i < phy_faces->shape[0]; i++) {
         auto phy_face = phy_faces->sub_array(i);
@@ -640,8 +640,8 @@ static void loop_through_physical_faces(
         intersect_arr(node_cellid, &phy_face, size, intersect_cell);
 
         if (intersect_cell[0] != -1) {
-            const int32_t cell_id = intersect_cell[0];
-            const int32_t p = part_vert->get(cell_id); // partition that owns this face
+            const idx_t cell_id = intersect_cell[0];
+            const idx_t p = part_vert->get(cell_id); // partition that owns this face
 
             //*** local_max_phy_face_nodeid
             ld[p].max_phy_face_nodeid = std::max(size, ld[p].max_phy_face_nodeid);
@@ -650,7 +650,7 @@ static void loop_through_physical_faces(
             // Insert into this partition's global→local face map.
             // The local id is simply the current size before insertion.
             auto &tmp_map = ld[p].map_phyid;
-            tmp_map[i] = static_cast<int32_t>(tmp_map.size());
+            tmp_map[i] = static_cast<idx_t>(tmp_map.size());
 
             //*** part_phyid
             part_phyid[total_nb_phyfaces] = p;
@@ -658,8 +658,8 @@ static void loop_through_physical_faces(
         }
 
         // Track the minimum boundary name for each node on this face.
-        for (int32_t j = 0; j < size; j++) {
-            const int32_t nodeid = phy_face.get(j);
+        for (idx_t j = 0; j < size; j++) {
+            const idx_t nodeid = phy_face.get(j);
             //*** vec_node_oldname
             if (vec_node_oldname[nodeid] == 0 or vec_node_oldname[nodeid] > name)
                 vec_node_oldname[nodeid] = name;
@@ -721,25 +721,25 @@ static void loop_through_physical_faces(
  */
 static void loop_through_cells(
 LocalDomainStruct *ld,
-PyArray<int32_t, 1> *part_vert,
-PyArray<int32_t, 2> *node_cellid,
-PyArray<int32_t, 2> *cells,
+PyArray<idx_t, 1> *part_vert,
+PyArray<idx_t, 2> *node_cellid,
+PyArray<idx_t, 2> *cells,
 PyArray<int8_t, 1> *cells_type,
-PyArray<int32_t, 2> *node_phyid,
+PyArray<idx_t, 2> *node_phyid,
 const std::vector<int8_t> &node_is_boundary,
 const VecMapNodes &vec_map_nodes,
-const std::vector<int32_t> &part_phyid,
-const int32_t nb_parts
+const std::vector<idx_t> &part_phyid,
+const idx_t nb_parts
 ) {
 
-    std::vector<int32_t> local_nb_cells(nb_parts, 0); // for every local domain count the number of local cells
-    std::vector<int32_t> visited_phyid(part_phyid.size(), -1); // used to count max_cell_phyid
+    std::vector<idx_t> local_nb_cells(nb_parts, 0); // for every local domain count the number of local cells
+    std::vector<idx_t> visited_phyid(part_phyid.size(), -1); // used to count max_cell_phyid
 
     // #########################################################
     // Counting — compute per-partition cell count and cell-type dimensional limits.
     // #########################################################
-    for (int32_t i = 0; i < cells->shape[0]; i++) {
-        const int32_t part = part_vert->get(i);
+    for (idx_t i = 0; i < cells->shape[0]; i++) {
+        const idx_t part = part_vert->get(i);
         const int8_t cell_type = cells_type->get(i);
         const auto max_info = get_max_info(cell_type); // [max_faces, max_nodes_per_face, max_nodes]
 
@@ -753,13 +753,13 @@ const int32_t nb_parts
     // #########################################################
     // Allocating
     // #########################################################
-    for (int32_t i = 0; i < nb_parts; i++) {
-        const int32_t nb_cells = local_nb_cells[i];
-        const int32_t max_cell_nodeid = ld[i].max_cell_nodeid;
+    for (idx_t i = 0; i < nb_parts; i++) {
+        const idx_t nb_cells = local_nb_cells[i];
+        const idx_t max_cell_nodeid = ld[i].max_cell_nodeid;
 
-        ld[i].cells = new PyArray<int32_t, 2>(make_npy_dims(nb_cells, max_cell_nodeid + 1));
+        ld[i].cells = new PyArray<idx_t, 2>(make_npy_dims(nb_cells, max_cell_nodeid + 1));
         ld[i].cells_type = new PyArray<int8_t, 1>(make_npy_dims(nb_cells));
-        ld[i].cell_loctoglob = new PyArray<int32_t, 1>(make_npy_dims(nb_cells));
+        ld[i].cell_loctoglob = new PyArray<idx_t, 1>(make_npy_dims(nb_cells));
 
     }
 
@@ -769,12 +769,12 @@ const int32_t nb_parts
 
     // i_visited[neighbour_cell] == g_id  means this neighbour was already counted
     // as a halo neighbour of cell g_id in the current cell's loop (dedup guard).
-    std::vector<int32_t> i_visited(cells->shape[0], -1);
+    std::vector<idx_t> i_visited(cells->shape[0], -1);
     std::fill(local_nb_cells.begin(), local_nb_cells.end(), 0);
 
-    for (int32_t g_id = 0; g_id < cells->shape[0]; g_id++) {
-        const int32_t part = part_vert->get(g_id);
-        const int32_t l_id = local_nb_cells[part]; // this cell's local id
+    for (idx_t g_id = 0; g_id < cells->shape[0]; g_id++) {
+        const idx_t part = part_vert->get(g_id);
+        const idx_t l_id = local_nb_cells[part]; // this cell's local id
         const int8_t cell_type = cells_type->get(g_id);
         auto &map_int_halos = ld[part].map_int_halos;
 
@@ -787,13 +787,13 @@ const int32_t nb_parts
 
         const auto sub_cells = cells->sub_array(g_id);
         auto sub_l_cells = ld[part].cells->sub_array(l_id);
-        int32_t nb_cell_halonid = 0; // number of distinct halo-neighbour cells
-        int32_t nb_cell_phyid = 0; // number of distinct local physical faces
+        idx_t nb_cell_halonid = 0; // number of distinct halo-neighbour cells
+        idx_t nb_cell_phyid = 0; // number of distinct local physical faces
 
         // Iterate over the nodes of this cell.
-        for (int32_t j = 0; j < sub_cells.last(); j++) {
-            const int32_t nodeid = sub_cells.get(j);
-            const int32_t local_nodeid = vec_map_nodes(nodeid, part); // get local node id
+        for (idx_t j = 0; j < sub_cells.last(); j++) {
+            const idx_t nodeid = sub_cells.get(j);
+            const idx_t local_nodeid = vec_map_nodes(nodeid, part); // get local node id
 
             //*** assign cells
             sub_l_cells.get(j) = local_nodeid; // store local node id in local cell array
@@ -801,10 +801,10 @@ const int32_t nb_parts
             // Only boundary nodes can introduce halo relationships.
             if (node_is_boundary[nodeid]) {
                 auto sub_node_cellid = node_cellid->sub_array(nodeid);
-                for (int32_t k = 0; k < sub_node_cellid.last(); k++) {
-                    const int32_t neighbor_cell = sub_node_cellid.get(k);
-                    const int32_t neighbor_part = part_vert->get(neighbor_cell);
-                    const int32_t nb_neighbor_cell_nodeid = cells->last2(neighbor_cell);
+                for (idx_t k = 0; k < sub_node_cellid.last(); k++) {
+                    const idx_t neighbor_cell = sub_node_cellid.get(k);
+                    const idx_t neighbor_part = part_vert->get(neighbor_cell);
+                    const idx_t nb_neighbor_cell_nodeid = cells->last2(neighbor_cell);
 
                     // --- map_int_halos ---
                     // If the neighbour cell belongs to a different partition and has not
@@ -832,7 +832,7 @@ const int32_t nb_parts
                     // which of its boundary nodes touch which exterior halo cell.
                     if (neighbor_part != part) {
                         //*** vec_node_halos
-                        const int32_t l_nodeid = vec_map_nodes(nodeid, neighbor_part);
+                        const idx_t l_nodeid = vec_map_nodes(nodeid, neighbor_part);
                         auto &vec_node_halos = ld[neighbor_part].vec_node_halos;
 
                         // Dedup: skip if last pair is already (l_nodeid, g_id).
@@ -855,11 +855,11 @@ const int32_t nb_parts
             // Note: placed here (inside loop_through_cells, not loop_through_nodes) because
             //       part_phyid is only fully populated after loop_through_physical_faces runs and a node can belong to more than one subdomains.
             auto sub_node_phyid = node_phyid->sub_array(nodeid);
-            int32_t nb_node_phyid = 0;
+            idx_t nb_node_phyid = 0;
 
-            for (int32_t k = 0; k < sub_node_phyid.last(); k++) {
-                const int32_t phy_id = sub_node_phyid.get(k);
-                const int32_t phy_id_part = part_phyid[phy_id]; // partition owning this face
+            for (idx_t k = 0; k < sub_node_phyid.last(); k++) {
+                const idx_t phy_id = sub_node_phyid.get(k);
+                const idx_t phy_id_part = part_phyid[phy_id]; // partition owning this face
 
                 if (part != phy_id_part) {
                     // It is ok to use map and set here the access is rare, does not affect performance.
@@ -906,12 +906,12 @@ const int32_t nb_parts
  * @param nb_parts Number of partitions.
  * @return         A new Python list of nb_parts tuples (each is one partition's data).
  */
-static PyObject *get_result_as_py_list(LocalDomainStruct *ld, const int32_t nb_parts) {
+static PyObject *get_result_as_py_list(LocalDomainStruct *ld, const idx_t nb_parts) {
     PyObject *py_list_result = PyList_New(nb_parts);
     if (!py_list_result) {
         throw std::bad_alloc();
     }
-    for (int i = 0; i < nb_parts; i++) {
+    for (idx_t i = 0; i < nb_parts; i++) {
         ld[i].create_tuple(); // wraps all PyArray pointers into a Python tuple
         PyList_SET_ITEM(py_list_result, i, ld[i].tuple_res);
 
@@ -960,40 +960,37 @@ static PyObject *get_result_as_py_list(LocalDomainStruct *ld, const int32_t nb_p
  */
 PyObject *create_sub_domains(
     LocalDomainStruct *ld,
-    PyArray<int32_t, 1> *part_vert,
-    PyArray<int32_t, 2> *node_cellid,
+    PyArray<idx_t, 1> *part_vert,
+    PyArray<idx_t, 2> *node_cellid,
     PyArray<fdx_t, 2> *nodes,
-    PyArray<int32_t, 2> *cells,
+    PyArray<idx_t, 2> *cells,
     PyArray<int8_t, 1> *cells_type,
-    PyArray<int32_t, 2> *phy_faces,
-    PyArray<int32_t, 1> *phy_faces_name,
-    PyArray<int32_t, 2> *node_phyid,
-    const int32_t nb_parts,
-    const int32_t dim
+    PyArray<idx_t, 2> *phy_faces,
+    PyArray<idx_t, 1> *phy_faces_name,
+    PyArray<idx_t, 2> *node_phyid,
+    const idx_t nb_parts,
+    const idx_t dim
     ) {
-
+    DEBUG_PRINT_INSTANT("nb_parts = %d\n", static_cast<int32_t>(nb_parts));
     // max_local_nodes is computed by loop_through_nodes and used to size vec_max.
-    int32_t max_local_nodes = 0;
+    idx_t max_local_nodes = 0;
 
-    std::vector<int32_t> vec_node_oldname(nodes->shape[0]); ///< per global node: original boundary name
-    std::vector<int32_t> part_phyid(phy_faces->shape[0]); // store the physical face partition ID
+    std::vector<idx_t> vec_node_oldname(nodes->shape[0]); ///< per global node: original boundary name
+    std::vector<idx_t> part_phyid(phy_faces->shape[0]); // store the physical face partition ID
     std::vector<int8_t> node_is_boundary(nodes->shape[0], false);
     VecMapNodes vec_map_nodes(nodes->shape[0]); ///< flat cache-friendly node-partition map
-    std::vector<int32_t> vec_cell_to_halo(cells->shape[0], -1); ///< global_cell_id → exterior halo index (reused across partitions).
+    std::vector<idx_t> vec_cell_to_halo(cells->shape[0], -1); ///< global_cell_id → exterior halo index (reused across partitions).
     
     //part1
     DEBUG_TIME_IT("");
     loop_through_nodes(ld, part_vert, node_cellid, nodes, node_is_boundary, vec_map_nodes, max_local_nodes, nb_parts);
     loop_through_physical_faces(ld, part_vert, node_cellid, phy_faces, phy_faces_name, vec_node_oldname, part_phyid);
-    // for (int i = 0; i < part_vert->shape[0]; i++) {
-    //     DEBUG_PRINT_INSTANT("%d\n", part_vert->get(i));
-    // }
     loop_through_cells(ld, part_vert, node_cellid, cells, cells_type, node_phyid, node_is_boundary, vec_map_nodes, part_phyid, nb_parts);
     DEBUG_TIME_IT("loop_through");
     //part2
     DEBUG_TIME_IT("");
-    std::vector<int32_t> vec_max(max_local_nodes, 0);
-    for (int32_t p = 0; p < nb_parts; p++) {
+    std::vector<idx_t> vec_max(max_local_nodes, 0);
+    for (idx_t p = 0; p < nb_parts; p++) {
         create_halos(ld, cells, nodes, vec_cell_to_halo, vec_max, p, dim);
         create_phy(ld, p, phy_faces_name, phy_faces, vec_node_oldname, vec_map_nodes);
     }
