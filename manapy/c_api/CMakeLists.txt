@@ -89,9 +89,8 @@ endfunction()
 # =========================================================
 create_manapy_module(manapy_part32_32 int32 float metis_32)
 create_manapy_module(manapy_part32_64 int32 double metis_32)
-# TODO need to add support for int64 indexing
-#create_manapy_module(manapy_part64_32 int64 float metis_64)
-#create_manapy_module(manapy_part64_64 int64 double metis_64)
+create_manapy_module(manapy_part64_32 int64 float metis_64)
+create_manapy_module(manapy_part64_64 int64 double metis_64)
 
 # =========================================================
 # Install (required for wheel packaging)
@@ -99,8 +98,7 @@ create_manapy_module(manapy_part32_64 int32 double metis_32)
 install(TARGETS
         manapy_part32_32
         manapy_part32_64
-# TODO need to add support for int64 indexing
-#        manapy_part64_32
-#        manapy_part64_64
+        manapy_part64_32
+        manapy_part64_64
         LIBRARY DESTINATION .
 )

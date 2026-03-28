@@ -3,20 +3,20 @@
 
 #include "manapy_part.h"
 
-void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol) {
+void compute_halo_cell_center_area_2d(PyArray<idx_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol) {
     // ** This code is the same as compute_cell_center_area_2d any change to this function may imply also changing the latter function ** //
     //Area using shoelace formula (also called Gauss’s area formula or the surveyors' formula).
     //Area = 1/2 * | Σ (x_i * y_{i+1} − x_{i+1} * y_i)
 
     double p[4][2]; //2D square, triangle
 
-    for (int32_t i = 0; i <halo_halosext->shape[0]; i++) {
+    for (idx_t i = 0; i <halo_halosext->shape[0]; i++) {
         double area = 0.0;
-        const int32_t nb_vertex = halo_halosext->last2(i) - 1;  //skipping cell_id in halo_halosext[i]
+        const idx_t nb_vertex = halo_halosext->last2(i) - 1;  //skipping cell_id in halo_halosext[i]
 
         // copy vertices
-        for (int32_t j = 0; j < nb_vertex; j++) {
-            const int32_t node_id = halo_halosext->get2(i, j + 1); //skipping cell_id in halo_halosext[i]
+        for (idx_t j = 0; j < nb_vertex; j++) {
+            const idx_t node_id = halo_halosext->get2(i, j + 1); //skipping cell_id in halo_halosext[i]
             p[j][0] = nodes->get2(node_id, 0);
             p[j][1] = nodes->get2(node_id, 1);
         }
@@ -49,7 +49,7 @@ void compute_halo_cell_center_area_2d(PyArray<int32_t, 2> const *halo_halosext, 
     }
 }
 
-void compute_halo_cell_center_volume_3d(PyArray<int32_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol) {
+void compute_halo_cell_center_volume_3d(PyArray<idx_t, 2> const *halo_halosext, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 2> *halo_centvol) {
     // ** This code is the same as compute_cell_center_volume_3d any change to this function may imply also changing the latter function ** //
     double p[8][3]; //3D Tetrahedron Hexahedron Pyramid
 
@@ -60,12 +60,12 @@ void compute_halo_cell_center_volume_3d(PyArray<int32_t, 2> const *halo_halosext
               + (b[2]-a[2])*((c[0]-a[0])*(d[1]-a[1]) - (c[1]-a[1])*(d[0]-a[0])))/6.0;
     };
 
-    for (int32_t i = 0; i <halo_halosext->shape[0]; i++) {
-        const int32_t nb_vertex = halo_halosext->last2(i) - 1; //skipping cell_id in halo_halosext[i]
+    for (idx_t i = 0; i <halo_halosext->shape[0]; i++) {
+        const idx_t nb_vertex = halo_halosext->last2(i) - 1; //skipping cell_id in halo_halosext[i]
 
         // copy vertices
-        for (int32_t j = 0; j < nb_vertex; j++) {
-            const int32_t node_id = halo_halosext->get2(i, j + 1); //skipping cell_id in halo_halosext[i]
+        for (idx_t j = 0; j < nb_vertex; j++) {
+            const idx_t node_id = halo_halosext->get2(i, j + 1); //skipping cell_id in halo_halosext[i]
             p[j][0] = nodes->get2(node_id, 0);
             p[j][1] = nodes->get2(node_id, 1);
             p[j][2] = nodes->get2(node_id, 2);
@@ -113,20 +113,20 @@ void compute_halo_cell_center_volume_3d(PyArray<int32_t, 2> const *halo_halosext
     }
 }
 
-void compute_cell_center_area_2d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center) {
+void compute_cell_center_area_2d(PyArray<idx_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_area, PyArray<fdx_t, 2> *cell_center) {
     // ** This code is the same as compute_halo_cell_center_volume_3d any change to this function may imply also changing the latter function ** //
     //Area using shoelace formula (also called Gauss’s area formula or the surveyors' formula).
     //Area = 1/2 * | Σ (x_i * y_{i+1} − x_{i+1} * y_i)
 
     double p[4][2]; //2D square, triangle
 
-    for (int32_t i = 0; i <cells->shape[0]; i++) {
+    for (idx_t i = 0; i <cells->shape[0]; i++) {
         double area = 0.0;
-        const int32_t nb_vertex = cells->last2(i);
+        const idx_t nb_vertex = cells->last2(i);
 
         // copy vertices
-        for (int32_t j = 0; j < nb_vertex; j++) {
-            const int32_t node_id = cells->get2(i, j);
+        for (idx_t j = 0; j < nb_vertex; j++) {
+            const idx_t node_id = cells->get2(i, j);
             p[j][0] = nodes->get2(node_id, 0);
             p[j][1] = nodes->get2(node_id, 1);
         }
@@ -157,7 +157,7 @@ void compute_cell_center_area_2d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t
     }
 }
 
-void compute_cell_center_volume_3d(PyArray<int32_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center) {
+void compute_cell_center_volume_3d(PyArray<idx_t, 2> const *cells, PyArray<fdx_t, 2> const *nodes, PyArray<fdx_t, 1> *cell_volume, PyArray<fdx_t, 2> *cell_center) {
     // ** This code is the same as compute_halo_cell_center_volume_3d any change to this function may imply also changing the latter function ** //
     double p[8][3]; //3D Tetrahedron Hexahedron Pyramid
 
@@ -168,12 +168,12 @@ void compute_cell_center_volume_3d(PyArray<int32_t, 2> const *cells, PyArray<fdx
               + (b[2]-a[2])*((c[0]-a[0])*(d[1]-a[1]) - (c[1]-a[1])*(d[0]-a[0])))/6.0;
     };
 
-    for (int32_t i = 0; i <cells->shape[0]; i++) {
-        const int32_t nb_vertex = cells->last2(i);
+    for (idx_t i = 0; i <cells->shape[0]; i++) {
+        const idx_t nb_vertex = cells->last2(i);
 
         // copy vertices
-        for (int32_t j = 0; j < nb_vertex; j++) {
-            const int32_t node_id = cells->get2(i, j);
+        for (idx_t j = 0; j < nb_vertex; j++) {
+            const idx_t node_id = cells->get2(i, j);
             p[j][0] = nodes->get2(node_id, 0);
             p[j][1] = nodes->get2(node_id, 1);
             p[j][2] = nodes->get2(node_id, 2);
