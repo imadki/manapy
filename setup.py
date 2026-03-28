@@ -46,7 +46,7 @@ install_requires = [
     'lxml',
     'mpmath',
     'numba',
-    'numpy',
+    'numpy==2.4.3',
     'Pillow',
     'pyparsing',
     'python-dateutil',
@@ -55,7 +55,7 @@ install_requires = [
     'sympy',
     'termcolor',
     'textX',
-    'mgmetis',
+    # 'mgmetis',
     'meshio',
     ]
 

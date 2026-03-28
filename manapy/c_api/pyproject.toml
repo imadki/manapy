@@ -6,7 +6,7 @@ build-backend = "scikit_build_core.build"
 name = "manapy_part"
 version = "1.0.0"
 description = "Manapy C API with vendored METIS/GKlib"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 dependencies = ["numpy"]
 
 [tool.scikit-build]
@@ -16,10 +16,11 @@ cmake.build-type = "Release"
 namespaces = true
 
 [tool.cibuildwheel]
-build = "cp311-* cp312-* cp313-* cp314-*"
+build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*-musllinux*"
 manylinux-x86_64-image = "manylinux2014"
 
+#for installation details see CMakeLists.txt and third_party/CmakeLists.txt
 #sudo usermod -aG docker $USER
 #newgrp docker
 #python3 -m pip install scikit-build-core cibuildwheel build
