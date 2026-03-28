@@ -1,6 +1,6 @@
 //
 // Created by aben-ham on 9/22/25.
-// Last modification on 3/12/26.
+// Last modification on 3/27/26.
 //
 
 #ifndef LOCALDOMAINSTRUCT_H
@@ -34,7 +34,7 @@ struct LocalDomainStruct {
     /// @brief Cell connectivity. [nb_cells, max_cell_nodeid+1] layout: [[node1, node2, ..., nb_nodes], ...]
     PyArray<int32_t, 2> *cells = nullptr;
 
-    /// @brief Geometric types of each cell. [nb_cells]. look at (CELL_TYPE)
+    /// @brief Geometric types of each cell. [nb_cells]. look at (CELL_TYPE at manapy_part.h)
     PyArray<int8_t, 1> *cells_type = nullptr;
 
     /// @brief Physical faces connectivity. [nb_phy_faces, max_phy_face_nodeid + 1] layout: [[node1, node2, ..., nb_nodes], ...]
@@ -72,7 +72,6 @@ struct LocalDomainStruct {
     PyArray<int32_t, 2> *halo_halosext = nullptr;
 
     /// @brief These are local cells inside *this* partition that need to be packaged and sent off to neighboring partitions to serve as *their* exterior halos. Contains local cell IDs, grouped by receiving neighbor partition. [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
-    /// @details HalosIntConnectedToPX... represent the local ID of the cell located in PX
     /// @details The order and number of HalosIntConnectedToPX is specified in `halo_neighsub` as `halo_neighsub[PX][0] = PartitionId` and `halo_neighsub[PX][1] = NbHalosIntConnectedToPX`
     PyArray<int32_t, 1> *halo_halosint = nullptr;
 
@@ -84,20 +83,26 @@ struct LocalDomainStruct {
     // =========================================================================
 
 
-    /// @brief Store neighbor partition ID; number of phyids received from this neighbor; number of phyids sent from this part. [[Neighbor partition ID, nb_send, nb_recv] ...]
+    /// @brief Store neighbor partition ID; number of phyids sent from this part. number of phyids received from this neighbor;. [nb_neighbor_parts, 3] layout [[Neighbor partition ID, nb_send, nb_recv] ...]
     PyArray<int32_t, 2> *phyid_neighbor = nullptr;
 
-    /// @brief Exterior phyid by globalId (phyid receuved from neighbors), fallowing the same order of neighbors as in phyid_neighbor
+    /// @brief Exterior phyids received from neighbour partitions,
+    ///        ordered exactly as they appear in `phyid_neighbor`.
+    ///        [nb_halo_ghost aka exterior phyid] layout [globalId...]
     PyArray<int32_t, 1> *phyid_recv = nullptr;
 
-    /// @brief These are local phyids inside *this* partition that need to be packaged and sent off to neighboring partitions to serve as *their* exterior phyids. Store phyids by it localId for every partition.
-    /// @details The order of neighbors matches that in `phyid_neighbor` [LocalPhyIdOfP0, ... LocalPhyIdOfPn]
+    /// @brief Indices poit to phy_faces table that represent local physical faces that have to be packaged and sent off to neighbouring
+    ///        partitions so that they become the *exterior* phyids of those neighbours.
+    ///        layout [indices poit to phy_faces table for the first neighbor partition, indices poit to phy_faces table for the second neighbor partition ...]
+    ///
+    /// @details The order of these ids follows the same neighbour order as in
+    ///          `phyid_neighbor`.
     PyArray<int32_t, 1> *phyid_send = nullptr;
 
-    /// @brief Links local nodes to exterior physical boundary conditions. layout: [NodeLocalId1, IndexPointToPhyId_recv, ... Size1, NodeLocalId2, ... Size2, ...., SizeN]
-    /// @details IndexPointToPhyId_recv point to phyid_recv.
+    /// @brief Links local nodes to exterior physical boundary conditions. layout: [NodeLocalId1, Size1, Size1 IndicesPointToTheTargetPhyId_recv..., NodeLocalId2, Size2, Size2 Indices..., ...., SizeN]
     PyArray<int32_t, 1> *node_halophyid = nullptr;
 
+    /// @brief Links local cells to exterior physical boundary conditions. layout: [CellLocalId1, Size1, Size1 IndicesPointToTheTargetPhyId_recv..., CellLocalId2, Size2, Size2 Indices..., ...., SizeN]
     PyArray<int32_t, 1> *cell_halophyid = nullptr;
 
     PyObject *tuple_res = nullptr;
@@ -105,28 +110,28 @@ struct LocalDomainStruct {
     // =========================================================================
     // Scalars (Pre-calculated dimensional sizes)
     // =========================================================================
-    int max_cell_nodeid = 0;       ///< Max number of nodes in any cell
-    int max_cell_faceid = 0;       ///< Max number of faces on any cell
-    int max_face_nodeid = 0;       ///< Max number of nodes on any face
-    int max_node_haloid = 0;       ///< Max neighbor halo cells connected across any single node
-    int max_cell_halonid = 0;      ///< Max neighbor halo cells connected across any single cell
+    int max_cell_nodeid = 0;       ///< Max number of nodes in any local cell
+    int max_cell_faceid = 0;       ///< Max number of faces on any local cell
+    int max_face_nodeid = 0;       ///< Max number of nodes on any local face
+    int max_node_haloid = 0;       ///< Max neighbor halo cells connected across any local node
+    int max_cell_halonid = 0;      ///< Max neighbor halo cells connected across any local cell
     int max_halo_cell_nodeid = 0;  ///< Max node count for any exterior halo cell
-    int max_node_phyid = 0;
-    int max_node_halophyid = 0;
-    int max_cell_phyid = 0;
-    int max_cell_halophyid = 0;
+    int max_node_phyid = 0;        ///< Max connected boundary physical faces count for any local node
+    int max_node_halophyid = 0;    ///< Max connected exterior boundary physical faces count for any local node
+    int max_cell_phyid = 0;        ///< Max connected boundary physical faces count for any local cell
+    int max_cell_halophyid = 0;    ///< Max connected exterior boundary physical faces count for any local cell
 
 
     // =========================================================================
     // Temporary Construction Variables
     // =========================================================================
     std::map<int32_t, std::vector<int32_t> > map_int_halos; ///< Neighbor partitionId => List of interior halos by local cellID
-    std::vector<int32_t> vec_node_halos;            ///< Vector equivalent to `node_halos` storing global cell IDs directly (LocalNodeID, GlobalCellId)
-    int32_t max_phy_face_nodeid = 0;                    ///< Max nodes on any physical face
+    std::vector<int32_t> vec_node_halos;            ///< Vector equivalent to `node_halos` storing global cell IDs directly. it stores the Pair(LocalNodeID, GlobalCellId)
+    int32_t max_phy_face_nodeid = 0;                    ///< Max nodes on any local physical face
     std::map<int32_t, int32_t> map_phyid;               ///< Global ID of phy_face => Local ID of phy_face
-    std::map<int32_t, std::set<int32_t> > map_phyid_recv; ///< PartitionId => Set(global id of exterior phyids)
+    std::map<int32_t, std::set<int32_t> > map_phyid_recv; ///< PartitionId => Set(global id of exterior phyids) represent boundary physical faces that will be received from a neighbor Partition, Important if this partition does not receive from and only send to a partition, an empty set inserted to represent neighborship.
     std::map<int32_t, std::set<int32_t> > map_node_halophyid; ///< GlobalNodeId => Set(global id of exterior phyids)
-    std::map<int32_t, std::set<int32_t> > map_cell_halophyid;
+    std::map<int32_t, std::set<int32_t> > map_cell_halophyid; ///< GlobalCellId=> Set(global id of exterior phyids)
 
 
 

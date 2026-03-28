@@ -5,9 +5,12 @@
 #ifndef PYARRAY_H
 #define PYARRAY_H
 
-
-PyArrayObject *py_array_new(int size, const npy_intp *shape, int typenum);
-
+/**
+ * Helper to build a std::array of dimensions from a variadic list.
+ *
+ * @brief  Convert a C++ variadic sequence of integer sizes into a
+ *         std::array<npy_intp, N> at compile time.
+ */
 template <class... Ints>
 constexpr auto make_npy_dims(Ints... ns)
     -> std::array<npy_intp, sizeof...(Ints)>
@@ -15,12 +18,24 @@ constexpr auto make_npy_dims(Ints... ns)
     return { static_cast<npy_intp>(ns)... };
 }
 
+/**
+ * Type‑to‑NPY mapping.
+ *
+ * @brief  Map a C++ fundamental type to the corresponding NumPy type number
+ *         (e.g. int32_t → NPY_INT32).  This is used as the compile‑time
+ *         constant `valueType` for each specialization.
+ */
 template <typename Type>
 struct PyArrayType {
-    static_assert(true, "Type error.");
+    static_assert(true, "Type error."); // only instantiate the specialisations
 };
 
 
+/**
+ * Specialisations – one per primitive type.
+ *
+ * @brief  Convert a C++ fundamental type to its NumPy type number.
+ */
 template <>
 struct PyArrayType<int32_t> {
     static constexpr int valueType = NPY_INT32;
@@ -43,26 +58,59 @@ struct PyArrayType<double> {
 };
 
 
+/**
+ * Fixed‑dimensional NumPy wrapper.
+ *
+ * @brief  A thin C++ façade around a NumPy ``PyArrayObject``.  The class is
+ *         templated on the element type (T) and the number of dimensions
+ *         (Dim).  All memory ownership stays with the wrapper – it calls
+ *         ``Py_XDECREF`` in its destructor.
+ *
+ * @details The implementation uses only NumPy C‑API functions:
+ *          - ``PyArray_SimpleNew`` / ``PyArray_ZEROS`` to allocate buffers.
+ *          - ``sub_array`` builds a new wrapper that owns its own slice buffer.
+ *
+ *         Copy/assignment are disabled because sharing the original object
+ *         would lead to double‑free.  The class is deliberately **non‑copyable**
+ *         and therefore cannot be used for “shallow” copies of NumPy objects.
+ */
 template <typename Type, int Dim>
 class PyArray {
+private:
+    char *data;              ///< Pointer to the raw data buffer.
+    npy_intp *strides;       ///< Stride between consecutive rows/axes in bytes
+    int nd;                  ///< number of dimensions (equal to Dim)
 public:
-    char *data;
-    npy_intp *strides;
-    npy_intp *shape;
-    int nd;
-    PyArrayObject *ref_holder; // reference to free the pyarray object create by the class itself
+    npy_intp *shape;                ///< Dimensionality of this object
+    PyArrayObject *ref_holder;      ///< Reference to free the PyArray object
 
+    // ---------------------------------------------------------------------------
+    // Compile‑time constants used for all constructors.
+    // ---------------------------------------------------------------------------
     static constexpr int valueType = PyArrayType<Type>::valueType;
 
 public:
     // delete these construct to prevent double free on ref_holder
-    // PyArray(const PyArray&) = delete;                   // delete copy constructor
-    // PyArray& operator=(const PyArray&) = delete;        // delete copy assignment
-
+    PyArray(const PyArray&) = delete;                   // delete copy constructor
+    PyArray& operator=(const PyArray&) = delete;        // delete copy assignment
     // no need of default constructor
     PyArray() = delete;
 
-
+    /**
+     *  Allocate a new buffer (filled with zeros or uninitialised).
+     *
+     * @brief  Create a ``PyArray`` from its dimensions.  If ``init_with_zeros`` is
+     *         true the buffer is filled with zeroes; otherwise it contains whatever
+     *         the caller writes.
+     *
+     * @details The function calls NumPy’s ``PyArray_SimpleNew`` (empty) or
+     *          ``PyArray_ZEROS`` (zero‑filled).  On failure a ``std::bad_alloc`` is
+     *          thrown – the wrapper re‑throws it unchanged so that the allocation
+     *          problem propagates to the caller.
+    *
+    * @param   dims        dimensions of the array, supplied as a std::array<npy_intp,Dim>.
+    * @param   init_with_zeros  (optional) whether to zero‑initialise the buffer.
+    */
     explicit PyArray(const std::array<npy_intp, Dim> &shape, const bool init_with_zeros = false) {
         PyArrayObject *new_array = nullptr;
         if (init_with_zeros) {
@@ -70,23 +118,35 @@ public:
         } else {
             new_array = (PyArrayObject *)PyArray_SimpleNew(Dim, shape.data(), PyArray::valueType);
         }
-        //auto *new_array = py_array_new(Dim, shape.data(), PyArray::valueType);
         if (!new_array) {
             throw std::bad_alloc();
         }
         this->data = ((PyArrayObject_fields *)new_array)->data;
         this->strides = ((PyArrayObject_fields *)new_array)->strides;
-        this->shape = ((PyArrayObject_fields *)new_array)->dimensions;
         this->nd = ((PyArrayObject_fields *)new_array)->nd;
+        this->shape = ((PyArrayObject_fields *)new_array)->dimensions;
         this->ref_holder = new_array;
     }
 
-
+    /**
+     *  Constructor that accepts an existing ``PyArrayObject``.
+     *
+     * @brief  Wrap another NumPy array – no copy is made, the wrapper just
+     *         stores a pointer to it.  The original object stays alive independently.
+     *
+     * @details A sanity check guarantees that:
+     *          - the number of dimensions matches ``Dim``,
+     *          - the element type matches ``valueType``,
+     *          - and the array is contiguous (so strides are all 1).
+     *         If any condition fails a ``std::runtime_error`` is thrown.
+    *
+    * @param   arr_obj  The existing NumPy object to wrap.
+    */
     explicit PyArray(PyArrayObject *arr_obj):
         data(((PyArrayObject_fields *)arr_obj)->data),
         strides(((PyArrayObject_fields *)arr_obj)->strides),
-        shape(((PyArrayObject_fields *)arr_obj)->dimensions),
         nd(((PyArrayObject_fields *)arr_obj)->nd),
+        shape(((PyArrayObject_fields *)arr_obj)->dimensions),
         ref_holder(nullptr)
     {
 
@@ -95,22 +155,46 @@ public:
         }
     }
 
-    // called only by sub_array
+    /**
+     * @brief  Snapshot of a C‑object without owning it – !! used only by sub_array().
+     *
+     * @details No copy is performed; the caller owns the buffer. This
+     *          constructor stores pointers to ``data``, ``strides`` and ``shape``,
+     *          while leaving ``ref_holder`` as nullptr because the C‑object is not
+     *          owned by this wrapper.
+    */
     PyArray(char *data, npy_intp *strides, npy_intp *shape):
         data(data),
         strides(strides),
-        shape(shape),
         nd(Dim),
+        shape(shape),
         ref_holder(nullptr)
     {}
 
+    /**
+     *  Destructor – releases the owned ``PyArrayObject``.
+     *
+     * @brief  Releases ownership of the NumPy object stored in ``ref_holder``.
+     */
     ~PyArray() {
-        Py_XDECREF(this->ref_holder);
+        Py_XDECREF(this->ref_holder); // ``X_`` means ignore null pointer
         this->ref_holder = nullptr;
     }
 
 
-
+    /** -----------------------------------------------------------------------
+     *  Sub‑array builder – removes the first dimension and creates a new wrapper.
+     *
+     * @brief  Returns a ``PyArray<T,Dim-1>`` that is a view of the original array,
+     *         with its leading dimension indexed by ``index``.  The new buffer
+     *         owns its own stride array; it is not a copy of the data.
+     *
+     * @details The operation is performed by pointer arithmetic on the underlying
+     *          NumPy buffer, which is safe because the original buffer is guaranteed
+     *          to be contiguous (``strides[0] == 1``).  ``Dim-1 > 0`` is a static‑assert.
+    *
+    * @param   index  Index into the first dimension that should be dropped.
+    */
     PyArray<Type, Dim - 1> sub_array(npy_intp index) const noexcept {
         static_assert(Dim - 1 > 0, "Can't construct sub array with zero dimension");
 
@@ -121,95 +205,32 @@ public:
             );
     }
 
+    /** @brief Return a reference to the last element.*/
     Type &last() const noexcept {
-        return *(Type *)(this->data + (this->shape[0] - 1) * this->strides[0]);
+        return *(reinterpret_cast<Type *>(this->data) + (this->shape[0] - 1));
+        //return *(Type *)(this->data + (this->shape[0] - 1) * this->strides[0]);
     }
 
+    /** @brief Return a reference to the last element at raw ``i`` in a two‑dimensional view. */
     Type &last2(const int32_t i) const noexcept {
-        return *(Type *)(this->data + i * this->strides[0] + (this->shape[1] - 1) * this->strides[1]);
+        return *(reinterpret_cast<Type *>(this->data) + (i + 1) * this->shape[1] - 1);
+        //return *(Type *)(this->data + i * this->strides[0] + (this->shape[1] - 1) * this->strides[1]);
     }
 
-    Type &last3(const int32_t i, const int32_t j) const noexcept {
-        return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1] + (this->shape[2] - 1) * this->strides[2]);
-    }
-
+    /** @brief Return a reference to the element at position ``i``. */
     Type &get(const int32_t i) const noexcept {
         return *(reinterpret_cast<Type *>(this->data) + i);
         // return *(Type *)(this->data + i * this->strides[0]);
     }
 
+    /**
+     * @brief  Return a reference to the element at position ``(i,j)`` in a two‑dimensional view.
+    */
     Type &get2(const int32_t i, const int32_t j) const noexcept {
-        return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1]);
+        return *(reinterpret_cast<Type *>(this->data) + i * this->shape[1] + j);
+        //return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1]);
     }
 
-    Type &get3(const int32_t i, const int32_t j, const int32_t k) const noexcept {
-        return *(Type *)(this->data + i * this->strides[0] + j * this->strides[1] + k * this->strides[2]);
-    }
-
-
-
-    // void    describe() const {
-    //     std::ostringstream os;
-    //
-    //
-    //     os << "first_ele=" << *(const Type *)this->data << " ";
-    //
-    //     os << "nd=" << this->nd << " ";
-    //
-    //     os << "shape=[";
-    //     for (int i = 0; i < this->nd; ++i) {
-    //         if (i) os << ",";
-    //         os << this->shape[i];
-    //     }
-    //     os << "] ";
-    //
-    //     os << "strides=[";
-    //     for (int i = 0; i < this->nd; ++i) {
-    //         if (i) os << ",";
-    //         os << this->strides[i];
-    //     }
-    //     os << "]\n";
-    //
-    //     //print_instant("%s", os.str().c_str());
-    // }
-
-    // void    print() const {
-    //     std::ostringstream os;
-    //     this->_print_recursive(os, *this);
-    //     //print_instant("%s\n", os.str().c_str());
-    // }
-
-private:
-
-
-    // void _print_recursive(std::ostringstream &os, const PyArray<Type> &obj) const {
-    //     constexpr int limit = 100;
-    //
-    //     if (obj.nd == 1) {
-    //         os << "[";
-    //         for (int i = 0; i < obj.shape[0]; i++) {
-    //             if (i) os << ",";
-    //             os << obj.get(i);
-    //             if (i == limit && limit != obj.shape[0] - 1) {
-    //                 os << "... " << obj.last();
-    //                 break;
-    //             }
-    //         }
-    //         os << "]";
-    //     } else {
-    //         os << "[";
-    //         for (int i = 0; i < obj.shape[0]; i++) {
-    //             if (i) os << ",";
-    //             this->_print_recursive(os, obj.sub_array(i));
-    //             if (i == limit && limit != obj.shape[0] - 1) {
-    //                 os << "... ";
-    //                 this->_print_recursive(os, obj.sub_array(obj.shape[0] - 1));
-    //                 break;
-    //             }
-    //         }
-    //         os << "]";
-    //     }
-    // }
 };
 
 #endif //PYARRAY_H

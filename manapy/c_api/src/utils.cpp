@@ -1,5 +1,5 @@
 #include <iomanip>
-
+#include <sys/time.h>
 
 #include "manapy_part.h"
 
@@ -73,7 +73,7 @@ void intersect_arr(PyArray<int32_t, 2> *arr, PyArray<int32_t, 1> *indices, const
 }
 
 
-std::vector<int32_t> get_max_info(const int32_t cell_type) {
+std::array<int32_t, 3> get_max_info(const int32_t cell_type) {
     if (cell_type == CELL_TYPE::Triangle) {
         return {3, 2, 3};
     }

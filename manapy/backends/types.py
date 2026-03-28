@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from mpi4py import MPI
 
-FLOAT_TYPE = "float64"
+FLOAT_TYPE = "float32"
 INT_TYPE = "int32"
 
 if FLOAT_TYPE not in ["float32", "float64"]:
