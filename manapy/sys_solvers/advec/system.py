@@ -12,8 +12,6 @@ from manapy.backends.types import FLOAT_TYPE
 import manapy.sys_solvers.advec.fvm_utils_compute as fvm_utils_compute
 
 from manapy.core.Variable import Variable
-from manapy.base.base import Struct
-from manapy.base.base import make_get_conf
 
 
 class AdvectionSolver:
@@ -25,45 +23,8 @@ class AdvectionSolver:
                   'cfl of the explicit scheme')
                  ]
 
-  @classmethod
-  def process_conf(cls, conf, kwargs):
-    """
-    Process configuration parameters.
-    """
-    get = make_get_conf(conf, kwargs)
 
-    if len(cls._parameters) and cls._parameters[0][0] != 'name':
-      options = AdvectionSolver._parameters + cls._parameters
-
-    else:
-      options = AdvectionSolver._parameters
-
-    opts = Struct()
-    allow_extra = False
-    for name, _, default, required, _ in options:
-      if name == '*':
-        allow_extra = True
-        continue
-
-      msg = ('missing "%s" in options!' % name) if required else None
-      setattr(opts, name, get(name, default, msg))
-
-    if allow_extra:
-      all_keys = set(conf.to_dict().keys())
-      other = all_keys.difference(list(opts.to_dict().keys()))
-      for name in other:
-        setattr(opts, name, get(name, None, None))
-
-    return opts
-
-  def __init__(self, var=None, vel=(None, None, None), conf=None, **kwargs):
-
-    if conf is None:
-      conf = Struct()
-
-    new_conf = self.process_conf(conf, kwargs)
-    self.conf = new_conf
-    get = make_get_conf(self.conf, kwargs)
+  def __init__(self, var=None, vel=(None, None, None), order=1, cfl=0.8):
 
     if not isinstance(var, Variable):
       raise ValueError("primal var must be a Variable type")
@@ -75,7 +36,6 @@ class AdvectionSolver:
       raise ValueError("v must be a Variable type")
 
     self.var = var
-    self.comm = self.var.comm
     self.domain = self.var.domain
     self.dim = self.var.dim
 
@@ -89,9 +49,9 @@ class AdvectionSolver:
     else:
       self.w = Variable(domain=self.domain)
 
-    self.dt = np.float64(get("dt"))
-    self.order = np.int32(get("order"))
-    self.cfl = np.float64(get("cfl"))
+    # self.dt = np.float64(get("dt"))
+    self.order = order
+    self.cfl = cfl
 
 
     self.var.__dict__["convective"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
@@ -123,7 +83,7 @@ class AdvectionSolver:
     d_t = self._time_step(self.u.cell, self.v.cell, self.w.cell, self.cfl, self.domain.faces.normal,
                           self.domain.faces.mesure,
                           self.domain.cells.volume, self.domain.cells.faceid, self.dim)
-    self.dt = self.comm.allreduce(d_t, op=MPI.MIN)
+    self.dt = self.domain.halo_comm.comm.allreduce(d_t, op=MPI.MIN)
     return self.dt
 
   def compute_fluxes(self):

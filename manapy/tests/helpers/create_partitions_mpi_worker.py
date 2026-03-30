@@ -4,6 +4,7 @@ import h5py
 import os
 import traceback
 
+from manapy.domain import Partitioning
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -71,7 +72,7 @@ def save_tables(domain):
 
 def create_partitions(mesh_file_path, dim):
   from manapy.domain import Domain
-  domain = Domain.create_domain(mesh_file_path, dim, recreate=True)
+  domain = Domain.create_domain(mesh_file_path, Partitioning.Par_Nodal, dim, recreate=True)
 
   save_tables(domain)
 

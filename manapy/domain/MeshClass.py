@@ -1,21 +1,7 @@
 import numpy as np
 import meshio
-from manapy.backends.compile_fun import compile
+import manapy.domain.mesh_compute as mesh_compute
 import manapy.backends.types as types
-
-def _append(cells: 'int[:, :]', cells_item: 'int[:, :]', counter: 'int'):
-  for i in range(len(cells_item)):
-    cells[counter, 0:len(cells_item[i])] = cells_item[i]
-    cells[counter, -1] = len(cells_item[i])
-    counter += 1
-
-def _append_1d(arr_dest: 'int[:]', arr_src: 'int[:]', counter: 'int'):
-  for i in range(len(arr_src)):
-    arr_dest[counter] = arr_src[i]
-    counter += 1
-
-append = compile(_append)
-append_1d = compile(_append_1d)
 
 class Mesh:
   def __init__(self, mesh_path, dim):
@@ -89,9 +75,9 @@ class Mesh:
     for k in physicals_key:
       if physicals.get(k) is not None:
         cells = np.array(cells_dict[k], dtype=types.np_int_type)
-        append(phy_faces, cells, counter)
+        mesh_compute.append(phy_faces, cells, counter)
         physical = np.array(physicals[k], dtype=types.np_int_type)
-        append_1d(phy_faces_name, physical, counter)
+        mesh_compute.append_1d(phy_faces_name, physical, counter)
         counter += len(physicals[k])
 
     return phy_faces, phy_faces_name
@@ -146,7 +132,7 @@ class Mesh:
       if meshio_mesh_dic.get(item) is not None:
         cells_item = np.array(meshio_mesh_dic[item], dtype=types.np_int_type)
         cells_type[counter:counter + len(cells_item)] = cell_type_dic[item]
-        append(cells, cells_item, counter)
+        mesh_compute.append(cells, cells_item, counter)
         counter += len(cells_item)
 
     return cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid

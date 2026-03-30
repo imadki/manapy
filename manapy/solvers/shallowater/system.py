@@ -13,8 +13,6 @@ from manapy.solvers.shallowater import (update_SW, time_step_SW, explicitscheme_
                                         term_wind_SW)
 
 from manapy.solvers.advecdiff import (explicitscheme_dissipative)
-from manapy.comms import Iall_to_all, define_halosend, HaloUpdater
-#from manapy.comms import define_halosend
 
 from manapy.ast import Variable
 from manapy.base.base import Struct
@@ -198,9 +196,7 @@ class ShallowWaterSolver():
 #        updater.update_halo_values()
         requests = []
         for var in self.varbs.values():
-            define_halosend(var.cell, var.halotosend, var.domain.halos.indsend)
-            req = Iall_to_all(var.halotosend, var.nbhalos, var.domain.halos.scount, var.domain.halos.rcount, var.halo, 
-                              var.comm)
+            req = self.domain.halo_comm.immediate_exchange(var.cell, recv_buffer=var.halo)
             requests.append(req)
         #MPI.Request.Waitall( requests )
         

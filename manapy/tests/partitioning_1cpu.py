@@ -1,6 +1,6 @@
 import os
 import h5py
-from manapy.domain import LocalDomain, LocalDomainStruct
+from manapy.domain import LocalDomain, LocalDomainInterface
 from manapy.backends.debug import log_step
 import time
 import numpy as np
@@ -189,7 +189,7 @@ class LocalDomain1Cpu(LocalDomain):
     pass
 
   @staticmethod
-  def create_local_domains(local_domain_structs: 'LocalDomainStruct[:]'):
+  def create_local_domains(local_domain_structs: 'LocalDomainInterface[:]'):
 
     size = len(local_domain_structs)
     local_domain_objs = [LocalDomain1Cpu(None, None, None) for rank in range(size)]

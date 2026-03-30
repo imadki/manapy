@@ -1,25 +1,21 @@
 import numpy as np
 from manapy.backends.debug import log_step
-import manapy.domain.compute as compute
+import manapy.domain.domain_compute as compute
 import manapy.domain.utils as utils
-from manapy.domain.LocalDomainStructClass import LocalDomainStruct
-from mpi4py import MPI
+from manapy.domain.LocalDomainInterface import LocalDomainInterface
 import os
-from manapy.domain.NeighborCommunication import NeighborCommunication
+from manapy.comms.NeighborCommunication import NeighborCommunication
 import manapy.backends.types as types
 
 class LocalDomain:
 
-  def __init__(self, local_domain_struct: 'LocalDomainStruct', rank: 'int', size: 'int'):
+  def __init__(self, local_domain_struct: 'LocalDomainInterface', rank: 'int', size: 'int'):
     if local_domain_struct is None:
       return
 
     self.rank = rank
     self.size = size
     self.dim = local_domain_struct.dim
-    # TODO remove self.float_precision and mpi_float_precision
-    self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
-    self.mpi_float_precision = MPI.FLOAT if local_domain_struct.float_precision == 32 else MPI.DOUBLE
     self.nodes = local_domain_struct.nodes
     self.cells = local_domain_struct.cells
     self.cells_type = local_domain_struct.cells_type
@@ -55,13 +51,9 @@ class LocalDomain:
 
 
     log_step.log("Prepare communication")
-    (
-      self.halo_scount,
-      self.halo_rcount,
-      self.halo_indsend,
-      self.halo_comm_ptr,
-      self.phy_faces_comm
-    ) = self.prepare_comm(self.halo_neighsub, self.halo_halosint)
+    tmp = self.prepare_comm(self.halo_neighsub, self.halo_halosint)
+    self.halo_comm : NeighborCommunication | None = tmp[0]
+    self.phy_faces_comm : NeighborCommunication | None = tmp[1]
     log_step.out()
 
     log_step.log("bounds")
@@ -240,34 +232,21 @@ class LocalDomain:
 
   def prepare_comm(self, halo_neighsub, halo_halosint):
     if self.size == 1:
-      comm_ptr = MPI.COMM_WORLD.Create_dist_graph_adjacent([0], [0], sourceweights=None, destweights=None)
-      indsend = np.zeros(1, dtype=types.np_int_type)
-      scount = np.zeros(1, dtype=types.np_int_type)
-      rcount = np.zeros(1, dtype=types.np_int_type)
-      phy_faces_comm = None
+      return None, None
 
-
-      return scount, rcount, indsend, comm_ptr, phy_faces_comm
+    halo_cells_comm = NeighborCommunication(
+      neighbors=halo_neighsub[0],
+      send_counts=halo_neighsub[1],
+      send_indices=halo_halosint
+    )
 
     phy_faces_comm = NeighborCommunication(
       neighbors=self.phyid_neighbor[:, 0],
       send_counts=self.phyid_neighbor[:, 1],
-      recv_counts=self.phyid_neighbor[:, 2],
       send_indices=self.phyid_send
     )
 
-    comm_ptr = MPI.COMM_WORLD.Create_dist_graph_adjacent(halo_neighsub[0], halo_neighsub[0], sourceweights=None,
-                                                         destweights=None)
-    scount = np.zeros(len(halo_neighsub[1]), dtype=types.np_int_type)
-    rcount = np.zeros(len(halo_neighsub[1]), dtype=types.np_int_type)
-
-    for i in range(len(halo_neighsub[0])):
-      scount[i] = halo_neighsub[1][i]
-
-    comm_ptr.Neighbor_alltoallv(scount, rcount)
-    indsend = halo_halosint.copy()
-
-    return scount, rcount, indsend, comm_ptr, phy_faces_comm
+    return halo_cells_comm, phy_faces_comm
 
   def _create_node_cellid(self, cells: 'int[:, :]', nb_nodes: 'int'):
     return utils.create_node_cellid(cells, nb_nodes)
@@ -829,11 +808,5 @@ class LocalDomain:
 
     return bounds
 
-  @staticmethod
-  def load_and_create(rank: 'int', size: 'int'):
-    folder_name = f"local_domain_{size}"
-    file_name = f"mesh{rank}.hdf5"
-    path = os.path.join(folder_name, file_name)
-    local_domain_struct = LocalDomainStruct.load_hd5(path)
-    return LocalDomain(local_domain_struct, rank, size)
+
 
