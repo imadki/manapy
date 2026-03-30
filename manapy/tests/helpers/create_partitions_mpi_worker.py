@@ -5,7 +5,6 @@ import os
 import traceback
 
 
-
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
@@ -48,9 +47,9 @@ def save_tables(domain):
     f.create_dataset("d_node_ghostid", data=domain.nodes.ghostid)
     f.create_dataset("d_node_haloghostid", data=domain.nodes.haloghostid)
     f.create_dataset("d_node_ghostcenter", data=domain.nodes.ghostcenter)
-    # f.create_dataset("d_node_ghostcenter_info", data=domain.nodes.ghostcenter_info)
+    f.create_dataset("d_node_ghostcenter_info", data=domain.nodes.ghostcenter_info)
     f.create_dataset("d_node_haloghostcenter", data=domain.nodes.haloghostcenter)
-    # f.create_dataset("d_node_haloghostcenter_info", data=domain.nodes.haloghostcenter_info)
+    f.create_dataset("d_node_haloghostcenter_info", data=domain.nodes.haloghostcenter_info)
     f.create_dataset("d_node_ghostfaceinfo", data=domain.nodes.ghostfaceinfo)
     f.create_dataset("d_node_haloghostfaceinfo", data=domain.nodes.haloghostfaceinfo)
     f.create_dataset("d_node_halonid", data=domain.nodes.halonid)
@@ -70,33 +69,21 @@ def save_tables(domain):
     f.create_dataset("d_face_cellid", data=domain.faces.cellid)
     f.create_dataset("d_node_periodicid", data=domain.nodes.periodicid)
 
-def create_partitions(mesh_file_path, float_precision, dim):
-  from manapy.partitions import MeshPartition
-  from manapy.base.base import Struct
-  from manapy.ddm import Domain
-
-  running_conf = Struct(backend="numba", signature=True, cache=True, float_precision=float_precision)
-  MeshPartition(mesh_file_path, dim=dim, conf=running_conf, periodic=[0,0,0])
-  domain = Domain(dim=dim, conf=running_conf)
+def create_partitions(mesh_file_path, dim):
+  from manapy.domain import Domain
+  domain = Domain.create_domain(mesh_file_path, dim, recreate=True)
 
   save_tables(domain)
 
-# def create_partitions(mesh_file_path, float_precision, dim):
-#   from manapy.domain import Domain
-#   domain = Domain.create_domain(mesh_file_path, dim, recreate=True)
-#
-#   save_tables(domain)
-
 try:
-  if len(sys.argv) == 4:
+  if len(sys.argv) == 3:
     mesh_file_path = sys.argv[1]
-    float_precision = sys.argv[2]
-    dim = int(sys.argv[3])
-    if (float_precision == 'float32' or float_precision == 'float64') and (dim == 2 or dim == 3):
-      print("path", mesh_file_path, "precision", float_precision, "dim", dim, "rank", rank)
-      create_partitions(mesh_file_path, float_precision, dim)
+    dim = int(sys.argv[2])
+    if dim == 2 or dim == 3:
+      print("path", mesh_file_path, "dim", dim, "rank", rank)
+      create_partitions(mesh_file_path, dim)
     else:
-      raise Exception(f"Invalid float_precision argument or Invalid dim argument {dim} {float_precision}")
+      raise Exception(f"Invalid dim argument {dim}")
   else:
     raise Exception("Invalid mesh_file_path argument")
 except Exception as e:
