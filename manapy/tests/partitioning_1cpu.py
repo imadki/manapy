@@ -152,9 +152,9 @@ class DomainTables:
     "d_node_periodicid"
   ]
 
-  def __init__(self, nb_partitions, mesh_name, float_precision, dim, create_par_fun):
+  def __init__(self, nb_partitions, mesh_name, dim, create_par_fun):
     if create_par_fun:
-      create_par_fun(nb_partitions, mesh_name, float_precision=float_precision, dim=dim)
+      create_par_fun(nb_partitions, mesh_name, dim=dim)
     else:
       mpi_exec = "/usr/bin/mpirun"
       python_exec = "/home/aben-ham/anaconda3/envs/work/bin/python3"
@@ -162,8 +162,7 @@ class DomainTables:
       root_file = os.getcwd()
       mesh_file_path = os.path.join(root_file, 'meshes', mesh_name)
       script_path = os.path.join(root_file, 'helpers', 'create_partitions_mpi_worker.py')
-      cmd = [mpi_exec, "-n", str(nb_partitions), "--oversubscribe", python_exec, script_path, mesh_file_path,
-             float_precision, str(dim)]
+      cmd = [mpi_exec, "-n", str(nb_partitions), "--oversubscribe", python_exec, script_path, mesh_file_path, str(dim)]
 
       result = subprocess.run(cmd, env=os.environ.copy(), stderr=subprocess.PIPE)
       if result.returncode != 0:
