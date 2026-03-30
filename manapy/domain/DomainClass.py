@@ -7,11 +7,9 @@ import shutil
 from mpi4py import MPI
 import numpy as np
 import meshio
-
-from manapy.backends import CPUBackend
 import manapy.backends.types as types
+from manapy.domain.LocalDomainInterface import LocalDomainInterface
 
-# TODO watch for FLOAT_TYPE AND INT_TYPE
 class Domain:
   def __init__(self, local_domain: 'LocalDomain'):
     # Init
@@ -27,18 +25,9 @@ class Domain:
     self._maxfacenid = local_domain.max_face_nodeid
     self.test = local_domain.test # debug attribute
 
-    # TODO Latter
-    self.backend = CPUBackend(multithread=False, backend="numba",
-                                cache=True, float_precision=types.FLOAT_TYPE,
-                                int_precision=types.INT_TYPE)
+
     self.comm = MPI.COMM_WORLD
-    self.conf = None
-    self.int_precision = types.INT_TYPE
-    self.mpi_precision = MPI.FLOAT if types.FLOAT_TYPE == "float32" else MPI.DOUBLE_PRECISION
-    self.forcedbackend = None
-    self.signature = None
     self.vtkprecision = "Float32" if types.FLOAT_TYPE == "float32" else "Float64"
-    self._parameters = None
     self._vtkpath = self.get_vtk_path(self.rank)
 
 
@@ -122,18 +111,11 @@ class Domain:
     self.halos._halosint = local_domain.halo_halosint
     self.halos._centvol = local_domain.halo_centvol # always 3D
     self.halos._sizehaloghost = local_domain.halo_sizehaloghost
-    # TODO
-    self.halos._scount = local_domain.halo_scount
-    self.halos._rcount = local_domain.halo_rcount
-    self.halos._indsend = local_domain.halo_indsend
-    self.halos._comm_ptr = local_domain.halo_comm_ptr
-    # (self.halos._scount,
-    # self.halos._rcount,
-    # self.halos._indsend,
-    # self.halos._comm_ptr) = self.prepare_comm(self.cells, self.halos)
     self.halos._faces = None
     self.halos._nodes = None
     self.halos._requests = None
+    self.halo_comm =  local_domain.halo_comm
+    self.phy_faces_comm = local_domain.phy_faces_comm
 
     # Domain
     self._bounds = local_domain.bounds
@@ -195,17 +177,6 @@ class Domain:
     self._typeOfCells = self._define_eltypes()
     self.bounds = self._bounds
 
-    # TODO to remove (old domain behaviour)
-    self.old_node_ghostcenter()
-
-  def old_node_ghostcenter(self):
-    def combine(a, b):
-      res = np.zeros(shape=(a.shape[0], a.shape[1], a.shape[2] + b.shape[2]), dtype=a.dtype)
-      res[:, :, 0:a.shape[2]] = a
-      res[:, :, a.shape[2]:a.shape[2]+b.shape[2]] = b
-      return res
-    self.nodes._ghostcenter = combine(self.nodes.ghostcenter, self.nodes.ghostcenter_info)
-    self.nodes._haloghostcenter = combine(self.nodes.haloghostcenter, self.nodes.haloghostcenter_info)
 
   @staticmethod
   def _all_local_mesh_files_exist(size: int):
@@ -223,18 +194,7 @@ class Domain:
       shutil.rmtree(folder_name)
 
   @staticmethod
-  def partitioning(mesh_path, dim, size: 'int'):
-    Domain._delete_local_domain_folder(size)
-    mesh = Mesh(mesh_path, dim)
-    partitioner = Partitioning(mesh)
-    if size > 1:
-      partitioner.make_n_part_mesh_nodal(size)
-    local_domains = partitioner.create_sub_domains()
-    partitioner.save_local_domains(local_domains, size)
-
-  @staticmethod
-  def create_domain(mesh_path, dim, recreate=True):
-
+  def create_domain(mesh_path, dim, partitioning_method, recreate=True):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
@@ -244,12 +204,13 @@ class Domain:
         mesh = Mesh(mesh_path, dim)
         partitioner = Partitioning(mesh)
         local_domain_data = partitioner.create_sub_domains()
-        partitioner.save_local_domains(local_domain_data, size)
+        LocalDomainInterface.save_local_domains(local_domain_data, size)
         local_domain = LocalDomain(local_domain_data[0], rank, size)
         return Domain(local_domain)
       else:
         try:
-          local_domain = LocalDomain.load_and_create(rank, size)
+          local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
+          local_domain = LocalDomain(local_domain_struct, rank, size)
           return Domain(local_domain)
         except Exception as e:
           import traceback
@@ -265,9 +226,9 @@ class Domain:
             Domain._delete_local_domain_folder(size)
             mesh = Mesh(mesh_path, dim)
             partitioner = Partitioning(mesh)
-            partitioner.make_n_part_mesh_nodal(size)
+            partitioner.set_part_vert(size, partitioning_method)
             local_domains = partitioner.create_sub_domains()
-            partitioner.save_local_domains(local_domains, size)
+            LocalDomainInterface.save_local_domains(local_domains, size)
             print("====> End <=====")
         except Exception as e:
           import traceback
@@ -282,7 +243,8 @@ class Domain:
         comm.Abort(1)
 
       try:
-        local_domain = LocalDomain.load_and_create(rank, size)
+        local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
+        local_domain = LocalDomain(local_domain_struct, rank, size)
       except Exception as e:
         import traceback
         print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
@@ -305,35 +267,6 @@ class Domain:
         os.mkdir(vtkpath)
     return vtkpath
 
-  def prepare_comm(self, cells, halos):
-    if self.test:
-      return (None, None, None, None)
-    def create_mpi_graph(neighbors):
-      topo = self.comm.Create_dist_graph_adjacent(neighbors, neighbors,
-                                             sourceweights=None, destweights=None)
-      return topo
-
-
-
-    if self.size > 1:
-      comm_ptr = create_mpi_graph(halos.neigh[0])
-
-      scount = np.zeros(len(halos.neigh[1]), dtype=types.np_int_type)
-      rcount = np.zeros(len(halos.neigh[1]), dtype=types.np_int_type)
-
-      for i in range(len(halos.neigh[0])):
-        scount[i] = halos.neigh[1][i]
-
-      comm_ptr.Neighbor_alltoallv(scount, rcount)
-      indsend = halos.halosint.copy()
-
-    else:
-      comm_ptr = create_mpi_graph([0])
-      indsend = np.zeros(1, dtype=types.np_int_type)
-      scount = np.zeros(1, dtype=types.np_int_type)
-      rcount = np.zeros(1, dtype=types.np_int_type)
-
-    return scount, rcount, indsend, comm_ptr
 
   def _define_eltypes(self):
     """

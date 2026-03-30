@@ -18,7 +18,7 @@ import numpy as np
 from manapy.ast import Variable
 from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
 from manapy.ast.functions2d import Mat_Assembly, Vec_Assembly
-from manapy.domain import Domain
+from manapy.domain import Domain, Partitioning
 from manapy.base.base import Struct
 import os
 
@@ -43,7 +43,7 @@ filename = "mid_rectangle.msh"
 
 # File name
 filename = os.path.join(MESH_DIR, filename)
-domain = Domain.create_domain(filename, dim, recreate=True)
+domain = Domain.create_domain(filename, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
