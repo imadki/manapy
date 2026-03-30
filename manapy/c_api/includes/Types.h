@@ -5,21 +5,23 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#if defined(FLOAT_TYPE) && FLOAT_TYPE == float
+#if defined(FLOAT_TYPE_SIZE) && FLOAT_TYPE_SIZE == 32
+    #define FLOAT_TYPE float
     #define NPY_FLOAT_TYPE NPY_FLOAT32
     #define FDX_T float
 #else
+    #define FLOAT_TYPE double
     #define NPY_FLOAT_TYPE NPY_FLOAT64
     #define FDX_T double
-    #define FLOAT_TYPE double
 #endif
 
-#if defined(INT_TYPE) && INT_TYPE == int32
+#if defined(INT_TYPE_SIZE) && INT_TYPE_SIZE == 32
+    #define INT_TYPE int32_t
     #define NPY_INT_TYPE NPY_INT32
 #else
     // default branch for int type
-    # define INT_TYPE int64
-    # define NPY_INT_TYPE NPY_INT64
+    #define INT_TYPE int64_t
+    #define NPY_INT_TYPE NPY_INT64
 #endif
 
 // raise an error if MODULE_NAME macro does nor exist

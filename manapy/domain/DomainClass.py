@@ -9,13 +9,12 @@ import numpy as np
 import meshio
 
 from manapy.backends import CPUBackend
-from manapy.backends.types import FLOAT_TYPE, INT_TYPE
+import manapy.backends.types as types
 
 # TODO watch for FLOAT_TYPE AND INT_TYPE
 class Domain:
   def __init__(self, local_domain: 'LocalDomain'):
     # Init
-    self.float_precision = local_domain.float_precision
     self.rank = local_domain.rank
     self.size = local_domain.size
     self.dim = local_domain.dim
@@ -30,15 +29,15 @@ class Domain:
 
     # TODO Latter
     self.backend = CPUBackend(multithread=False, backend="numba",
-                                cache=True, float_precision=FLOAT_TYPE,
-                                int_precision=INT_TYPE)
+                                cache=True, float_precision=types.FLOAT_TYPE,
+                                int_precision=types.INT_TYPE)
     self.comm = MPI.COMM_WORLD
     self.conf = None
-    self.int_precision = INT_TYPE
-    self.mpi_precision = MPI.FLOAT if FLOAT_TYPE == "float32" else MPI.DOUBLE_PRECISION
+    self.int_precision = types.INT_TYPE
+    self.mpi_precision = MPI.FLOAT if types.FLOAT_TYPE == "float32" else MPI.DOUBLE_PRECISION
     self.forcedbackend = None
     self.signature = None
-    self.vtkprecision = "Float32" if FLOAT_TYPE == "float32" else "Float64"
+    self.vtkprecision = "Float32" if types.FLOAT_TYPE == "float32" else "Float64"
     self._parameters = None
     self._vtkpath = self.get_vtk_path(self.rank)
 
@@ -241,27 +240,32 @@ class Domain:
     size = comm.Get_size()
 
     if size == 1:
-      # try:
-      mesh = Mesh(mesh_path, dim)
-      partitioner = Partitioning(mesh)
-      local_domain_data = partitioner.create_sub_domains()
-      local_domain = LocalDomain(local_domain_data[0], rank, size)
-      return Domain(local_domain)
-      # except Exception as e:
-      #   print(f"Failed: {e}")
-      #   exit(1)
+      if recreate == True or not Domain._all_local_mesh_files_exist(size):
+        mesh = Mesh(mesh_path, dim)
+        partitioner = Partitioning(mesh)
+        local_domain_data = partitioner.create_sub_domains()
+        partitioner.save_local_domains(local_domain_data, size)
+        local_domain = LocalDomain(local_domain_data[0], rank, size)
+        return Domain(local_domain)
+      else:
+        try:
+          local_domain = LocalDomain.load_and_create(rank, size)
+          return Domain(local_domain)
+        except Exception as e:
+          import traceback
+          print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
     else:
       status = 0
 
       if rank == 0:
         print("====> Start <=====")
         try:
-          if not (recreate == False and Domain._all_local_mesh_files_exist(size)):
+          if recreate == True or not Domain._all_local_mesh_files_exist(size):
             print("====> Creating Mesh <=====")
             Domain._delete_local_domain_folder(size)
             mesh = Mesh(mesh_path, dim)
             partitioner = Partitioning(mesh)
-            partitioner.make_n_part_old(size)
+            partitioner.make_n_part_mesh_nodal(size)
             local_domains = partitioner.create_sub_domains()
             partitioner.save_local_domains(local_domains, size)
             print("====> End <=====")
@@ -314,8 +318,8 @@ class Domain:
     if self.size > 1:
       comm_ptr = create_mpi_graph(halos.neigh[0])
 
-      scount = np.zeros(len(halos.neigh[1]), dtype=np.uint32)
-      rcount = np.zeros(len(halos.neigh[1]), dtype=np.uint32)
+      scount = np.zeros(len(halos.neigh[1]), dtype=types.np_int_type)
+      rcount = np.zeros(len(halos.neigh[1]), dtype=types.np_int_type)
 
       for i in range(len(halos.neigh[0])):
         scount[i] = halos.neigh[1][i]
@@ -325,9 +329,9 @@ class Domain:
 
     else:
       comm_ptr = create_mpi_graph([0])
-      indsend = np.zeros(1, dtype=np.int32)
-      scount = np.zeros(1, dtype=np.uint32)
-      rcount = np.zeros(1, dtype=np.uint32)
+      indsend = np.zeros(1, dtype=types.np_int_type)
+      scount = np.zeros(1, dtype=types.np_int_type)
+      rcount = np.zeros(1, dtype=types.np_int_type)
 
     return scount, rcount, indsend, comm_ptr
 
@@ -376,8 +380,8 @@ class Domain:
       #   self._maxcellfid = 6
       #   self._maxfacenid = 4
 
-    # self._maxcellfid = np.int32(self._maxcellfid)
-    # self._maxfacenid = np.int32(self._maxfacenid)
+    # self._maxcellfid = types.np_int_type(self._maxcellfid)
+    # self._maxfacenid = types.np_int_type(self._maxfacenid)
 
     return typeOfCells
 
@@ -391,14 +395,14 @@ class Domain:
     elements = self._typeOfCells  # {"quad": self.cells._nodeid}
 
     points = self.nodes.vertex[:, :3]
-    points = np.array(points, dtype=self.float_precision)
+    points = np.array(points, dtype=types.np_float_type)
 
     data = {"w": value}
     data = {"w": data}
 
     maxw = max(value)
 
-    integral_maxw = np.zeros(1, dtype=self.float_precision)
+    integral_maxw = np.zeros(1, dtype=types.np_float_type)
 
     self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
 
@@ -453,7 +457,7 @@ class Domain:
 
     maxw = max(value)
 
-    integral_maxw = np.zeros(1, dtype=self.float_precision)
+    integral_maxw = np.zeros(1, dtype=types.np_float_type)
 
     self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
 
@@ -511,7 +515,7 @@ class Domain:
 
     maxw = max(values[0])
 
-    integral_maxw = np.zeros(1, dtype=self.float_precision)
+    integral_maxw = np.zeros(1, dtype=types.np_float_type)
 
     self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
 
@@ -571,7 +575,7 @@ class Domain:
 
     maxw = max(values[0])
 
-    integral_maxw = np.zeros(1, dtype=self.float_precision)
+    integral_maxw = np.zeros(1, dtype=types.np_float_type)
 
     self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
 

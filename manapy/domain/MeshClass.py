@@ -1,15 +1,15 @@
 import numpy as np
 import meshio
 from manapy.backends.compile_fun import compile
-from manapy.backends.types import FLOAT_TYPE
+import manapy.backends.types as types
 
-def _append(cells: 'int32[:, :]', cells_item: 'int32[:, :]', counter: 'int32'):
+def _append(cells: 'int[:, :]', cells_item: 'int[:, :]', counter: 'int'):
   for i in range(len(cells_item)):
     cells[counter, 0:len(cells_item[i])] = cells_item[i]
     cells[counter, -1] = len(cells_item[i])
     counter += 1
 
-def _append_1d(arr_dest: 'int32[:]', arr_src: 'int32[:]', counter: 'int32'):
+def _append_1d(arr_dest: 'int[:]', arr_src: 'int[:]', counter: 'int'):
   for i in range(len(arr_src)):
     arr_dest[counter] = arr_src[i]
     counter += 1
@@ -62,7 +62,7 @@ class Mesh:
       cells_dict = mesh.cells_dict
       cell_data_dict = mesh.cell_data_dict
     points = mesh.points
-    points = np.array(points, dtype=FLOAT_TYPE)
+    points = np.array(points, dtype=types.np_float_type)
 
     return mesh, cells_dict, points, cell_data_dict
 
@@ -82,15 +82,15 @@ class Mesh:
         elif k == 'quad':
           max_nb_face_nodes = max(max_nb_face_nodes, 4)
 
-    phy_faces = np.zeros(shape=(counter, max_nb_face_nodes + 1), dtype=np.int32)
-    phy_faces_name = np.zeros(shape=counter, dtype=np.int32)
+    phy_faces = np.zeros(shape=(counter, max_nb_face_nodes + 1), dtype=types.np_int_type)
+    phy_faces_name = np.zeros(shape=counter, dtype=types.np_int_type)
 
-    counter = np.int32(0)
+    counter = types.np_int_type(0)
     for k in physicals_key:
       if physicals.get(k) is not None:
-        cells = np.array(cells_dict[k], dtype=np.int32)
+        cells = np.array(cells_dict[k], dtype=types.np_int_type)
         append(phy_faces, cells, counter)
-        physical = np.array(physicals[k], dtype=np.int32)
+        physical = np.array(physicals[k], dtype=types.np_int_type)
         append_1d(phy_faces_name, physical, counter)
         counter += len(physicals[k])
 
@@ -138,13 +138,13 @@ class Mesh:
       if meshio_mesh_dic.get(item) is not None:
         number_of_cells += len(meshio_mesh_dic[item])
 
-    cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=np.int32)
+    cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=types.np_int_type)
     cells_type = np.zeros(shape=number_of_cells, dtype=np.int8)
 
-    counter = np.int32(0)
+    counter = types.np_int_type(0)
     for item in allowed_cells:
       if meshio_mesh_dic.get(item) is not None:
-        cells_item = np.array(meshio_mesh_dic[item], dtype=np.int32)
+        cells_item = np.array(meshio_mesh_dic[item], dtype=types.np_int_type)
         cells_type[counter:counter + len(cells_item)] = cell_type_dic[item]
         append(cells, cells_item, counter)
         counter += len(cells_item)

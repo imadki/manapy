@@ -10,11 +10,12 @@ api_dic = {
         "float64": manapy_part32_64,
     },
     "int64": {
-        "float32": manapy_part32_32,
-        "float64": manapy_part32_64,
+        "float32": manapy_part64_32,
+        "float64": manapy_part64_64,
     }
 }
 
+print("Used precision: ", INT_TYPE, FLOAT_TYPE)
 api = api_dic[INT_TYPE][FLOAT_TYPE]
 
 

@@ -65,8 +65,8 @@ function(create_manapy_module target_name int_type float_type metis_target)
 
     target_compile_definitions(${target_name} PRIVATE
             MODULE_NAME=${target_name}
-            FLOAT_TYPE=${float_type}
-            INT_TYPE=${int_type}
+            FLOAT_TYPE_SIZE=${float_type}
+            INT_TYPE_SIZE=${int_type}
             NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
     )
 
@@ -87,10 +87,10 @@ endfunction()
 # =========================================================
 # Build modules
 # =========================================================
-create_manapy_module(manapy_part32_32 int32 float metis_32)
-create_manapy_module(manapy_part32_64 int32 double metis_32)
-create_manapy_module(manapy_part64_32 int64 float metis_64)
-create_manapy_module(manapy_part64_64 int64 double metis_64)
+create_manapy_module(manapy_part32_32 32 32 metis_32)
+create_manapy_module(manapy_part32_64 32 64 metis_32)
+create_manapy_module(manapy_part64_32 64 32 metis_64)
+create_manapy_module(manapy_part64_64 64 64 metis_64)
 
 # =========================================================
 # Install (required for wheel packaging)

@@ -1,17 +1,15 @@
 import numpy as np
 import meshio
+import manapy.backends.types as types
 
 class TablesTestHybrid:
-  def __init__(self, float_precision, d_cell_loctoglob, g_cell_nodeid):
+  def __init__(self, d_cell_loctoglob, g_cell_nodeid):
     """
     d_cell_loctoglob: loctoglob of the local domains
     g_cell_nodeid: cell_nodeid of the global domain
     """
 
-    if float_precision != 'float32' and float_precision != 'float64':
-      raise ValueError('float_precision must be "float32" or "float64"')
 
-    self.float_precision = float_precision
 
 
     self.nb_faces = -1 #initialize by general
@@ -23,49 +21,49 @@ class TablesTestHybrid:
     self.d_cell_loctoglob = d_cell_loctoglob
     self.g_cell_nodeid = g_cell_nodeid
 
-    self.cell_vertices = np.zeros(shape=(self.nb_cells, 4, 3), dtype=float_precision)
-    self.cell_center = np.zeros(shape=(self.nb_cells, 3), dtype=float_precision)
-    self.cell_area = np.zeros(shape=(self.nb_cells), dtype=float_precision)
-    self.cell_which_partition = np.ones(shape=(self.nb_cells), dtype=np.int32) * -1
-    self.cell_halonid = np.ones(shape=(self.nb_cells, 70+1), dtype=np.int32) * -1
-    self.cell_halofid = np.ones(shape=(self.nb_cells, 4+1), dtype=np.int32) * -1
-    self.g_cell_cellnid = np.ndarray(shape=(1), dtype=np.int32) #initialize by general
-    self.l_cell_cellnid = np.ones(shape=(self.nb_cells, 70+1), dtype=np.int32) * -1
-    self.g_cell_cellfid = np.ndarray(shape=(1), dtype=np.int32) #initialize by general
-    self.l_cell_cellfid = np.ones(shape=(self.nb_cells, 4+1), dtype=np.int32) * -1
-    # self.cell_nf = np.zeros(shape=(self.nb_cells, 4, 2), dtype=float_precision)
-    self.g_cell_faceid = np.ndarray(shape=(1), dtype=np.int32)  # initialize by general
+    self.cell_vertices = np.zeros(shape=(self.nb_cells, 4, 3), dtype=types.np_float_type)
+    self.cell_center = np.zeros(shape=(self.nb_cells, 3), dtype=types.np_float_type)
+    self.cell_area = np.zeros(shape=(self.nb_cells), dtype=types.np_float_type)
+    self.cell_which_partition = np.ones(shape=(self.nb_cells), dtype=types.np_int_type) * -1
+    self.cell_halonid = np.ones(shape=(self.nb_cells, 70+1), dtype=types.np_int_type) * -1
+    self.cell_halofid = np.ones(shape=(self.nb_cells, 4+1), dtype=types.np_int_type) * -1
+    self.g_cell_cellnid = np.ndarray(shape=(1), dtype=types.np_int_type) #initialize by general
+    self.l_cell_cellnid = np.ones(shape=(self.nb_cells, 70+1), dtype=types.np_int_type) * -1
+    self.g_cell_cellfid = np.ndarray(shape=(1), dtype=types.np_int_type) #initialize by general
+    self.l_cell_cellfid = np.ones(shape=(self.nb_cells, 4+1), dtype=types.np_int_type) * -1
+    # self.cell_nf = np.zeros(shape=(self.nb_cells, 4, 2), dtype=types.np_float_type)
+    self.g_cell_faceid = np.ndarray(shape=(1), dtype=types.np_int_type)  # initialize by general
 
-    self.faces_measure = np.zeros(shape=(self.nb_cells, 4), dtype=float_precision)
-    self.g_face_nodeid = np.ndarray(shape=(1), dtype=np.int32) #initialize by general
-    self.face_center = np.zeros(shape=(self.nb_cells, 4, 3), dtype=float_precision)
-    self.face_normal = np.zeros(shape=(self.nb_cells, 4, 3), dtype=float_precision)
-    self.faces_vertices = np.zeros(shape=(self.nb_cells, 4, 3, 3), dtype=float_precision)
-    self.g_face_name = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
-    self.l_face_name = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
-    self.g_face_cellid = np.ndarray(shape=(1), dtype=np.int32) #initialize by general
-    self.l_face_cellid = np.ones(shape=(self.nb_cells, 4, 2), dtype=np.int32) * -1
+    self.faces_measure = np.zeros(shape=(self.nb_cells, 4), dtype=types.np_float_type)
+    self.g_face_nodeid = np.ndarray(shape=(1), dtype=types.np_int_type) #initialize by general
+    self.face_center = np.zeros(shape=(self.nb_cells, 4, 3), dtype=types.np_float_type)
+    self.face_normal = np.zeros(shape=(self.nb_cells, 4, 3), dtype=types.np_float_type)
+    self.faces_vertices = np.zeros(shape=(self.nb_cells, 4, 3, 3), dtype=types.np_float_type)
+    self.g_face_name = np.ones(shape=(self.nb_cells, 4), dtype=types.np_int_type) * -1
+    self.l_face_name = np.ones(shape=(self.nb_cells, 4), dtype=types.np_int_type) * -1
+    self.g_face_cellid = np.ndarray(shape=(1), dtype=types.np_int_type) #initialize by general
+    self.l_face_cellid = np.ones(shape=(self.nb_cells, 4, 2), dtype=types.np_int_type) * -1
 
-    self.g_node_cellid = np.ndarray(shape=(1), dtype=np.int32) #initialize by general
-    self.l_node_cellid = np.ones(shape=(self.nb_cells, 4, 25), dtype=np.int32) * -1
-    self.node_halonid = np.ones(shape=(self.nb_cells, 4, 25), dtype=np.int32) * -1
-    self.g_node_name = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
-    self.l_node_name = np.ones(shape=self.nb_nodes, dtype=np.int32) * -1
+    self.g_node_cellid = np.ndarray(shape=(1), dtype=types.np_int_type) #initialize by general
+    self.l_node_cellid = np.ones(shape=(self.nb_cells, 4, 25), dtype=types.np_int_type) * -1
+    self.node_halonid = np.ones(shape=(self.nb_cells, 4, 25), dtype=types.np_int_type) * -1
+    self.g_node_name = np.ones(shape=(self.nb_cells, 4), dtype=types.np_int_type) * -1
+    self.l_node_name = np.ones(shape=self.nb_nodes, dtype=types.np_int_type) * -1
 
-    self.face_nodeid = np.ones(shape=(self.nb_cells, 4, 3), dtype=np.int32) * -1
-    self.ghost_info = np.ones(shape=(self.nb_ghosts, 7), dtype=float_precision) * -1
-    self.g_cell_ghostnid = np.ones(shape=(self.nb_cells, 20+1), dtype=np.int32) * -1
-    self.l_cell_ghostnid = np.ones(shape=(self.nb_cells, 20+1), dtype=np.int32) * -1
-    self.cell_haloghostnid = np.ones(shape=(self.nb_cells, 20+1), dtype=np.int32) * -1
-    self.face_ghostid = np.ones(shape=(self.nb_cells, 4), dtype=np.int32) * -1
-    self.face_ghostcenter = np.zeros(shape=(self.nb_cells, 4, 4), dtype=float_precision)
-    self.g_node_ghostid = np.ones(shape=(self.nb_nodes, 7), dtype=np.int32) * -1
-    self.l_node_ghostid = np.ones(shape=(self.nb_cells, 4, 7), dtype=np.int32) * -1
-    self.node_haloghostid = np.ones(shape=(self.nb_cells, 4, 7), dtype=np.int32) * -1
+    self.face_nodeid = np.ones(shape=(self.nb_cells, 4, 3), dtype=types.np_int_type) * -1
+    self.ghost_info = np.ones(shape=(self.nb_ghosts, 7), dtype=types.np_float_type) * -1
+    self.g_cell_ghostnid = np.ones(shape=(self.nb_cells, 20+1), dtype=types.np_int_type) * -1
+    self.l_cell_ghostnid = np.ones(shape=(self.nb_cells, 20+1), dtype=types.np_int_type) * -1
+    self.cell_haloghostnid = np.ones(shape=(self.nb_cells, 20+1), dtype=types.np_int_type) * -1
+    self.face_ghostid = np.ones(shape=(self.nb_cells, 4), dtype=types.np_int_type) * -1
+    self.face_ghostcenter = np.zeros(shape=(self.nb_cells, 4, 4), dtype=types.np_float_type)
+    self.g_node_ghostid = np.ones(shape=(self.nb_nodes, 7), dtype=types.np_int_type) * -1
+    self.l_node_ghostid = np.ones(shape=(self.nb_cells, 4, 7), dtype=types.np_int_type) * -1
+    self.node_haloghostid = np.ones(shape=(self.nb_cells, 4, 7), dtype=types.np_int_type) * -1
 
-    self.halo_halosint = np.array([], np.int32)
-    self.halo_neigh = np.zeros(shape=(self.nb_partitions, self.nb_partitions), dtype=np.int32)
-    self.halo_sizehaloghost = np.zeros(shape=(self.nb_partitions), dtype=np.int32)
+    self.halo_halosint = np.array([], types.np_int_type)
+    self.halo_neigh = np.zeros(shape=(self.nb_partitions, self.nb_partitions), dtype=types.np_int_type)
+    self.halo_sizehaloghost = np.zeros(shape=(self.nb_partitions), dtype=types.np_int_type)
 
 
 
@@ -117,7 +115,7 @@ class TablesTestHybrid:
       """
         Determine the max neighboring cells of a node across all cells
       """
-      res = np.zeros(shape=(nb_nodes), dtype=np.int32)
+      res = np.zeros(shape=(nb_nodes), dtype=types.np_int_type)
       for cell in cells:
         for i in range(cell[-1]):
           node = cell[i]
@@ -148,7 +146,7 @@ class TablesTestHybrid:
           thus for the same neighboring cell `visited[neighbor_cell]` is already set by `cell_id`
           for the next cell `visited` will automatically reset because next_cell_id != all_old_cell_id
       """
-      visited = np.ones(cells.shape[0], dtype=np.int32) * -1
+      visited = np.ones(cells.shape[0], dtype=types.np_int_type) * -1
 
       max_counter = 0
       for i in range(cells.shape[0]):
@@ -437,7 +435,7 @@ class TablesTestHybrid:
 
       """
 
-      intersect_cells = np.zeros(2, dtype=np.int32)
+      intersect_cells = np.zeros(2, dtype=types.np_int_type)
       _create_cell_faces_n(cells, tmp_cell_faces, tmp_size_info, dim)
       nb_faces = (tmp_cell_faces_map.shape[1] - 1) // 2
 
@@ -497,31 +495,31 @@ class TablesTestHybrid:
 
     # create_node_cellid
     max_node_cellid = count_max_node_cellid(g_cell_nodeid, nb_nodes)
-    node_cellid = np.ones(shape=(nb_nodes, max_node_cellid + 1), dtype=np.int32) * -1
+    node_cellid = np.ones(shape=(nb_nodes, max_node_cellid + 1), dtype=types.np_int_type) * -1
     node_cellid[:, -1] = 0
     create_node_cellid(g_cell_nodeid, node_cellid)
 
     # create_cell_cellnid
     max_cell_cellnid = count_max_cell_cellnid(g_cell_nodeid, node_cellid)
-    cell_cellnid = np.ones(shape=(nb_cells, max_cell_cellnid + 1), dtype=np.int32) * -1
+    cell_cellnid = np.ones(shape=(nb_cells, max_cell_cellnid + 1), dtype=types.np_int_type) * -1
     cell_cellnid[:, -1] = 0
     create_cell_cellnid(g_cell_nodeid, node_cellid, cell_cellnid)
 
     # create_info
-    tmp_cell_faces = np.zeros(shape=(nb_cells, max_cell_faceid, max_face_nodeid), dtype=np.int32)
-    tmp_size_info = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
-    tmp_cell_faces_map = np.zeros(shape=(nb_cells, max_cell_faceid * 2 + 1), dtype=np.int32)
+    tmp_cell_faces = np.zeros(shape=(nb_cells, max_cell_faceid, max_face_nodeid), dtype=types.np_int_type)
+    tmp_size_info = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type)
+    tmp_cell_faces_map = np.zeros(shape=(nb_cells, max_cell_faceid * 2 + 1), dtype=types.np_int_type)
 
 
     apprx_nb_faces = nb_cells * max_cell_faceid
-    faces = np.ones(shape=(apprx_nb_faces, max_face_nodeid + 1), dtype=np.int32) * -1
+    faces = np.ones(shape=(apprx_nb_faces, max_face_nodeid + 1), dtype=types.np_int_type) * -1
     faces[:, -1] = 0
-    cell_faceid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32) * -1
+    cell_faceid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type) * -1
     cell_faceid[:, -1] = 0
-    face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=np.int32) * -1
-    cell_cellfid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32) * -1
+    face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=types.np_int_type) * -1
+    cell_cellfid = np.ones(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type) * -1
     cell_cellfid[:, -1] = 0
-    face_counter = np.zeros(shape=(1), dtype=np.int32)
+    face_counter = np.zeros(shape=(1), dtype=types.np_int_type)
     create_info(g_cell_nodeid, node_cellid, faces, cell_faceid, face_cellid, cell_cellfid,
                 face_counter, tmp_cell_faces, tmp_size_info, tmp_cell_faces_map, dim)
     faces = faces[:face_counter[0]]
@@ -561,7 +559,7 @@ class TablesTestHybrid:
       u = points[0] - points[1]
       return np.sqrt(u[0] * u[0] + u[1] * u[1])
 
-    self.faces_measure = np.zeros(shape=(self.nb_cells, self.max_cell_faceid), dtype=self.float_precision)
+    self.faces_measure = np.zeros(shape=(self.nb_cells, self.max_cell_faceid), dtype=types.np_float_type)
 
     # 2D
     if self.dim == 2:
@@ -609,7 +607,7 @@ class TablesTestHybrid:
           ])
 
   def _set_face_center(self, cells, nodes):
-    self.faces_measure = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, self.dim), dtype=self.float_precision)
+    self.faces_measure = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, self.dim), dtype=types.np_float_type)
 
     def _get_center(points):
       return np.sum(points, axis=0) / len(points)
@@ -677,7 +675,7 @@ class TablesTestHybrid:
     def _normal_2d(points):
       return np.abs(np.array([-points[1], points[0]]))
 
-    self.faces_normal = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, self.dim), dtype=self.float_precision)
+    self.faces_normal = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, self.dim), dtype=types.np_float_type)
 
     # 2D
     if self.dim == 2:
@@ -726,7 +724,7 @@ class TablesTestHybrid:
 
 
   def _set_l_face_cellid(self, l_face_name, cell_faceid, face_cellid):
-    self.l_face_cellid = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, 2), dtype=np.int32)
+    self.l_face_cellid = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, 2), dtype=types.np_int_type)
 
     for i in range(self.nb_cells):
       nb_faces = cell_faceid[i, -1]
@@ -755,8 +753,8 @@ class TablesTestHybrid:
           return phyid
       return -1
 
-    self.g_face_name = np.zeros(shape=(self.nb_cells, self.max_cell_faceid), dtype=np.int32)
-    self.l_face_name = np.zeros(shape=(self.nb_cells, self.max_cell_faceid), dtype=np.int32)
+    self.g_face_name = np.zeros(shape=(self.nb_cells, self.max_cell_faceid), dtype=types.np_int_type)
+    self.l_face_name = np.zeros(shape=(self.nb_cells, self.max_cell_faceid), dtype=types.np_int_type)
 
     for i in range(self.nb_cells):
       nb_faces = cell_faceid[i, -1]
@@ -902,7 +900,7 @@ class TablesTestHybrid:
   ###################
 
   def _set_l_node_cellid(self, g_cell_nodeid, g_node_cellid, which_partition):
-    self.node_halonid = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid, self.max_node_cellid + 1), dtype=np.int32)
+    self.node_halonid = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid, self.max_node_cellid + 1), dtype=types.np_int_type)
     for cell_id in range(self.nb_cells):
       nb_nodes = g_cell_nodeid[cell_id, -1]
       for i in range(nb_nodes):
@@ -918,7 +916,7 @@ class TablesTestHybrid:
         self.l_node_cellid[cell_id][i][-1] = len(node_cellid)
 
   def _set_node_halonid(self, g_cell_nodeid, g_node_cellid, which_partition):
-    self.node_halonid = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid, self.max_node_haloid + 1), dtype=np.int32)
+    self.node_halonid = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid, self.max_node_haloid + 1), dtype=types.np_int_type)
     # The same as set_l_node_cellid
     for cell_id in range(self.nb_cells):
       nb_nodes = g_cell_nodeid[cell_id, -1]
@@ -935,7 +933,7 @@ class TablesTestHybrid:
         self.node_halonid[cell_id][i][-1] = len(node_cellid)
 
   def _set_node_oldname(self, cells, node_phyid, phy_faces_name):
-    self.g_node_name = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid), dtype=np.int32)
+    self.g_node_name = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid), dtype=types.np_int_type)
 
     for i in range(self.nb_cells):
       nb_nodes = cells[i, -1]
@@ -948,7 +946,7 @@ class TablesTestHybrid:
           self.g_node_name[i, j] = min(names)
 
   def _set_node_name(self, cells, g_node_name, node_halonid):
-    self.l_node_name = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid), dtype=np.int32)
+    self.l_node_name = np.zeros(shape=(self.nb_cells, self.max_cell_nodeid), dtype=types.np_int_type)
 
     for i in range(self.nb_cells):
       nb_nodes = cells[i, -1]
@@ -973,7 +971,7 @@ class TablesTestHybrid:
 
     max_len = max(len(subarray) for subarray in res)
     res = [subarray + [-1] * (max_len - len(subarray)) for subarray in res]
-    self.halo_halosint = np.array(res, dtype=np.int32)
+    self.halo_halosint = np.array(res, dtype=types.np_int_type)
 
   def _set_halo_neigh(self, cell_halonid, cell_parts):
     haloext = [[] for i in range(self.nb_partitions)]
@@ -984,7 +982,7 @@ class TablesTestHybrid:
 
     for p in range(self.nb_partitions):
       for j in range(self.nb_partitions):
-        tmp = np.array(haloext[p], dtype=np.int32)
+        tmp = np.array(haloext[p], dtype=types.np_int_type)
         tmp = np.unique(tmp)
         self.halo_neigh[p][j] = np.sum(cell_parts[tmp] == j) #ext that belong to partition j
 
@@ -1046,7 +1044,7 @@ class TablesTestHybrid:
 
     # Construct Points
     points = mesh.points
-    points = np.array(points, dtype=self.float_precision)
+    points = np.array(points, dtype=types.np_float_type)
 
     # Construct Cells
     allowed_cells = ['quad', 'triangle']
@@ -1071,12 +1069,12 @@ class TablesTestHybrid:
       if cells_dict.get(item) is not None:
         number_of_cells += len(cells_dict[item])
 
-    cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=np.int32)
+    cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=types.np_int_type)
 
-    counter = np.int32(0)
+    counter = types.np_int_type(0)
     for item in allowed_cells:
       if cells_dict.get(item) is not None:
-        cells_item = np.array(cells_dict[item], dtype=np.int32)
+        cells_item = np.array(cells_dict[item], dtype=types.np_int_type)
         for i in range(len(cells_item)):
           cells[counter, 0:len(cells_item[i])] = cells_item[i]
           cells[counter, -1] = len(cells_item[i])
@@ -1107,7 +1105,7 @@ class TablesTestHybrid:
       self.cell_halonid[i][:halonid.shape[0]] = halonid
 
   def _set_cell_center(self, cells, nodes):
-    self.cell_center = np.zeros(shape=(self.nb_cells, self.dim), dtype=self.float_precision)
+    self.cell_center = np.zeros(shape=(self.nb_cells, self.dim), dtype=types.np_float_type)
     for i in range(self.nb_cells):
       points = nodes[cells[i, 0:cells[i, -1]]]
       self.cell_center[i, :] = np.sum(points, axis=0) / len(points)
@@ -1139,7 +1137,7 @@ class TablesTestHybrid:
       volume = det / 6
       return volume
 
-    self.cell_area = np.zeros(shape=self.nb_cells, dtype=self.float_precision)
+    self.cell_area = np.zeros(shape=self.nb_cells, dtype=types.np_float_type)
     if self.dim == 3:
       for i in range(len(cells)):
         nb_vertex = cells[i, -1]

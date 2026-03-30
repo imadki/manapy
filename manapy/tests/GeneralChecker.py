@@ -1,6 +1,7 @@
 import numpy as np
 from manapy.tests.helpers.TestLogger import TestLogger
 from manapy.tests.helpers.GeneralTestTables import GeneralTestTables
+import manapy.backends.types as types
 
 # TODO
 def _reinterpret_float32_as_int32(i, flag=False):
@@ -13,7 +14,6 @@ class GeneralChecker:
   def __init__(self, decimal_precision, domain_tables, unified_domain, test_tables: 'GeneralTestTables'):
 
     self.nb_partitions = domain_tables.nb_partitions
-    self.float_precision = domain_tables.float_precision
     self.domain_tables = domain_tables
     self.unified_domain = unified_domain
     self.decimal_precision = decimal_precision
@@ -22,9 +22,7 @@ class GeneralChecker:
     self.logger = TestLogger()
     self.test_tables = test_tables
 
-    self.float_type = np.float32
-    if self.float_precision == 'float64':
-      self.float_type = np.float64
+
 
   def summary(self):
     return self.logger.summary()
@@ -259,7 +257,7 @@ class GeneralChecker:
         c_cell_nodes = d_cells[i][0:d_cells[i, -1]]
         for k in range(cnb_nodes):
           # 6 -> node_ghostid.shape[1]-1
-          ghostinfo = np.ones(shape=(6, 15), dtype=self.float_type) * -1
+          ghostinfo = np.ones(shape=(6, 15), dtype=types.np_float_type) * -1
           node_id = self.test_tables.locals[p].map_nodes[d_node_loctoglob[c_cell_nodes[k]]]
           node_ghostid = self.test_tables.locals[p].node_ghostnid[node_id]
           node_ghostid = node_ghostid[0:node_ghostid[-1]]
@@ -286,7 +284,7 @@ class GeneralChecker:
 
           ##########################
 
-          c_ghostinfo = np.ones(shape=(6, 15), dtype=self.float_type) * -1
+          c_ghostinfo = np.ones(shape=(6, 15), dtype=types.np_float_type) * -1
           c_node_ghostcenter = d_node_ghostcenter[c_cell_nodes[k]]
           c_node_ghostfaceinfo = d_node_ghostfaceinfo[c_cell_nodes[k]]
           c_node_ghostid = d_node_ghostid[c_cell_nodes[k]]
@@ -345,7 +343,7 @@ class GeneralChecker:
           c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
           for k in range(cnb_nodes):
             # 6 -> node_ghostid.shape[1]-1
-            haloghostinfo = np.ones(shape=(6, 15), dtype=self.float_type) * -1
+            haloghostinfo = np.ones(shape=(6, 15), dtype=types.np_float_type) * -1
             node_id = self.test_tables.locals[p].map_nodes[d_node_loctoglob[c_cell_nodes[k]]]
             node_haloghostid = self.test_tables.locals[p].node_haloghostnid[node_id]
             node_haloghostid = node_haloghostid[0:node_haloghostid[-1]]
@@ -372,7 +370,7 @@ class GeneralChecker:
 
             ##########################
 
-            c_haloghostinfo = np.ones(shape=(6, 15), dtype=self.float_type) * -1
+            c_haloghostinfo = np.ones(shape=(6, 15), dtype=types.np_float_type) * -1
             c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
             c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]
             c_node_haloghostid = d_node_haloghostid[c_cell_nodes[k]]
