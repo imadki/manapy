@@ -1,7 +1,7 @@
 from manapy.domain import Domain
 import manapy.core.bc_compute as bc_compute
 import numpy as np
-
+import manapy.backends.types as types
 
 class Boundary:
   def __init__(self, BCtype:str, BCvalueface:'float[:]', BCvaluenode:'float[:]', BCvaluehalo:'float[:]',
@@ -21,8 +21,8 @@ class Boundary:
     self._func_ghost_args = []
     self._func_haloghost_args = []
 
-    self.constNH = np.zeros(1)
-    self.constNHNode = np.zeros(1)
+    self.constNH = np.zeros(1, dtype=types.np_float_type)
+    self.constNHNode = np.zeros(1, dtype=types.np_float_type)
 
     if BCloc == "in":
       self._BCfaces = self._domain.infaces

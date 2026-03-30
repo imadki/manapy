@@ -1,6 +1,6 @@
 import numpy as np
 from manapy.backends.compile_fun import compile
-
+# import manapy.backends.types as types
 
 def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
                       cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]', node_ghostid: 'int[:,:]',
@@ -222,7 +222,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       nod = cells[i][k]
       if nodes[nod][3] == 11 or nodes[nod][3] == 22:
         for j in range(node_periodicid[nod][-1]):
-          cell = np.int(node_periodicid[nod][j])
+          cell = node_periodicid[nod][j]
           center[:] = cell_center[cell][0:3]
           j_x = center[0] + cell_shift[cell][0] - cell_center[i][0]
           j_y = center[1] - cell_center[i][1]
@@ -236,7 +236,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 
       if nodes[nod][3] == 33 or nodes[nod][3] == 44:
         for j in range(node_periodicid[nod][-1]):
-          cell = np.int(node_periodicid[nod][j])
+          cell = node_periodicid[nod][j]
           center[:] = cell_center[cell][0:3]
           j_x = center[0] - cell_center[i][0]
           j_y = center[1] + cell_shift[cell][1] - cell_center[i][1]
