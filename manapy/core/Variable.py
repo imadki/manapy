@@ -9,12 +9,11 @@ Created on Wed Feb 16 20:53:35 2022
 import numpy as np
 from manapy.domain import Domain
 import manapy.backends.types as types
-from manapy.core.Boundary import Boundary
+from manapy.boundary.Boundary import Boundary
 from types import LambdaType
 import manapy.core.variable_compute_2d as variable_compute_2d
 import manapy.core.variable_compute_3d as variable_compute_3d
 import manapy.core.variable_compute_utils as variable_compute_utils
-from manapy.core.communication import all_to_all, define_halosend
 
 """
 # self, domain=None, terms=None, comm=None, name=None, BC=None, values=None, *args, **kwargs
@@ -50,13 +49,11 @@ class Variable:
 
 
     self._dim = domain.dim
-    self._comm = domain.halos.comm_ptr
     self._nbfaces = domain.nbfaces
     self._nbcells = domain.nbcells
     self._nbnodes = domain.nbnodes
     self._nbhalos = domain.nbhalos
     self._nbghost = domain.nbfaces
-    self._mpi_precision = domain.mpi_precision
 
     self.cell = np.zeros(self._nbcells, dtype=types.np_float_type)
     self.node = np.zeros(self._nbnodes, dtype=types.np_float_type)
@@ -106,7 +103,6 @@ class Variable:
     # Functions
     self._facetocell = variable_compute_utils.facetocell
     self._celltoface = variable_compute_utils.celltoface
-    self._define_halosend = define_halosend
     if self._dim == 2:
       self._func_interp = variable_compute_2d.centertovertex_2d
       self._face_gradient = variable_compute_2d.face_gradient_2d
@@ -435,9 +431,8 @@ class Variable:
 
   def update_halo_value(self):
     # update the halo values
-    self._define_halosend(self.cell, self.halotosend, self._domain.halos.indsend)
-    all_to_all(self.halotosend, self._nbhalos, self._domain.halos.scount, self._domain.halos.rcount, self.halo,
-               self._comm, self._mpi_precision)
+    self.domain.halo_comm.exchange(self.cell, recv_buffer=self.halo)
+
 
   def interpolate_facetocell(self):
     self._facetocell(self.face, self.cell, self._domain.cells.faceid, self._dim)
@@ -476,26 +471,12 @@ class Variable:
                            self.psi, self._domain.faces.cellid, self._domain.cells.faceid, self._domain.faces.name,
                            self._domain.faces.halofid, self._domain.cells.center, self._domain.faces.center)
 
-    self._comm.Barrier()
+    self.domain.halo_comm.comm.Barrier()
     # update the halo values
-    self._define_halosend(self.gradcellx, self.halotosend, self._domain.halos.indsend)
-    all_to_all(self.halotosend, self._nbhalos, self._domain.halos.scount, self._domain.halos.rcount, self.gradhalocellx,
-               self._comm, self._mpi_precision)
-
-    # update the halo values
-    self._define_halosend(self.gradcelly, self.halotosend, self._domain.halos.indsend)
-    all_to_all(self.halotosend, self._nbhalos, self._domain.halos.scount, self._domain.halos.rcount, self.gradhalocelly,
-               self._comm, self._mpi_precision)
-
-    # update the halo values
-    self._define_halosend(self.gradcellz, self.halotosend, self._domain.halos.indsend)
-    all_to_all(self.halotosend, self._nbhalos, self._domain.halos.scount, self._domain.halos.rcount, self.gradhalocellz,
-               self._comm, self._mpi_precision)
-
-    # update the halo values
-    self._define_halosend(self.psi, self.halotosend, self._domain.halos.indsend)
-    all_to_all(self.halotosend, self._nbhalos, self._domain.halos.scount, self._domain.halos.rcount, self.psihalo,
-               self._comm, self._mpi_precision)
+    self.domain.halo_comm.exchange(self.gradcellx, recv_buffer=self.gradhalocellx)
+    self.domain.halo_comm.exchange(self.gradcelly, recv_buffer=self.gradhalocelly)
+    self.domain.halo_comm.exchange(self.gradcellz, recv_buffer=self.gradhalocellz)
+    self.domain.halo_comm.exchange(self.psi, recv_buffer=self.psihalo)
 
   def compute_face_gradient(self):
 
@@ -542,9 +523,6 @@ class Variable:
   def dim(self):
     return self._dim
 
-  @property
-  def comm(self):
-    return self._comm
 
   @property
   def nbfaces(self):

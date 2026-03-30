@@ -2,9 +2,11 @@ import numpy as np
 from numba.typed import Dict, List
 import h5py
 import manapy.backends.types as types
+import manapy.c_api.manapy_c_api as manapy_c_api
+import os
 
 # Created inside PartitioningClass
-class LocalDomainStruct:
+class LocalDomainInterface:
   def __init__(self):
     # Arrays: use zeros(1) as placeholder
     # Returned tables and Scalars
@@ -51,12 +53,63 @@ class LocalDomainStruct:
   def new_local_domains(nb):
     list_local_domains = []
     for i in range(nb):
-      obj = LocalDomainStruct()
+      obj = LocalDomainInterface()
       list_local_domains.append(obj)
     return list_local_domains
 
   @staticmethod
-  def save_hdf5(ld: 'LocalDomainStruct', path):
+  def create_local_domains_wrapper(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int8[:]', nodes: 'float[:, :]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', nb_parts: 'int', dim: 'int'):
+    c_res = manapy_c_api.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, dim)
+
+    list_local_domains = LocalDomainInterface.new_local_domains(nb_parts)
+    counter, cell_tc = 0, np.zeros(len(part_vert), dtype=types.np_int_type)
+    for i in range(nb_parts):
+      obj = list_local_domains[i]
+
+      k = 0
+      obj.nodes = c_res[i][k]; k+=1
+      obj.cells = c_res[i][k]; k+=1
+      obj.cells_type = c_res[i][k]; k+=1
+      obj.phy_faces = c_res[i][k]; k+=1
+      obj.phy_faces_name = c_res[i][k]; k+=1
+      obj.cell_loctoglob = c_res[i][k]; k+=1
+      obj.node_loctoglob = c_res[i][k]; k+=1
+      obj.node_oldname = c_res[i][k]; k+=1
+      obj.halo_neighsub = c_res[i][k]; k+=1
+      obj.node_halos = c_res[i][k]; k+=1
+      obj.halo_halosext = c_res[i][k]; k+=1
+      obj.halo_halosint = c_res[i][k]; k+=1
+      obj.halo_centvol = c_res[i][k]; k+=1
+      obj.phyid_neighbor = c_res[i][k]; k+=1
+      obj.phyid_recv = c_res[i][k]; k+=1
+      obj.phyid_send = c_res[i][k]; k+=1
+      obj.node_halophyid = c_res[i][k]; k+=1
+      obj.cell_halophyid = c_res[i][k]; k+=1
+      obj.max_cell_nodeid = c_res[i][k]; k+=1
+      obj.max_cell_faceid = c_res[i][k]; k+=1
+      obj.max_face_nodeid = c_res[i][k]; k+=1
+      obj.max_node_haloid = c_res[i][k]; k+=1
+      obj.max_cell_halonid = c_res[i][k]; k+=1
+      obj.max_node_phyid = c_res[i][k]; k+=1
+      obj.max_node_halophyid = c_res[i][k]; k+=1
+      obj.max_cell_phyid = c_res[i][k]; k+=1
+      obj.max_cell_halophyid = c_res[i][k]; k+=1
+      obj.dim = dim
+
+      # All ranks have cell_tc = array([], types.np_int_type)
+      # Build tc for rank0
+      cell_tc[counter:counter + len(obj.cells)] = obj.cell_loctoglob[:]
+      counter += len(obj.cells)
+
+    # Like the old version, only rank 0 stores cell_tc
+    list_local_domains[0].cell_tc = cell_tc
+
+
+    return list_local_domains
+
+
+  @staticmethod
+  def save_hdf5(ld: 'LocalDomainInterface', path):
     with h5py.File(path, 'w') as f:
       f.create_dataset('nodes', data=ld.nodes)
       f.create_dataset('cells', data=ld.cells)
@@ -92,7 +145,7 @@ class LocalDomainStruct:
 
   @staticmethod
   def load_hd5(path: 'str'):
-    local_domain = LocalDomainStruct()
+    local_domain = LocalDomainInterface()
 
     with h5py.File(path, 'r') as f:
       local_domain.nodes = f['nodes'][...]
@@ -132,3 +185,20 @@ class LocalDomainStruct:
     if int_precision != types.INT_TYPE or float_precision != types.FLOAT_TYPE:
       raise RuntimeError(f"Stored local domain has different (float/int) type precision from what types.py has. Consider changing types.py (float/int) types Or load different domain domain_types={float_precision}/{int_precision} types={types.FLOAT_TYPE}/{types.INT_TYPE}")
     return local_domain
+
+  @staticmethod
+  def save_local_domains(local_domains, nb_parts: 'int'):
+    folder_name = f"local_domain_{nb_parts}"
+    if not os.path.exists(folder_name):
+      os.makedirs(folder_name, exist_ok=True)
+    for rank in range(nb_parts):
+      file_name = f"mesh{rank}.hdf5"
+      path = os.path.join(folder_name, file_name)
+      LocalDomainInterface.save_hdf5(local_domains[rank], path)
+
+  @staticmethod
+  def load_and_create(rank: 'int', size: 'int'):
+    folder_name = f"local_domain_{size}"
+    file_name = f"mesh{rank}.hdf5"
+    path = os.path.join(folder_name, file_name)
+    return LocalDomainInterface.load_hd5(path)

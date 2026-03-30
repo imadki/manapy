@@ -1,11 +1,10 @@
 from mpi4py import MPI
 import timeit
-from manapy.domain import Domain
+from manapy.domain import Domain, Partitioning
 from manapy.tests.meshes import get_mesh
 from manapy.sys_solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.sys_solvers.advec.system import AdvectionSolver
 from manapy.core.Variable import Variable
-from manapy.base.base import Struct
 
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
@@ -14,7 +13,7 @@ start = timeit.default_timer()
 
 
 dim, mesh_path, mesh_name = get_mesh(3)
-domain = Domain.create_domain(mesh_path, dim, recreate=True)
+domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -54,8 +53,7 @@ v = Variable(domain=domain)
 P = Variable(domain=domain)
 
 # Call the transport solver
-conf = Struct(order=1, cfl=0.8)
-S = AdvectionSolver(ne, vel=(u, v), conf=conf)
+S = AdvectionSolver(ne, vel=(u, v), order=1, cfl=0.8)
 
 ####Initialisation
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)

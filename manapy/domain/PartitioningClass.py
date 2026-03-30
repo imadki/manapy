@@ -1,16 +1,18 @@
-import os
 import numpy as np
-import manapy.domain.compute as compute
 from numba.typed import Dict, List
-import manapy.c_api.manapy_c_api as manapy_c_api
 from manapy.domain.MeshClass import Mesh
 import manapy.domain.utils as utils
-from manapy.domain.LocalDomainStructClass import LocalDomainStruct
+from manapy.domain.LocalDomainInterface import LocalDomainInterface
 import warnings
 import manapy.backends.types as types
+import manapy.c_api.manapy_c_api as manapy_c_api
 
-class PartitioningUtils:
+class Partitioning:
 
+  Par_Graph_K_Way = 0
+  Par_Dual = 1
+  Par_Nodal = 2
+  Par_Mgmetis = 3
   def __init__(self, mesh: 'Mesh'):
     self.nodes = mesh.points
     self.cells = mesh.cells
@@ -27,105 +29,12 @@ class PartitioningUtils:
     self.node_cellid = utils.create_node_cellid(self.cells, self.nb_nodes)
     self.node_phyid = utils.create_node_phyid(self.phy_faces, self.nb_nodes)
 
-    (max_node_phyid, max_cell_phyid) = self.get_max_phyid(len(self.cells), self.phy_faces, self.node_cellid, self.node_phyid)
+    (max_node_phyid, max_cell_phyid) = utils.get_max_phyid(len(self.cells), self.phy_faces, self.node_cellid, self.node_phyid)
     self.max_node_phyid = types.np_int_type(max_node_phyid)
     self.max_cell_phyid = types.np_int_type(max_cell_phyid)
     # Initialized when calling one of these functions (make_n_part_graph_k_way, make_n_part_mesh_dual, make_n_part_mesh_nodal)
     self.part_vert = None
     self.nb_parts = 1 # default value for one partition
-
-
-  # ###############################
-  # ###############################
-
-  @staticmethod
-  def _create_cellfid(
-    cells: 'int[:, :]',
-    node_cellid: 'int[:, :]',
-    cell_type: 'int[:]',
-    max_cell_faceid: 'int',
-    max_face_nodeid: 'int'
-  ):
-    nb_cells = len(cells)
-    # tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=types.np_int_type)
-    # tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=types.np_int_type)
-    cell_cellfid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type)
-
-    compute.create_cellfid(
-      cells,
-      node_cellid,
-      cell_type,
-      max_cell_faceid,
-      max_face_nodeid,
-      cell_cellfid
-    )
-
-    return cell_cellfid
-
-  def get_max_phyid(self, nb_cells: 'int', phy_faces: 'int[:, :]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]'):
-    i_visited = np.ones(shape=nb_cells, dtype=types.np_int_type) * -1
-    cell_nb_phyid = np.zeros(shape=nb_cells, dtype=types.np_int_type)
-
-    compute.get_cell_nb_phyid(phy_faces, node_cellid, i_visited, cell_nb_phyid)
-    node_max_phyid = np.max(node_phyid[:, -1])
-    cell_max_phyid = np.max(cell_nb_phyid)
-    return node_max_phyid, cell_max_phyid
-
-  def _define_node_oldname(self, phy_faces, phy_faces_name):
-    node_oldname = np.zeros(shape=self.nb_nodes, dtype=types.np_int_type)
-    compute.define_node_oldname(phy_faces, phy_faces_name, node_oldname)
-
-    return node_oldname
-
-  @staticmethod
-  def _create_local_domains_wrapper(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int8[:]', nodes: 'float[:, :]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', nb_parts: 'int', dim: 'int'):
-    c_res = manapy_c_api.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, dim)
-
-    list_local_domains = LocalDomainStruct.new_local_domains(nb_parts)
-    counter, cell_tc = 0, np.zeros(len(part_vert), dtype=types.np_int_type)
-    for i in range(nb_parts):
-      obj = list_local_domains[i]
-
-      k = 0
-      obj.nodes = c_res[i][k]; k+=1
-      obj.cells = c_res[i][k]; k+=1
-      obj.cells_type = c_res[i][k]; k+=1
-      obj.phy_faces = c_res[i][k]; k+=1
-      obj.phy_faces_name = c_res[i][k]; k+=1
-      obj.cell_loctoglob = c_res[i][k]; k+=1
-      obj.node_loctoglob = c_res[i][k]; k+=1
-      obj.node_oldname = c_res[i][k]; k+=1
-      obj.halo_neighsub = c_res[i][k]; k+=1
-      obj.node_halos = c_res[i][k]; k+=1
-      obj.halo_halosext = c_res[i][k]; k+=1
-      obj.halo_halosint = c_res[i][k]; k+=1
-      obj.halo_centvol = c_res[i][k]; k+=1
-      obj.phyid_neighbor = c_res[i][k]; k+=1
-      obj.phyid_recv = c_res[i][k]; k+=1
-      obj.phyid_send = c_res[i][k]; k+=1
-      obj.node_halophyid = c_res[i][k]; k+=1
-      obj.cell_halophyid = c_res[i][k]; k+=1
-      obj.max_cell_nodeid = c_res[i][k]; k+=1
-      obj.max_cell_faceid = c_res[i][k]; k+=1
-      obj.max_face_nodeid = c_res[i][k]; k+=1
-      obj.max_node_haloid = c_res[i][k]; k+=1
-      obj.max_cell_halonid = c_res[i][k]; k+=1
-      obj.max_node_phyid = c_res[i][k]; k+=1
-      obj.max_node_halophyid = c_res[i][k]; k+=1
-      obj.max_cell_phyid = c_res[i][k]; k+=1
-      obj.max_cell_halophyid = c_res[i][k]; k+=1
-      obj.dim = dim
-
-      # All ranks have cell_tc = array([], types.np_int_type)
-      # Build tc for rank0
-      cell_tc[counter:counter + len(obj.cells)] = obj.cell_loctoglob[:]
-      counter += len(obj.cells)
-
-    # Like the old version, only rank 0 stores cell_tc
-    list_local_domains[0].cell_tc = cell_tc
-
-
-    return list_local_domains
 
   def _remap_part_vert(self, part_vert, nb_parts):
     # ####################################################################################
@@ -142,14 +51,10 @@ class PartitioningUtils:
     self.part_vert = part_vert
     self.nb_parts = nb_parts
 
-class Partitioning(PartitioningUtils):
-  def __init__(self, mesh: 'Mesh'):
-    super().__init__(mesh)
-
   def make_n_part_graph_k_way(self, nb_parts):
     if nb_parts <= 1:
       return
-    cell_cellfid = self._create_cellfid(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
+    cell_cellfid = utils.create_cellfid(self.cells, self.node_cellid, self.cells_type, self.max_cell_faceid, self.max_face_nodeid)
     part_vert = manapy_c_api.make_n_part_graph_k_way(cell_cellfid, nb_parts)
     return self._remap_part_vert(part_vert, nb_parts)
 
@@ -164,7 +69,6 @@ class Partitioning(PartitioningUtils):
       return
     part_vert = manapy_c_api.make_n_part_mesh_nodal(self.cells, nb_parts)
     return self._remap_part_vert(part_vert, nb_parts)
-
 
   def make_n_part_old(self, nb_parts):
     if nb_parts <= 1:
@@ -186,10 +90,10 @@ class Partitioning(PartitioningUtils):
     return self._remap_part_vert(e_part, nb_parts)
 
   def _create_one_partition(self):
-    local_domains = LocalDomainStruct.new_local_domains(1)
+    local_domains = LocalDomainInterface.new_local_domains(1)
     local_domain = local_domains[0]
 
-    node_oldname = self._define_node_oldname(self.phy_faces, self.phy_faces_name)
+    node_oldname = utils.define_node_oldname(self.phy_faces, self.phy_faces_name, self.nb_nodes)
 
     local_domain.nodes = self.nodes
     local_domain.cells = self.cells
@@ -231,13 +135,27 @@ class Partitioning(PartitioningUtils):
 
     return local_domains
 
+  def set_part_vert(self, nb_parts, partitioning_type, n_common=None):
+    if partitioning_type == self.Par_Mgmetis:
+      return self.make_n_part_old(nb_parts)
+    elif partitioning_type == self.Par_Dual:
+      if n_common is None:
+        raise TypeError("n_common must be specified")
+      return self.make_n_part_mesh_dual(nb_parts, n_common)
+    elif partitioning_type == self.Par_Nodal:
+      return self.make_n_part_mesh_nodal(nb_parts)
+    elif partitioning_type == self.Par_Graph_K_Way:
+      return self.make_n_part_graph_k_way(nb_parts)
+    raise ValueError(f"Unknown partitioning type: {partitioning_type}")
+
+
   def create_sub_domains(self):
     if self.nb_parts == 1:
       return self._create_one_partition()
     else: # multiple partitions
       if self.part_vert is None:
         raise RuntimeError("must call one of these functions make_n_part_graph_k_way, make_n_part_mesh_dual, make_n_part_mesh_nodal")
-      return self._create_local_domains_wrapper(
+      return LocalDomainInterface.create_local_domains_wrapper(
         self.part_vert,
         self.node_cellid,
         self.node_phyid,
@@ -250,12 +168,3 @@ class Partitioning(PartitioningUtils):
         self.dim
       )
 
-  @staticmethod
-  def save_local_domains(local_domains: [LocalDomainStruct], nb_parts: 'int'):
-    folder_name = f"local_domain_{nb_parts}"
-    if not os.path.exists(folder_name):
-      os.makedirs(folder_name, exist_ok=True)
-    for rank in range(nb_parts):
-      file_name = f"mesh{rank}.hdf5"
-      path = os.path.join(folder_name, file_name)
-      LocalDomainStruct.save_hdf5(local_domains[rank], path)

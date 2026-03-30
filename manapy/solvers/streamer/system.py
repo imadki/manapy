@@ -16,8 +16,7 @@ from manapy.solvers.streamer import (update_ST, explicitscheme_source_ST,
 from manapy.solvers.advecdiff import (explicitscheme_convective_2d,
                                       explicitscheme_convective_3d)
 
-from manapy.comms import Iall_to_all
-from manapy.comms.comm import define_halosend
+
 
 from manapy.ast import Variable
 from manapy.base.base import Struct
@@ -219,9 +218,7 @@ class StreamerSolver():
     def update_halo_values(self):
         requests = []
         for var in self.varbs.values():
-            define_halosend(var.cell, var.halotosend, var.domain.halos.indsend)
-            req = Iall_to_all(var.halotosend, var.nbhalos, var.domain.halos.scount, var.domain.halos.rcount, var.halo, 
-                              var.comm)
+            req = self.domain.halo_comm.immediate_exchange(var.cell, recv_buffer=var.halo)
             requests.append(req)
         MPI.Request.Waitall( requests )
 

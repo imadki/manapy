@@ -1,5 +1,5 @@
 from manapy.domain import Domain
-import manapy.core.bc_compute as bc_compute
+import manapy.boundary.bc_compute as bc_compute
 import numpy as np
 import manapy.backends.types as types
 

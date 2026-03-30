@@ -6,6 +6,8 @@ import h5py
 from create_domain import Domain
 import os
 
+from manapy.domain import Partitioning
+
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
@@ -68,7 +70,7 @@ def save_tables(domain):
     f.create_dataset("d_face_cellid", data=domain.faces.cellid)
 
 def create_partitions(mesh_file_path, float_precision, dim):
-  domain = Domain.create_domain(mesh_file_path, dim, float_precision, recreate=True)
+  domain = Domain.create_domain(mesh_file_path, dim, Partitioning.Par_Nodal, float_precision, recreate=True)
   save_tables(domain)
 
 

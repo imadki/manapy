@@ -1,5 +1,3 @@
-import warnings
-
 from mpi4py import MPI
 import time
 
@@ -49,6 +47,5 @@ class Logger:
     print(f"[Rank: {self.rank}] {string} Acc {time_from_start:.6f} seconds (delta: {time_taken:.6f} seconds)", flush=True)
 
 log_step = Logger()
-
 
 
