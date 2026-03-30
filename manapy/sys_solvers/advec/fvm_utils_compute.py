@@ -1,8 +1,8 @@
 from manapy.backends.compile_fun import compile
 import numpy as np
 
-def _compute_upwind_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
-                        normal: 'float[:]', flux_w: 'float[:]'):
+def _compute_upwind_flux(w_l: 'float64', w_r: 'float64', u_face: 'float64', v_face: 'float64', w_face: 'float64',
+                        normal: 'float64[:]', flux_w: 'float64[:]'):
   sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
 
   if sign >= 0:
