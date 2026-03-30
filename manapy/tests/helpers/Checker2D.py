@@ -1,6 +1,6 @@
 import numpy as np
 from .TestLogger import TestLogger
-
+import manapy.backends.types as types
 
 
 
@@ -9,7 +9,6 @@ class Checker2D:
   def __init__(self, decimal_precision, domain_tables, unified_domain, test_tables):
 
     self.nb_partitions = domain_tables.nb_partitions
-    self.float_precision = domain_tables.float_precision
     self.domain_tables = domain_tables
     self.unified_domain = unified_domain
     self.decimal_precision = decimal_precision
@@ -17,9 +16,6 @@ class Checker2D:
     self.logger = TestLogger()
     self.test_tables = test_tables
 
-    self.float_type = np.float32
-    if self.float_precision == 'float64':
-      self.float_type = np.float64
 
   def summary(self):
     return self.logger.summary()
@@ -29,7 +25,7 @@ class Checker2D:
     nb_element = len(c_nodes)
     for i in range(nb_element):
       faces_nodes.append([c_nodes[i], c_nodes[(i + 1) % nb_element]])
-    faces_nodes = np.array(faces_nodes, dtype=np.int32)
+    faces_nodes = np.array(faces_nodes, dtype=types.np_int_type)
 
     tmp_faces_nodes = np.sort(faces_nodes, axis=1)
     tmp_c_faces_nodes = np.sort(c_faces_nodes, axis=1)
@@ -251,12 +247,12 @@ class Checker2D:
         # nodes_ghostfaceinfo => [[face_center_x, face_center_y, face_normal_x, face_normal_y] * nb_ghost_of_a_node] * nb_nodes
         c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
         for k in range(cnb_nodes):
-          ghostinfo = np.ones(shape=(2, 11), dtype=self.float_type) * -1
+          ghostinfo = np.ones(shape=(2, 11), dtype=types.np_float_type) * -1
           node_ghostid = self.test_tables.l_node_ghostid[g_index]
           node_ghostid = node_ghostid[k][0:node_ghostid[k][-1]]
           node_ghostinfo = self.test_tables.ghost_info[node_ghostid]
-          node_cellid = node_ghostinfo[:, 4].astype(np.int32)
-          node_faceid = node_ghostinfo[:, 5].astype(np.int32)
+          node_cellid = node_ghostinfo[:, 4].astype(types.np_int_type)
+          node_faceid = node_ghostinfo[:, 5].astype(types.np_int_type)
           nb_ghost = len(node_ghostinfo)
 
           ghostinfo[0:nb_ghost, 0] = node_ghostinfo[:, 0] #g_x
@@ -274,7 +270,7 @@ class Checker2D:
 
           ##########################
 
-          c_ghostinfo = np.ones(shape=(2, 11), dtype=self.float_type) * -1
+          c_ghostinfo = np.ones(shape=(2, 11), dtype=types.np_float_type) * -1
           c_node_ghostcenter = d_node_ghostcenter[c_cell_nodes[k]]
           c_node_ghostcenter_info = d_node_ghostcenter_info[c_cell_nodes[k]]
           c_node_ghostfaceinfo = d_node_ghostfaceinfo[c_cell_nodes[k]]
@@ -305,13 +301,13 @@ class Checker2D:
         if self.nb_partitions != 1:
           c_cell_nodes = d_cells[i][0:d_cells[i][-1]]
           for k in range(cnb_nodes):
-            haloghostinfo = np.ones(shape=(2, 11), dtype=self.float_type) * -1
+            haloghostinfo = np.ones(shape=(2, 11), dtype=types.np_float_type) * -1
             node_haloghostid = self.test_tables.node_haloghostid[g_index]
             node_haloghostid = node_haloghostid[k][0:node_haloghostid[k][-1]]
             node_haloghostinfo = self.test_tables.ghost_info[node_haloghostid]
 
-            node_cellid = node_haloghostinfo[:, 4].astype(np.int32)
-            node_faceid = node_haloghostinfo[:, 5].astype(np.int32)
+            node_cellid = node_haloghostinfo[:, 4].astype(types.np_int_type)
+            node_faceid = node_haloghostinfo[:, 5].astype(types.np_int_type)
             nb_ghost = len(node_haloghostinfo)
 
             haloghostinfo[0:nb_ghost, 0] = node_haloghostinfo[:, 0] #g_x
@@ -329,7 +325,7 @@ class Checker2D:
 
             ##########################
 
-            c_haloghostinfo = np.ones(shape=(2, 11), dtype=self.float_type) * -1
+            c_haloghostinfo = np.ones(shape=(2, 11), dtype=types.np_float_type) * -1
             c_node_haloghostcenter = d_node_haloghostcenter[c_cell_nodes[k]]
             c_node_haloghostcenter_info = d_node_haloghostcenter_info[c_cell_nodes[k]]
             c_node_haloghostfaceinfo = d_node_haloghostfaceinfo[c_cell_nodes[k]]

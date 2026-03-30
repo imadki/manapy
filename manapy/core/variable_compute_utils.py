@@ -1,7 +1,7 @@
 from manapy.backends.compile_fun import compile
 
 
-def _facetocell(u_face: 'float[:]', u_c: 'float[:]', cell_faceid: 'int32[:,:]', dim: 'int32'):
+def _facetocell(u_face: 'float[:]', u_c: 'float[:]', cell_faceid: 'int[:,:]', dim: 'int'):
   nbelements = len(u_c)
   u_c[:] = 0.
 
@@ -14,8 +14,8 @@ def _facetocell(u_face: 'float[:]', u_c: 'float[:]', cell_faceid: 'int32[:,:]', 
 
 
 def _celltoface(u_cell: 'float[:]', u_face: 'float[:]', u_ghost: 'float[:]', u_halo: 'float[:]',
-               face_cellid: 'int32[:,:]', face_halofid: 'int32[:]',
-               d_innerfaces: 'int32[:]', d_boundaryfaces: 'int32[:]', d_halofaces: 'int32[:]'):
+               face_cellid: 'int[:,:]', face_halofid: 'int[:]',
+               d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', d_halofaces: 'int[:]'):
   for i in d_innerfaces:
     c1 = face_cellid[i][0]
     c2 = face_cellid[i][1]

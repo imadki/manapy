@@ -4,9 +4,9 @@ from manapy.tests import LocalDomain1Cpu, SingleCoreDomainTables
 from manapy.tests.GeneralChecker import GeneralChecker
 from manapy.tests.helpers.GeneralTestTables import GeneralTestTables
 from manapy.tests.helpers.HybridTestTables import HybridTestTables
-from manapy.backends.types import FLOAT_TYPE
 import numpy as np
 from manapy.tests.meshes import get_mesh
+import manapy.backends.types as types
 
 def create_domain(nb_parts):
   mesh = Mesh(mesh_path, dim)
@@ -16,17 +16,17 @@ def create_domain(nb_parts):
   local_domain_data = partitioning.create_sub_domains()
 
   if nb_parts == 1:
-    local_domain_data[0].cell_loctoglob = np.arange(len(partitioning.cells), dtype=np.int32)
-    local_domain_data[0].node_loctoglob = np.arange(len(partitioning.nodes), dtype=np.int32)
+    local_domain_data[0].cell_loctoglob = np.arange(len(partitioning.cells), dtype=types.np_int_type)
+    local_domain_data[0].node_loctoglob = np.arange(len(partitioning.nodes), dtype=types.np_int_type)
 
   local_domains = LocalDomain1Cpu.create_local_domains(local_domain_data)
   domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
 
   part_vert = partitioning.part_vert
   if part_vert is None:
-    part_vert = np.zeros(len(partitioning.cells), dtype=np.int32)
+    part_vert = np.zeros(len(partitioning.cells), dtype=types.np_int_type)
 
-  return domains, SingleCoreDomainTables(domains, FLOAT_TYPE), local_domains, part_vert
+  return domains, SingleCoreDomainTables(domains), local_domains, part_vert
 
 dim, mesh_path, mesh_name = get_mesh(2)
 l_domains, domain_tables, local_domain, g_part_vert = create_domain(4)

@@ -3,13 +3,13 @@ from manapy.backends.compile_fun import compile
 
 
 def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
-                      cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int32[:,:]', node_ghostid: 'int32[:,:]',
-                      node_haloghostid: 'int32[:,:]',
-                      node_periodicid: 'int32[:,:]',
-                      node_halonid: 'int32[:,:]', nodes: 'float[:,:]', node_oldname:'int32[:]', face_ghostcenter: 'float[:,:]',
+                      cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]', node_ghostid: 'int[:,:]',
+                      node_haloghostid: 'int[:,:]',
+                      node_periodicid: 'int[:,:]',
+                      node_halonid: 'int[:,:]', nodes: 'float[:,:]', node_oldname:'int[:]', face_ghostcenter: 'float[:,:]',
                       cell_haloghostcenter: 'float[:,:]',
                       node_R_x: 'float[:]', node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]',
-                      node_lambda_z: 'float[:]', node_number: 'int32[:]', cell_shift: 'float[:,:]', w_n: 'float[:]'):
+                      node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]', w_n: 'float[:]'):
   w_n[:] = 0.
 
   nbnode = len(nodes)
@@ -87,13 +87,13 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
         w_n[i] += alpha * w_c[cell]
 
 def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_node: 'float[:]',
-                     cellidf: 'int32[:,:]',
-                     nodeidf: 'int32[:,:]', face_ghostcenter: 'float[:,:]', halofid: 'int32[:]', cell_center: 'float[:,:]',
+                     cellidf: 'int[:,:]',
+                     nodeidf: 'int[:,:]', face_ghostcenter: 'float[:,:]', halofid: 'int[:]', cell_center: 'float[:,:]',
                      halo_centvol: 'float[:,:]', nodes: 'float[:,:]', airDiamond: 'float[:]', normalf: 'float[:,:]',
                      f_1: 'float[:,:]', f_2: 'float[:,:]', f_3: 'float[:,:]', f_4: 'float[:,:]', cell_shift: 'float[:,:]',
-                     wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', innerfaces: 'int32[:]',
-                     halofaces: 'int32[:]',
-                     dirichletfaces: 'int32[:]', neumann: 'int32[:]', periodicfaces: 'int32[:]'):
+                     wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', innerfaces: 'int[:]',
+                     halofaces: 'int[:]',
+                     dirichletfaces: 'int[:]', neumann: 'int[:]', periodicfaces: 'int[:]'):
 
   for i in innerfaces:
     c_left = cellidf[i][0]
@@ -181,9 +181,9 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
               (vi1 + vv1) * f_1[i][0] + (vv1 + vi2) * f_2[i][0] + (vi2 + vv2) * f_3[i][0] + (vv2 + vi1) * f_4[i][0])
 
 def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
-                     cell_center: 'float[:,:]', cell_cellnid: 'int32[:,:]', cell_ghostnid: 'int32[:,:]', cell_haloghostnid: 'int32[:,:]',
-                     cell_halonid: 'int32[:,:]',
-                     cells: 'int32[:,:]', cell_periodicfid: 'int32[:,:]', node_periodicid: 'int32[:,:]', face_ghostcenter: 'float[:,:]',
+                     cell_center: 'float[:,:]', cell_cellnid: 'int[:,:]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
+                     cell_halonid: 'int[:,:]',
+                     cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', face_ghostcenter: 'float[:,:]',
                      cell_haloghostcenter: 'float[:,:]', nodes: 'float[:,:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
                      w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
   center = np.zeros(3)
@@ -222,7 +222,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       nod = cells[i][k]
       if nodes[nod][3] == 11 or nodes[nod][3] == 22:
         for j in range(node_periodicid[nod][-1]):
-          cell = np.int32(node_periodicid[nod][j])
+          cell = np.int(node_periodicid[nod][j])
           center[:] = cell_center[cell][0:3]
           j_x = center[0] + cell_shift[cell][0] - cell_center[i][0]
           j_y = center[1] - cell_center[i][1]
@@ -236,7 +236,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 
       if nodes[nod][3] == 33 or nodes[nod][3] == 44:
         for j in range(node_periodicid[nod][-1]):
-          cell = np.int32(node_periodicid[nod][j])
+          cell = np.int(node_periodicid[nod][j])
           center[:] = cell_center[cell][0:3]
           j_x = center[0] - cell_center[i][0]
           j_y = center[1] + cell_shift[cell][1] - cell_center[i][1]
@@ -282,8 +282,8 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 
 def _barthlimiter_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                     w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', psi: 'float[:]',
-                    face_cellid: 'int32[:,:]', cell_faceid: 'int32[:,:]', face_name: 'int32[:]',
-                    face_haloid: 'int32[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]'):
+                    face_cellid: 'int[:,:]', cell_faceid: 'int[:,:]', face_name: 'int[:]',
+                    face_haloid: 'int[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]'):
   nbelement = len(w_c)
   val = 1.
   psi[:] = val

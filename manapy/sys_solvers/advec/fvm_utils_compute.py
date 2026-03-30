@@ -20,10 +20,10 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                  wz_halo: 'float[:]', psi: 'float[:]', psi_halo: 'float[:]',
                                  cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
                                  face_ghostcenter: 'float[:,:]',
-                                 face_cellid: 'int32[:,:]', face_normal: 'float[:,:]', face_haloid: 'int32[:]',
-                                 face_name: 'int32[:]', d_innerfaces: 'int32[:]', d_halofaces: 'int32[:]',
-                                 d_boundaryfaces: 'int32[:]',
-                                 d_periodicboundaryfaces: 'int32[:]', cell_shift: 'float[:,:]', order: 'int32'):
+                                 face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
+                                 face_name: 'int[:]', d_innerfaces: 'int[:]', d_halofaces: 'int[:]',
+                                 d_boundaryfaces: 'int[:]',
+                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
 
   center_left = np.zeros(2)
   center_right = np.zeros(2)
@@ -159,9 +159,9 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                  wz_halo: 'float[:]', psi: 'float[:]', psi_halo: 'float[:]',
                                  cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
                                  face_ghostcenter: 'float[:,:]',
-                                 face_cellid: 'int32[:,:]', face_normal: 'float[:,:]', face_haloid: 'int32[:]', face_name: 'int32[:]',
-                                 d_innerfaces: 'int32[:]', d_halofaces: 'int32[:]', d_boundaryfaces: 'int32[:]',
-                                 d_periodicboundaryfaces: 'int32[:]', cell_shift: 'float[:,:]', order: 'int32'):
+                                 face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]', face_name: 'int[:]',
+                                 d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
+                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
   center_left = np.zeros(3)
   center_right = np.zeros(3)
   r_l = np.zeros(3)
@@ -314,7 +314,7 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
 
 
 def _time_step(u: 'float[:]', v: 'float[:]', w: 'float[:]', cfl: 'float', face_normal: 'float[:,:]',
-              face_measure: 'float[:]', cell_volume: 'float[:]', cell_faceid: 'int32[:,:]', dim: 'int32'):
+              face_measure: 'float[:]', cell_volume: 'float[:]', cell_faceid: 'int[:,:]', dim: 'int'):
   nbelement = len(cell_faceid)
   norm = np.zeros(3)
   dt = 1e6
