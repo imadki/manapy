@@ -1,7 +1,8 @@
 import numpy as np
+import manapy.backends.types as types
 
 class TablesTestHexa3D:
-  def __init__(self, float_precision, d_cell_loctoglob, g_cell_nodeid):
+  def __init__(self, d_cell_loctoglob, g_cell_nodeid):
     """
     d_cell_loctoglob: loctoglob of the local domains
     g_cell_nodeid: cell_nodeid of the global domain
@@ -37,12 +38,6 @@ class TablesTestHexa3D:
 
     """
 
-    if float_precision == 'float32':
-      float_precision = np.float32
-    elif float_precision == 'float64':
-      float_precision = np.float64
-    else:
-      raise ValueError('float_precision must be "float32" or "float64"')
 
     width = 10
 
@@ -63,47 +58,47 @@ class TablesTestHexa3D:
     self.d_cell_loctoglob = d_cell_loctoglob
     self.g_cell_nodeid = g_cell_nodeid
 
-    self.cell_vertices = np.zeros(shape=(self.nb_cells, 8, 3), dtype=float_precision)
-    self.cell_center = np.zeros(shape=(self.nb_cells, 3), dtype=float_precision)
-    self.cell_area = np.zeros(shape=(self.nb_cells), dtype=float_precision)
-    self.cell_which_partition = np.ones(shape=(self.nb_cells), dtype=np.int32) * -1
-    self.cell_halonid = np.ones(shape=(self.nb_cells, 26), dtype=np.int32) * -1
-    self.cell_halofid = np.ones(shape=(self.nb_cells, 6), dtype=np.int32) * -1
-    self.g_cell_cellnid = np.ones(shape=(self.nb_cells, 27), dtype=np.int32) * -1
-    self.l_cell_cellnid = np.ones(shape=(self.nb_cells, 27), dtype=np.int32) * -1
-    self.g_cell_cellfid = np.ones(shape=(self.nb_cells, 7), dtype=np.int32) * -1
-    self.l_cell_cellfid = np.ones(shape=(self.nb_cells, 7), dtype=np.int32) * -1
-    self.cell_nf = np.zeros(shape=(self.nb_cells, 6, 3), dtype=float_precision)
+    self.cell_vertices = np.zeros(shape=(self.nb_cells, 8, 3), dtype=types.np_float_type)
+    self.cell_center = np.zeros(shape=(self.nb_cells, 3), dtype=types.np_float_type)
+    self.cell_area = np.zeros(shape=(self.nb_cells), dtype=types.np_float_type)
+    self.cell_which_partition = np.ones(shape=(self.nb_cells), dtype=types.np_int_type) * -1
+    self.cell_halonid = np.ones(shape=(self.nb_cells, 26), dtype=types.np_int_type) * -1
+    self.cell_halofid = np.ones(shape=(self.nb_cells, 6), dtype=types.np_int_type) * -1
+    self.g_cell_cellnid = np.ones(shape=(self.nb_cells, 27), dtype=types.np_int_type) * -1
+    self.l_cell_cellnid = np.ones(shape=(self.nb_cells, 27), dtype=types.np_int_type) * -1
+    self.g_cell_cellfid = np.ones(shape=(self.nb_cells, 7), dtype=types.np_int_type) * -1
+    self.l_cell_cellfid = np.ones(shape=(self.nb_cells, 7), dtype=types.np_int_type) * -1
+    self.cell_nf = np.zeros(shape=(self.nb_cells, 6, 3), dtype=types.np_float_type)
 
-    self.faces_measure = np.zeros(shape=(self.nb_cells, 6), dtype=float_precision)
-    self.face_center = np.zeros(shape=(self.nb_cells, 6, 3), dtype=float_precision)
-    self.face_normal = np.zeros(shape=(self.nb_cells, 6, 3), dtype=float_precision)
-    self.faces_vertices = np.zeros(shape=(self.nb_cells, 6, 4, 3), dtype=float_precision)
-    self.g_face_name = np.ones(shape=(self.nb_cells, 6), dtype=np.int32) * -1
-    self.l_face_name = np.ones(shape=(self.nb_cells, 6), dtype=np.int32) * -1
-    self.g_face_cellid = np.ones(shape=(self.nb_cells, 6, 2), dtype=np.int32) * -1
-    self.l_face_cellid = np.ones(shape=(self.nb_cells, 6, 2), dtype=np.int32) * -1
+    self.faces_measure = np.zeros(shape=(self.nb_cells, 6), dtype=types.np_float_type)
+    self.face_center = np.zeros(shape=(self.nb_cells, 6, 3), dtype=types.np_float_type)
+    self.face_normal = np.zeros(shape=(self.nb_cells, 6, 3), dtype=types.np_float_type)
+    self.faces_vertices = np.zeros(shape=(self.nb_cells, 6, 4, 3), dtype=types.np_float_type)
+    self.g_face_name = np.ones(shape=(self.nb_cells, 6), dtype=types.np_int_type) * -1
+    self.l_face_name = np.ones(shape=(self.nb_cells, 6), dtype=types.np_int_type) * -1
+    self.g_face_cellid = np.ones(shape=(self.nb_cells, 6, 2), dtype=types.np_int_type) * -1
+    self.l_face_cellid = np.ones(shape=(self.nb_cells, 6, 2), dtype=types.np_int_type) * -1
 
-    self.g_node_cellid = np.ones(shape=(self.nb_nodes, 9), dtype=np.int32) * -1
-    self.l_node_cellid = np.ones(shape=(self.nb_cells, 8, 9), dtype=np.int32) * -1
-    self.node_halonid = np.ones(shape=(self.nb_cells, 8, 9), dtype=np.int32) * -1
-    self.g_node_name = np.ones(shape=(self.nb_cells, 8), dtype=np.int32) * -1
-    self.l_node_name = np.ones(shape=self.nb_nodes, dtype=np.int32) * -1
+    self.g_node_cellid = np.ones(shape=(self.nb_nodes, 9), dtype=types.np_int_type) * -1
+    self.l_node_cellid = np.ones(shape=(self.nb_cells, 8, 9), dtype=types.np_int_type) * -1
+    self.node_halonid = np.ones(shape=(self.nb_cells, 8, 9), dtype=types.np_int_type) * -1
+    self.g_node_name = np.ones(shape=(self.nb_cells, 8), dtype=types.np_int_type) * -1
+    self.l_node_name = np.ones(shape=self.nb_nodes, dtype=types.np_int_type) * -1
 
-    self.face_nodeid = np.ones(shape=(self.nb_cells, 6, 4), dtype=np.int32) * -1
-    self.ghost_info = np.ones(shape=(self.nb_ghosts, 7), dtype=float_precision) * -1
-    self.g_cell_ghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=np.int32) * -1
-    self.l_cell_ghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=np.int32) * -1
-    self.cell_haloghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=np.int32) * -1
-    self.face_ghostid = np.ones(shape=(self.nb_cells, 6), dtype=np.int32) * -1
-    self.face_ghostcenter = np.zeros(shape=(self.nb_cells, 6, 4), dtype=float_precision)
-    self.g_node_ghostid = np.ones(shape=(self.nb_nodes, 5), dtype=np.int32) * -1
-    self.l_node_ghostid = np.ones(shape=(self.nb_cells, 8, 5), dtype=np.int32) * -1
-    self.node_haloghostid = np.ones(shape=(self.nb_cells, 8, 5), dtype=np.int32) * -1
+    self.face_nodeid = np.ones(shape=(self.nb_cells, 6, 4), dtype=types.np_int_type) * -1
+    self.ghost_info = np.ones(shape=(self.nb_ghosts, 7), dtype=types.np_float_type) * -1
+    self.g_cell_ghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=types.np_int_type) * -1
+    self.l_cell_ghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=types.np_int_type) * -1
+    self.cell_haloghostnid = np.ones(shape=(self.nb_cells, 12+1), dtype=types.np_int_type) * -1
+    self.face_ghostid = np.ones(shape=(self.nb_cells, 6), dtype=types.np_int_type) * -1
+    self.face_ghostcenter = np.zeros(shape=(self.nb_cells, 6, 4), dtype=types.np_float_type)
+    self.g_node_ghostid = np.ones(shape=(self.nb_nodes, 5), dtype=types.np_int_type) * -1
+    self.l_node_ghostid = np.ones(shape=(self.nb_cells, 8, 5), dtype=types.np_int_type) * -1
+    self.node_haloghostid = np.ones(shape=(self.nb_cells, 8, 5), dtype=types.np_int_type) * -1
 
-    self.halo_halosint = np.array([], np.int32)
-    self.halo_neigh = np.zeros(shape=(self.nb_partitions, self.nb_partitions), dtype=np.int32)
-    self.halo_sizehaloghost = np.zeros(shape=(self.nb_partitions), dtype=np.int32)
+    self.halo_halosint = np.array([], types.np_int_type)
+    self.halo_neigh = np.zeros(shape=(self.nb_partitions, self.nb_partitions), dtype=types.np_int_type)
+    self.halo_sizehaloghost = np.zeros(shape=(self.nb_partitions), dtype=types.np_int_type)
 
 
   def _set_face_measure(self):
@@ -199,7 +194,7 @@ class TablesTestHexa3D:
         [i, -1 if i + size >= width * width * width else i + size],
         [i, -1 if i % size - width < 0 else i - width],
         [i, -1 if i % size + width >= size else i + width],
-      ], dtype=np.int32)
+      ], dtype=types.np_int_type)
 
       self.g_face_cellid[i] = arr
 
@@ -292,12 +287,12 @@ class TablesTestHexa3D:
   def _set_face_nodeid(self, g_cell_nodeid):
     for i in range(0, self.nb_cells):
       cell_nodes = g_cell_nodeid[i]
-      self.face_nodeid[i, 0] = np.array([cell_nodes[[0, 1, 2, 3]]], dtype=np.int32)
-      self.face_nodeid[i, 1] = np.array([cell_nodes[[4, 7, 5, 6]]], dtype=np.int32)
-      self.face_nodeid[i, 2] = np.array([cell_nodes[[0, 4, 7, 3]]], dtype=np.int32)
-      self.face_nodeid[i, 3] = np.array([cell_nodes[[1, 5, 6, 2]]], dtype=np.int32)
-      self.face_nodeid[i, 4] = np.array([cell_nodes[[0, 4, 5, 1]]], dtype=np.int32)
-      self.face_nodeid[i, 5] = np.array([cell_nodes[[3, 7, 6, 2]]], dtype=np.int32)
+      self.face_nodeid[i, 0] = np.array([cell_nodes[[0, 1, 2, 3]]], dtype=types.np_int_type)
+      self.face_nodeid[i, 1] = np.array([cell_nodes[[4, 7, 5, 6]]], dtype=types.np_int_type)
+      self.face_nodeid[i, 2] = np.array([cell_nodes[[0, 4, 7, 3]]], dtype=types.np_int_type)
+      self.face_nodeid[i, 3] = np.array([cell_nodes[[1, 5, 6, 2]]], dtype=types.np_int_type)
+      self.face_nodeid[i, 4] = np.array([cell_nodes[[0, 4, 5, 1]]], dtype=types.np_int_type)
+      self.face_nodeid[i, 5] = np.array([cell_nodes[[3, 7, 6, 2]]], dtype=types.np_int_type)
 
   def _set_face_ghostcenter(self, ghost_info, face_ghostid):
     # self.face_ghostcenter => [center_x center_y center_z gamma]
@@ -474,7 +469,7 @@ class TablesTestHexa3D:
 
     max_len = max(len(subarray) for subarray in res)
     res = [subarray + [-1] * (max_len - len(subarray)) for subarray in res]
-    self.halo_halosint = np.array(res, dtype=np.int32)
+    self.halo_halosint = np.array(res, dtype=types.np_int_type)
 
   def _set_halo_neigh(self, cell_halonid, cell_which_partition):
     haloext = [[] for i in range(self.nb_partitions)]
@@ -485,7 +480,7 @@ class TablesTestHexa3D:
 
     for p in range(self.nb_partitions):
       for j in range(self.nb_partitions):
-        tmp = np.array(haloext[p], dtype=np.int32)
+        tmp = np.array(haloext[p], dtype=types.np_int_type)
         tmp = np.unique(tmp)
         self.halo_neigh[p][j] = np.sum(cell_which_partition[tmp] == j) #ext that belong to partition j
 
@@ -523,7 +518,7 @@ class TablesTestHexa3D:
         i + 1, #3
         i + width, #4
         i + size, #5
-      ], dtype=np.int32)
+      ], dtype=types.np_int_type)
       if i % width - 1 < 0:
         arr[2] = -1
       if i % width + 1 >= width:
@@ -583,7 +578,7 @@ class TablesTestHexa3D:
         i + size + width - 1,  # 23
         i + size + width,      # 24
         i + size + width + 1   # 25
-      ], dtype=np.int32)
+      ], dtype=types.np_int_type)
       if i % width - 1 < 0:
         arr[[0, 3, 6, 9, 12, 14, 17, 20, 23]] = -1
       if i % width + 1 >= width:

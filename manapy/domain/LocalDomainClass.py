@@ -6,6 +6,7 @@ from manapy.domain.LocalDomainStructClass import LocalDomainStruct
 from mpi4py import MPI
 import os
 from manapy.domain.NeighborCommunication import NeighborCommunication
+import manapy.backends.types as types
 
 class LocalDomain:
 
@@ -16,9 +17,10 @@ class LocalDomain:
     self.rank = rank
     self.size = size
     self.dim = local_domain_struct.dim
+    # TODO remove self.float_precision and mpi_float_precision
     self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
     self.mpi_float_precision = MPI.FLOAT if local_domain_struct.float_precision == 32 else MPI.DOUBLE
-    self.nodes = local_domain_struct.nodes.astype(self.float_precision)
+    self.nodes = local_domain_struct.nodes
     self.cells = local_domain_struct.cells
     self.cells_type = local_domain_struct.cells_type
     self.phy_faces = local_domain_struct.phy_faces
@@ -30,7 +32,7 @@ class LocalDomain:
     self.halo_neighsub = local_domain_struct.halo_neighsub
     self.halo_halosint = local_domain_struct.halo_halosint
     self.halo_halosext = local_domain_struct.halo_halosext
-    self.halo_centvol = local_domain_struct.halo_centvol.astype(self.float_precision)
+    self.halo_centvol = local_domain_struct.halo_centvol
     self.node_halos = local_domain_struct.node_halos
     self.phyid_neighbor = local_domain_struct.phyid_neighbor
     self.phyid_recv = local_domain_struct.phyid_recv
@@ -46,9 +48,9 @@ class LocalDomain:
     self.max_node_halophyid = local_domain_struct.max_node_halophyid
     self.max_cell_phyid = local_domain_struct.max_cell_phyid
     self.max_cell_halophyid = local_domain_struct.max_cell_halophyid
-    self.nb_nodes = np.int32(len(self.nodes))
-    self.nb_cells = np.int32(len(self.cells))
-    self.nb_phy_faces = np.int32(len(self.phy_faces))
+    self.nb_nodes = types.np_int_type(len(self.nodes))
+    self.nb_cells = types.np_int_type(len(self.cells))
+    self.nb_phy_faces = types.np_int_type(len(self.phy_faces))
     self.test = False # debug attribute
 
 
@@ -155,10 +157,10 @@ class LocalDomain:
     log_step.out()
 
     ## TODO the use of this tables !?
-    self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=np.int32)
-    self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=np.int32)
-    self.cell_periodicfid = np.zeros(self.nb_cells, dtype=np.int32)
-    self.cell_shift = np.zeros((self.nb_cells, 3), dtype=self.float_precision)
+    self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=types.np_int_type)
+    self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=types.np_int_type)
+    self.cell_periodicfid = np.zeros(self.nb_cells, dtype=types.np_int_type)
+    self.cell_shift = np.zeros((self.nb_cells, 3), dtype=types.np_float_type)
 
     log_step.log("_face_gradient_info")
     (
@@ -239,9 +241,9 @@ class LocalDomain:
   def prepare_comm(self, halo_neighsub, halo_halosint):
     if self.size == 1:
       comm_ptr = MPI.COMM_WORLD.Create_dist_graph_adjacent([0], [0], sourceweights=None, destweights=None)
-      indsend = np.zeros(1, dtype=np.int32)
-      scount = np.zeros(1, dtype=np.uint32)
-      rcount = np.zeros(1, dtype=np.uint32)
+      indsend = np.zeros(1, dtype=types.np_int_type)
+      scount = np.zeros(1, dtype=types.np_int_type)
+      rcount = np.zeros(1, dtype=types.np_int_type)
       phy_faces_comm = None
 
 
@@ -256,8 +258,8 @@ class LocalDomain:
 
     comm_ptr = MPI.COMM_WORLD.Create_dist_graph_adjacent(halo_neighsub[0], halo_neighsub[0], sourceweights=None,
                                                          destweights=None)
-    scount = np.zeros(len(halo_neighsub[1]), dtype=np.uint32)
-    rcount = np.zeros(len(halo_neighsub[1]), dtype=np.uint32)
+    scount = np.zeros(len(halo_neighsub[1]), dtype=types.np_int_type)
+    rcount = np.zeros(len(halo_neighsub[1]), dtype=types.np_int_type)
 
     for i in range(len(halo_neighsub[0])):
       scount[i] = halo_neighsub[1][i]
@@ -283,15 +285,15 @@ class LocalDomain:
     max_face_nodeid: 'int'
   ):
     nb_cells = len(cells)
-    tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=np.int32)
-    tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=np.int32)
-    tmp_cell_faces_map = np.zeros(shape=(nb_cells, max_cell_faceid * 2 + 1), dtype=np.int32)
+    tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=types.np_int_type)
+    tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=types.np_int_type)
+    tmp_cell_faces_map = np.zeros(shape=(nb_cells, max_cell_faceid * 2 + 1), dtype=types.np_int_type)
     apprx_nb_faces = nb_cells * max_cell_faceid # TODO ((nb_cells * max_cell_faceid + boundary_faces) / 2)
-    faces = np.zeros(shape=(apprx_nb_faces, max_face_nodeid + 1), dtype=np.int32)
-    cell_faceid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
-    face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=np.int32) * -1
-    cell_cellfid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=np.int32)
-    faces_counter = np.zeros(shape=1, dtype=np.int32)
+    faces = np.zeros(shape=(apprx_nb_faces, max_face_nodeid + 1), dtype=types.np_int_type)
+    cell_faceid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type)
+    face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=types.np_int_type) * -1
+    cell_cellfid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type)
+    faces_counter = np.zeros(shape=1, dtype=types.np_int_type)
 
     compute.create_info(
       cells,
@@ -320,8 +322,8 @@ class LocalDomain:
 
   def _create_cell_info(self, cells, nodes):
     nb_cells = len(cells)
-    cell_volume = np.zeros(shape=nb_cells, dtype=self.float_precision)
-    cell_center = np.zeros(shape=(nb_cells, 3), dtype=self.float_precision) #TODO make it 2d as will as face.center and face.normal
+    cell_volume = np.zeros(shape=nb_cells, dtype=types.np_float_type)
+    cell_center = np.zeros(shape=(nb_cells, 3), dtype=types.np_float_type) #TODO make it 2d as will as face.center and face.normal
     if self.dim == 2:
       compute.compute_cell_center_volume_2d(cells, nodes, cell_volume, cell_center)
     else:
@@ -333,17 +335,17 @@ class LocalDomain:
 
   def _create_face_info(self, faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]', cell_center: 'float[:]'):
     nb_faces = len(faces)
-    face_measure = np.zeros(shape=nb_faces, dtype=self.float_precision)
-    face_center = np.zeros(shape=(nb_faces, 3), dtype=self.float_precision)
-    face_normal = np.zeros(shape=(nb_faces, 3), dtype=self.float_precision)
-    face_tangent = np.zeros(shape=0, dtype=self.float_precision)
-    face_binormal = np.zeros(shape=0, dtype=self.float_precision)
+    face_measure = np.zeros(shape=nb_faces, dtype=types.np_float_type)
+    face_center = np.zeros(shape=(nb_faces, 3), dtype=types.np_float_type)
+    face_normal = np.zeros(shape=(nb_faces, 3), dtype=types.np_float_type)
+    face_tangent = np.zeros(shape=0, dtype=types.np_float_type)
+    face_binormal = np.zeros(shape=0, dtype=types.np_float_type)
 
     if self.dim == 2:
       compute.compute_face_info_2d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal)
     else:
-      face_tangent = np.zeros(shape=(nb_faces, 3), dtype=self.float_precision)
-      face_binormal = np.zeros(shape=(nb_faces, 3), dtype=self.float_precision)
+      face_tangent = np.zeros(shape=(nb_faces, 3), dtype=types.np_float_type)
+      face_binormal = np.zeros(shape=(nb_faces, 3), dtype=types.np_float_type)
       compute.compute_face_info_3d(faces, nodes, face_cellid, cell_center, face_measure, face_center, face_normal, face_tangent, face_binormal)
     return (
       face_measure,
@@ -360,13 +362,13 @@ class LocalDomain:
     nb_halos = len(halo_halosext)
 
     if self.size == 1:
-      cell_halonid = np.zeros(shape=0, dtype=np.int32)
-      face_haloid = np.zeros(shape=0, dtype=np.int32)
-      node_haloid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
+      cell_halonid = np.zeros(shape=0, dtype=types.np_int_type)
+      face_haloid = np.zeros(shape=0, dtype=types.np_int_type)
+      node_haloid = np.zeros(shape=(nb_nodes, 1), dtype=types.np_int_type)
     else:
-      cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=np.int32)
-      face_haloid = np.zeros(shape=nb_faces, dtype=np.int32)
-      node_haloid = np.zeros(shape=(nb_nodes, self.max_node_haloid + 1), dtype=np.int32)
+      cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=types.np_int_type)
+      face_haloid = np.zeros(shape=nb_faces, dtype=types.np_int_type)
+      node_haloid = np.zeros(shape=(nb_nodes, self.max_node_haloid + 1), dtype=types.np_int_type)
       b_visited = np.zeros(shape=nb_halos, dtype=np.int8)
 
       compute.create_halo_cells(cells, faces, node_halos, node_haloid, b_visited, cell_halonid, face_haloid)
@@ -388,9 +390,9 @@ class LocalDomain:
                                  node_oldname: 'int[:]'
                                  ):
     nb_nodes = self.nb_nodes
-    face_name = np.zeros(shape=faces.shape[0], dtype=np.int32)
-    face_oldname = np.zeros(shape=faces.shape[0], dtype=np.int32)
-    phyid_to_faceid = np.ones(shape=phy_faces.shape[0], dtype=np.int32) * -1
+    face_name = np.zeros(shape=faces.shape[0], dtype=types.np_int_type)
+    face_oldname = np.zeros(shape=faces.shape[0], dtype=types.np_int_type)
+    phyid_to_faceid = np.ones(shape=phy_faces.shape[0], dtype=types.np_int_type) * -1
 
     node_name = node_oldname.copy()
     node_name[node_haloid[:, -1] != 0] = 10
@@ -407,21 +409,21 @@ class LocalDomain:
     )
 
 
-  def _create_shared_ghost_info(self, cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', phyid_send: 'int32[:]', faces: 'int32[:, :]', nodes: 'float[:, :]', phy_faces: 'int32[:, :]', node_cellid: 'int32[:, :]', phyid_to_faceid: 'int32[:]'):
+  def _create_shared_ghost_info(self, cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]', face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]', face_measure: 'float[:]', phyid_send: 'int[:]', faces: 'int[:, :]', nodes: 'float[:, :]', phy_faces: 'int[:, :]', node_cellid: 'int[:, :]', phyid_to_faceid: 'int[:]'):
 
     ghost_info_size = self.nb_phy_faces
 
     # ---- bf_cellid
     # the order of boundary cells in bf_cellid follows the same order of physical faces in phyid_send
-    bf_cellid = np.zeros(shape=(ghost_info_size, 2), dtype=np.int32)
-    intersect = np.zeros(shape=2, dtype=np.int32)
+    bf_cellid = np.zeros(shape=(ghost_info_size, 2), dtype=types.np_int_type)
+    intersect = np.zeros(shape=2, dtype=types.np_int_type)
     compute.create_bf_cellid(phy_faces, phyid_send, node_cellid, phyid_to_faceid, cell_faceid, intersect, bf_cellid)
 
     # ---- ghost_info_flt, ghost_info_int
     ghost_info_data_size_flt = 10 # (ghostcenter_x&y&z, gamma, face_center_x&y&z, face_normal_x&y&z)
     ghost_info_data_size_int = 4 # (cell_id, face index inside the cell, face_oldname, cell global id)
-    ghost_info_flt = np.zeros(shape=(ghost_info_size, ghost_info_data_size_flt), dtype=self.float_precision)
-    ghost_info_int = np.zeros(shape=(ghost_info_size, ghost_info_data_size_int), dtype=np.int32)
+    ghost_info_flt = np.zeros(shape=(ghost_info_size, ghost_info_data_size_flt), dtype=types.np_float_type)
+    ghost_info_int = np.zeros(shape=(ghost_info_size, ghost_info_data_size_int), dtype=types.np_int_type)
 
 
     compute.create_ghost_info(bf_cellid, cell_center, cell_faceid, cell_loctoglob, faces, nodes, face_oldname, face_normal, face_center, face_measure, ghost_info_int, ghost_info_flt, self.dim)
@@ -440,17 +442,17 @@ class LocalDomain:
     # ------------------------------------------------------------------
 
     # Both dim = 2 and dim 3
-    node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_phyid + 1), dtype=np.int32)
+    node_ghostid = np.zeros(shape=(self.nb_nodes, max_node_phyid + 1), dtype=types.np_int_type)
 
     if self.dim == 2:
       node_ghostcenter_data_size = 2  # [ghost_center x.y]
       node_ghostcenter_info_data_size = 3 # [cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 3  # [ghost_center x.y, gamma]
       node_ghostfaceinfo_data_size = 4  # [face_center x.y, face_normal x.y]
-      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_data_size), dtype=self.float_precision) * -1
-      node_ghostcenter_info = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_info_data_size), dtype=np.int32) * -1
-      face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
-      node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostfaceinfo_data_size), dtype=self.float_precision) * -1
+      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_data_size), dtype=types.np_float_type) * -1
+      node_ghostcenter_info = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_info_data_size), dtype=types.np_int_type) * -1
+      face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=types.np_float_type) * -1
+      node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostfaceinfo_data_size), dtype=types.np_float_type) * -1
 
       compute.create_ghost_tables_2d(ghost_info_int, ghost_info_flt, faces, cell_faceid, node_ghostid, node_ghostcenter, node_ghostcenter_info, face_ghostcenter, node_ghostfaceinfo)
     else:
@@ -458,11 +460,11 @@ class LocalDomain:
       node_ghostcenter_info_data_size = 3  # [cell_id, face_old_name, face_id]
       face_ghostcenter_data_size = 4  # [ghost_center x.y.z, gamma]
       node_ghostfaceinfo_data_size = 6  # [face_center x.y.z, face_normal x.y.z]
-      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_data_size), dtype=self.float_precision) * -1 # like old domain *-1
-      node_ghostcenter_info = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_info_data_size), dtype=np.int32) * -1 # like old domain *-1
-      face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=self.float_precision) * -1
+      node_ghostcenter = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_data_size), dtype=types.np_float_type) * -1 # like old domain *-1
+      node_ghostcenter_info = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostcenter_info_data_size), dtype=types.np_int_type) * -1 # like old domain *-1
+      face_ghostcenter = np.ones(shape=(self.nb_faces, face_ghostcenter_data_size), dtype=types.np_float_type) * -1
       node_ghostfaceinfo = np.ones(shape=(self.nb_nodes, max_node_phyid, node_ghostfaceinfo_data_size),
-                                    dtype=self.float_precision) * -1 # like old domain *-1
+                                    dtype=types.np_float_type) * -1 # like old domain *-1
 
       compute.create_ghost_tables_3d(ghost_info_int, ghost_info_flt, faces, cell_faceid, node_ghostid, node_ghostcenter, node_ghostcenter_info, face_ghostcenter, node_ghostfaceinfo)
 
@@ -471,9 +473,9 @@ class LocalDomain:
     # ------------------------------------------------------------------
     # Both dim = 2 and dim 3
     # TODO !! ghost_i_visited has the shape of faces, normally it should store the ghost_id
-    ghost_i_visited = np.ones(shape=self.nb_faces, dtype=np.int32) * -1
+    ghost_i_visited = np.ones(shape=self.nb_faces, dtype=types.np_int_type) * -1
     max_cell_ghostnid = self.max_cell_phyid
-    cell_ghostnid = np.zeros(shape=(self.nb_cells, max_cell_ghostnid + 1), dtype=np.int32)
+    cell_ghostnid = np.zeros(shape=(self.nb_cells, max_cell_ghostnid + 1), dtype=types.np_int_type)
     compute.create_cell_ghostnid(cells, node_ghostid, ghost_i_visited, cell_ghostnid)
 
 
@@ -547,32 +549,32 @@ class LocalDomain:
         ext_ghost_info_flt = [[]]
       if len(ext_ghost_info_int) == 0:
         ext_ghost_info_int = [[]]
-      domain.ext_ghost_info_flt = np.array(ext_ghost_info_flt, dtype=domain.float_precision)
-      domain.ext_ghost_info_int = np.array(ext_ghost_info_int, dtype=np.int32)
+      domain.ext_ghost_info_flt = np.array(ext_ghost_info_flt, dtype=types.np_float_type)
+      domain.ext_ghost_info_int = np.array(ext_ghost_info_int, dtype=types.np_int_type)
 
 
 
 
-  def _create_halo_ghost_tables(self, ext_ghost_info_flt: 'int32[:, :]', ext_ghost_info_int: 'float[:, :]', node_halophyid: 'int[:, :]', cell_halophyid: 'int32[:]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]'):
+  def _create_halo_ghost_tables(self, ext_ghost_info_flt: 'int[:, :]', ext_ghost_info_int: 'float[:, :]', node_halophyid: 'int[:, :]', cell_halophyid: 'int[:]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]'):
     nb_nodes = self.nb_nodes
     nb_cells = self.nb_cells
     max_node_halophyid = self.max_node_halophyid
     max_cell_halophyid = self.max_cell_halophyid
 
     if self.size == 1:
-      cell_haloghostnid = np.zeros(shape=(0, 1), dtype=np.int32)
-      cell_haloghostcenter = np.zeros(shape=(0, 1), dtype=self.float_precision)
-      node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=np.int32)
-      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 3), dtype=self.float_precision) * -1 # TODO !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
-      node_haloghostcenter_info = np.ones(shape=(self.nb_nodes, 1, 3), dtype=np.int32) * -1 # TODO
-      node_haloghostfaceinfo = np.zeros(shape=(0, 1, 1), dtype=self.float_precision)
+      cell_haloghostnid = np.zeros(shape=(0, 1), dtype=types.np_int_type)
+      cell_haloghostcenter = np.zeros(shape=(0, 1), dtype=types.np_float_type)
+      node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=types.np_int_type)
+      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 3), dtype=types.np_float_type) * -1 # TODO !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
+      node_haloghostcenter_info = np.ones(shape=(self.nb_nodes, 1, 3), dtype=types.np_int_type) * -1 # TODO
+      node_haloghostfaceinfo = np.zeros(shape=(0, 1, 1), dtype=types.np_float_type)
 
     else:
       # ------------------------------------------------------------------
       # create_halo_ghost_tables
       # ------------------------------------------------------------------
 
-      cell_haloghostnid = np.zeros(shape=(nb_cells, max_cell_halophyid + 1), dtype=np.int32)
+      cell_haloghostnid = np.zeros(shape=(nb_cells, max_cell_halophyid + 1), dtype=types.np_int_type)
       nb_haloghost = ext_ghost_info_flt.shape[0]
       """
       * cell_haloghostnid [[indices point to cell_haloghostcenter]]
@@ -583,11 +585,11 @@ class LocalDomain:
         node_haloghostcenter_data_size = 2 # [[[g_x, g_y]]]
         node_haloghostcenter_info_data_size = 3 # [[[(halo_cell)index point to halosext, face_old_name, index point to cell_haloghostcenter]]]
         node_haloghostfaceinfo_data_size = 4 # [[[fc_x, fc_y, fn_x, fn_y]]]
-        cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
-        node_haloghostid = np.zeros(shape=(nb_nodes, max_node_halophyid + 1), dtype=np.int32)
-        node_haloghostcenter = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_data_size), dtype=self.float_precision) * -1 # like old domain
-        node_haloghostcenter_info = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_info_data_size), dtype=np.int32) * -1
-        node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostfaceinfo_data_size), dtype=self.float_precision) * -1 # like old domain
+        cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=types.np_float_type)
+        node_haloghostid = np.zeros(shape=(nb_nodes, max_node_halophyid + 1), dtype=types.np_int_type)
+        node_haloghostcenter = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_data_size), dtype=types.np_float_type) * -1 # like old domain
+        node_haloghostcenter_info = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_info_data_size), dtype=types.np_int_type) * -1
+        node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostfaceinfo_data_size), dtype=types.np_float_type) * -1 # like old domain
 
         compute.create_halo_ghost_tables_2d(ext_ghost_info_flt, ext_ghost_info_int, node_halophyid, cell_halophyid, node_haloid, halo_halosext, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostcenter_info, node_haloghostfaceinfo)
       else:
@@ -595,12 +597,12 @@ class LocalDomain:
         node_haloghostcenter_data_size = 3 # [[[g_x, g_y, g_z]]]
         node_haloghostcenter_info_data_size = 3 # [[[(halo_cell)index point to halosext, face_old_name, index point to cell_haloghostcenter]]]
         node_haloghostfaceinfo_data_size = 6 # [[[fc_x, fc_y, fc_z, fn_x, fn_y, fn_z]]]
-        cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=self.float_precision)
-        node_haloghostid = np.zeros(shape=(nb_nodes, max_node_halophyid + 1), dtype=np.int32)
-        node_haloghostcenter = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_data_size), dtype=self.float_precision) * -1
-        node_haloghostcenter_info = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_info_data_size), dtype=np.int32) * -1
+        cell_haloghostcenter = np.zeros(shape=(nb_haloghost, cell_haloghostcenter_data_size), dtype=types.np_float_type)
+        node_haloghostid = np.zeros(shape=(nb_nodes, max_node_halophyid + 1), dtype=types.np_int_type)
+        node_haloghostcenter = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_data_size), dtype=types.np_float_type) * -1
+        node_haloghostcenter_info = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostcenter_info_data_size), dtype=types.np_int_type) * -1
         node_haloghostfaceinfo = np.ones(shape=(nb_nodes, max_node_halophyid, node_haloghostfaceinfo_data_size),
-                                          dtype=self.float_precision) * -1 # like old domain
+                                          dtype=types.np_float_type) * -1 # like old domain
 
 
         compute.create_halo_ghost_tables_3d(ext_ghost_info_flt, ext_ghost_info_int, node_halophyid, cell_halophyid, node_haloid, halo_halosext, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostcenter_info, node_haloghostfaceinfo)
@@ -619,15 +621,15 @@ class LocalDomain:
 
   def _face_gradient_info(self, face_cellid, faces, face_ghostcenter, face_name, face_normal, cell_center, halo_centvol, face_haloid, nodes, cell_shift):
 
-    face_air_diamond = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
-    face_param1 = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
-    face_param2 = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
-    face_param3 = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
-    face_param4 = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
-    face_f1 = np.zeros(shape=(self.nb_faces, self.dim), dtype=self.float_precision)
-    face_f2 = np.zeros(shape=(self.nb_faces, self.dim), dtype=self.float_precision)
-    face_f3 = np.zeros(shape=(self.nb_faces, self.dim), dtype=self.float_precision)
-    face_f4 = np.zeros(shape=(self.nb_faces, self.dim), dtype=self.float_precision)
+    face_air_diamond = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_param1 = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_param2 = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_param3 = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_param4 = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_f1 = np.zeros(shape=(self.nb_faces, self.dim), dtype=types.np_float_type)
+    face_f2 = np.zeros(shape=(self.nb_faces, self.dim), dtype=types.np_float_type)
+    face_f3 = np.zeros(shape=(self.nb_faces, self.dim), dtype=types.np_float_type)
+    face_f4 = np.zeros(shape=(self.nb_faces, self.dim), dtype=types.np_float_type)
 
     if self.dim == 2:
       compute.face_gradient_info_2d(face_cellid, faces, face_ghostcenter, face_name, face_normal, cell_center, halo_centvol, face_haloid, nodes, face_air_diamond, face_param1, face_param2, face_param3, face_param4, face_f1, face_f2, face_f3, face_f4, cell_shift)
@@ -648,13 +650,13 @@ class LocalDomain:
 
   def _variables(self, cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, node_oldname, face_ghostcenter, cell_haloghostcenter, halo_centvol, cell_shift):
 
-    node_R_x = np.zeros(self.nb_nodes, dtype=self.float_precision)
-    node_R_y = np.zeros(self.nb_nodes, dtype=self.float_precision)
-    node_R_z = np.zeros(self.nb_nodes, dtype=self.float_precision)
-    node_lambda_x = np.zeros(self.nb_nodes, dtype=self.float_precision)
-    node_lambda_y = np.zeros(self.nb_nodes, dtype=self.float_precision)
-    node_lambda_z = np.zeros(self.nb_nodes, dtype=self.float_precision)
-    node_number = np.zeros(self.nb_nodes, dtype=np.int32)
+    node_R_x = np.zeros(self.nb_nodes, dtype=types.np_float_type)
+    node_R_y = np.zeros(self.nb_nodes, dtype=types.np_float_type)
+    node_R_z = np.zeros(self.nb_nodes, dtype=types.np_float_type)
+    node_lambda_x = np.zeros(self.nb_nodes, dtype=types.np_float_type)
+    node_lambda_y = np.zeros(self.nb_nodes, dtype=types.np_float_type)
+    node_lambda_z = np.zeros(self.nb_nodes, dtype=types.np_float_type)
+    node_number = np.zeros(self.nb_nodes, dtype=types.np_int_type)
 
     if self.dim == 2:
       compute.variables_2d(cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, node_oldname, face_ghostcenter, cell_haloghostcenter, halo_centvol, node_R_x, node_R_y, node_lambda_x, node_lambda_y, node_number, cell_shift)
@@ -673,72 +675,72 @@ class LocalDomain:
 
   def _create_normal_face_of_cell(self, cell_center: 'float[:,:]', face_center: 'float[:,:]', cell_faceid: 'int[:,:]', face_normal: 'float[:,:]'):
 
-    cell_nf = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, 3), dtype=self.float_precision)
+    cell_nf = np.zeros(shape=(self.nb_cells, self.max_cell_faceid, 3), dtype=types.np_float_type)
     compute.create_normal_face_of_cell(cell_center, face_center, cell_faceid, face_normal, cell_nf)
     return cell_nf
 
   def _dist_ortho_function_2d(self, d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', face_cellid: 'int[:,:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_normal: 'float[:,:]'):
 
-    face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=self.float_precision) # TODO testing
+    face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=types.np_float_type) # TODO testing
     if self.dim == 2:
-      face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=self.float_precision)
+      face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
       compute.dist_ortho_function_2d(d_innerfaces, d_boundaryfaces, face_cellid, cell_center, face_center, face_normal, face_dist_ortho)
     return face_dist_ortho
 
   def _update_boundaries(self, face_name, node_name):
 
-    innerfaces = np.where(face_name == 0)[0].astype(np.int32)
-    infaces = np.where(face_name == 1)[0].astype(np.int32)
-    outfaces = np.where(face_name == 2)[0].astype(np.int32)
-    upperfaces = np.where(face_name == 3)[0].astype(np.int32)
-    bottomfaces = np.where(face_name == 4)[0].astype(np.int32)
-    halofaces = np.where(face_name == 10)[0].astype(np.int32)
+    innerfaces = np.where(face_name == 0)[0].astype(types.np_int_type)
+    infaces = np.where(face_name == 1)[0].astype(types.np_int_type)
+    outfaces = np.where(face_name == 2)[0].astype(types.np_int_type)
+    upperfaces = np.where(face_name == 3)[0].astype(types.np_int_type)
+    bottomfaces = np.where(face_name == 4)[0].astype(types.np_int_type)
+    halofaces = np.where(face_name == 10)[0].astype(types.np_int_type)
     if self.size == 1:
-      halofaces = np.asarray([], dtype=np.int32)
+      halofaces = np.asarray([], dtype=types.np_int_type)
 
-    periodicinfaces = np.where(face_name == 11)[0].astype(np.int32)
-    periodicoutfaces = np.where(face_name == 22)[0].astype(np.int32)
-    periodicupperfaces = np.where(face_name == 33)[0].astype(np.int32)
-    periodicbottomfaces = np.where(face_name == 44)[0].astype(np.int32)
+    periodicinfaces = np.where(face_name == 11)[0].astype(types.np_int_type)
+    periodicoutfaces = np.where(face_name == 22)[0].astype(types.np_int_type)
+    periodicupperfaces = np.where(face_name == 33)[0].astype(types.np_int_type)
+    periodicbottomfaces = np.where(face_name == 44)[0].astype(types.np_int_type)
 
     boundaryfaces = np.concatenate([infaces, outfaces, bottomfaces, upperfaces])
     periodicboundaryfaces = np.concatenate([periodicinfaces, periodicoutfaces, periodicbottomfaces, periodicupperfaces])
 
-    innernodes = np.where(node_name == 0)[0].astype(np.int32)
-    innodes = np.where(node_name == 1)[0].astype(np.int32)
-    outnodes = np.where(node_name == 2)[0].astype(np.int32)
-    uppernodes = np.where(node_name == 3)[0].astype(np.int32)
-    bottomnodes = np.where(node_name == 4)[0].astype(np.int32)
-    halonodes = np.where(node_name == 10)[0].astype(np.int32)
+    innernodes = np.where(node_name == 0)[0].astype(types.np_int_type)
+    innodes = np.where(node_name == 1)[0].astype(types.np_int_type)
+    outnodes = np.where(node_name == 2)[0].astype(types.np_int_type)
+    uppernodes = np.where(node_name == 3)[0].astype(types.np_int_type)
+    bottomnodes = np.where(node_name == 4)[0].astype(types.np_int_type)
+    halonodes = np.where(node_name == 10)[0].astype(types.np_int_type)
     if self.size == 1:
-      halonodes = np.asarray([], dtype=np.int32)
+      halonodes = np.asarray([], dtype=types.np_int_type)
 
-    periodicinnodes = np.where(node_name == 11)[0].astype(np.int32)
-    periodicoutnodes = np.where(node_name == 22)[0].astype(np.int32)
-    periodicuppernodes = np.where(node_name == 33)[0].astype(np.int32)
-    periodicbottomnodes = np.where(node_name == 44)[0].astype(np.int32)
+    periodicinnodes = np.where(node_name == 11)[0].astype(types.np_int_type)
+    periodicoutnodes = np.where(node_name == 22)[0].astype(types.np_int_type)
+    periodicuppernodes = np.where(node_name == 33)[0].astype(types.np_int_type)
+    periodicbottomnodes = np.where(node_name == 44)[0].astype(types.np_int_type)
 
     boundarynodes = np.concatenate([innodes, outnodes, bottomnodes, uppernodes])
     periodicboundarynodes = np.concatenate([periodicinnodes, periodicoutnodes, periodicbottomnodes, periodicuppernodes])
 
-    frontfaces = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    backfaces = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    periodicfrontfaces = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    periodicbackfaces = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    frontnodes = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    backnodes = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    periodicfrontnodes = np.zeros(shape=0, dtype=np.int32) # only on 3d
-    periodicbacknodes = np.zeros(shape=0, dtype=np.int32) # only on 3d
+    frontfaces = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    backfaces = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    periodicfrontfaces = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    periodicbackfaces = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    frontnodes = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    backnodes = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    periodicfrontnodes = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
+    periodicbacknodes = np.zeros(shape=0, dtype=types.np_int_type) # only on 3d
     if self.dim == 3:
-      frontfaces = np.where(face_name == 5)[0].astype(np.int32)
-      backfaces = np.where(face_name == 6)[0].astype(np.int32)
-      periodicfrontfaces = np.where(face_name == 55)[0].astype(np.int32)
-      periodicbackfaces = np.where(face_name == 66)[0].astype(np.int32)
+      frontfaces = np.where(face_name == 5)[0].astype(types.np_int_type)
+      backfaces = np.where(face_name == 6)[0].astype(types.np_int_type)
+      periodicfrontfaces = np.where(face_name == 55)[0].astype(types.np_int_type)
+      periodicbackfaces = np.where(face_name == 66)[0].astype(types.np_int_type)
 
-      frontnodes = np.where(node_name == 5)[0].astype(np.int32)
-      backnodes = np.where(node_name == 6)[0].astype(np.int32)
-      periodicfrontnodes = np.where(node_name == 55)[0].astype(np.int32)
-      periodicbacknodes = np.where(node_name == 66)[0].astype(np.int32)
+      frontnodes = np.where(node_name == 5)[0].astype(types.np_int_type)
+      backnodes = np.where(node_name == 6)[0].astype(types.np_int_type)
+      periodicfrontnodes = np.where(node_name == 55)[0].astype(types.np_int_type)
+      periodicbacknodes = np.where(node_name == 66)[0].astype(types.np_int_type)
 
       boundaryfaces = np.concatenate([boundaryfaces, backfaces, frontfaces])
       periodicboundaryfaces = np.concatenate([periodicboundaryfaces, periodicbackfaces, periodicfrontfaces])
@@ -817,13 +819,13 @@ class LocalDomain:
     if self.dim == 2:
       bounds = np.array([[min(nodes[:, 0]), max(nodes[:, 0])],
                                [min(nodes[:, 1]), max(nodes[:, 1])]],
-                              dtype=self.float_precision)
+                              dtype=types.np_float_type)
 
     if self.dim == 3:
       bounds = np.array([[min(nodes[:, 0]), max(nodes[:, 0])],
                                [min(nodes[:, 1]), max(nodes[:, 1])],
                                [min(nodes[:, 2]), max(nodes[:, 2])]],
-                              dtype=self.float_precision)
+                              dtype=types.np_float_type)
 
     return bounds
 

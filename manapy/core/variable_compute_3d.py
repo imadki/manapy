@@ -2,12 +2,12 @@ from manapy.backends.compile_fun import compile
 import numpy as np
 
 def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
-                      cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int32[:,:]', node_ghostid: 'int32[:,:]',
-                      node_haloghostid: 'int32[:,:]',
-                      node_periodicid: 'int32[:,:]',
-                      node_halonid: 'int32[:,:]', nodes: 'float[:,:]', node_oldname: 'int32[:]', face_ghostcenter: 'float[:,:]', cell_haloghostcenter: 'float[:,:]',
+                      cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]', node_ghostid: 'int[:,:]',
+                      node_haloghostid: 'int[:,:]',
+                      node_periodicid: 'int[:,:]',
+                      node_halonid: 'int[:,:]', nodes: 'float[:,:]', node_oldname: 'int[:]', face_ghostcenter: 'float[:,:]', cell_haloghostcenter: 'float[:,:]',
                       node_R_x: 'float[:]', node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]',
-                      node_lambda_z: 'float[:]', node_number: 'int32[:]', cell_shift: 'float[:,:]', w_n: 'float[:]'):
+                      node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]', w_n: 'float[:]'):
 
   w_n[:] = 0.
   nbnode = len(nodes)
@@ -116,13 +116,13 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
 
 def _face_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_node: 'float[:]',
-                     face_cellid: 'int32[:,:]',
-                     faces: 'int32[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int32[:]', cell_center: 'float[:,:]',
+                     face_cellid: 'int[:,:]',
+                     faces: 'int[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int[:]', cell_center: 'float[:,:]',
                      halo_centvol: 'float[:,:]', nodes: 'float[:,:]', face_air_diamond: 'float[:]', face_normal: 'float[:,:]',
                      face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]', cell_shift: 'float[:,:]',
-                     wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', d_innerfaces: 'int32[:]',
-                     d_halofaces: 'int32[:]',
-                     dirichletfaces: 'int32[:]', neumann: 'int32[:]', d_periodicboundaryfaces: 'int32[:]'):
+                     wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', d_innerfaces: 'int[:]',
+                     d_halofaces: 'int[:]',
+                     dirichletfaces: 'int[:]', neumann: 'int[:]', d_periodicboundaryfaces: 'int[:]'):
 
   for i in d_innerfaces:
 
@@ -245,9 +245,9 @@ def _face_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     wz_face[i] = (face_f1[i][2] * (V_A - V_C) + face_f2[i][2] * (V_B - V_D) + face_normal[i][2] * (V_R - V_L)) / face_air_diamond[i]
 
 def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
-                     cell_center: 'float[:,:]', cell_cellnid: 'int32[:,:]', cell_ghostnid: 'int32[:,:]', cell_haloghostnid: 'int32[:,:]',
-                     cell_halonid: 'int32[:,:]',
-                     cells: 'int32[:,:]', cell_periodicfid: 'int32[:,:]', node_periodicid: 'int32[:,:]', face_ghostcenter: 'float[:,:]',
+                     cell_center: 'float[:,:]', cell_cellnid: 'int[:,:]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
+                     cell_halonid: 'int[:,:]',
+                     cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', face_ghostcenter: 'float[:,:]',
                      cell_haloghostcenter: 'float[:,:]', nodes: 'float[:,:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
                      w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
 
@@ -369,8 +369,8 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 
 def _barthlimiter_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                     w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', psi: 'float[:]',
-                    face_cellid: 'int32[:,:]', cell_faceid: 'int32[:,:]', face_name: 'int32[:]',
-                    face_haloid: 'int32[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]'):
+                    face_cellid: 'int[:,:]', cell_faceid: 'int[:,:]', face_name: 'int[:]',
+                    face_haloid: 'int[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]'):
 
   nbelement = len(w_c)
   psi[:] = 1.

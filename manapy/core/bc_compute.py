@@ -1,17 +1,17 @@
 import numpy as np
 from manapy.backends.compile_fun import compile
 
-def _rhs_value_dirichlet_node(Pbordnode: 'float[:]', nodes: 'int32[:]', value: 'float[:]'):
+def _rhs_value_dirichlet_node(Pbordnode: 'float[:]', nodes: 'int[:]', value: 'float[:]'):
   for i in nodes:
     Pbordnode[i] = value[i]
 
 
-def _rhs_value_dirichlet_face(Pbordface: 'float[:]', faces: 'int32[:]', value: 'float[:]'):
+def _rhs_value_dirichlet_face(Pbordface: 'float[:]', faces: 'int[:]', value: 'float[:]'):
   for i in faces:
     Pbordface[i] = value[i]
 
 
-def _rhs_value_neumannNH_face(w_c: 'float[:]', Pbordface: 'float[:]', cellid: 'int32[:,:]', faces: 'int32[:]',
+def _rhs_value_neumannNH_face(w_c: 'float[:]', Pbordface: 'float[:]', cellid: 'int[:,:]', faces: 'int[:]',
                              cst: 'float[:]', dist: 'float[:]'):
   for i in faces:
     val = w_c[cellid[i][0]] + cst[i] * dist[i]
@@ -20,25 +20,25 @@ def _rhs_value_neumannNH_face(w_c: 'float[:]', Pbordface: 'float[:]', cellid: 'i
 #################################################################################
 #################################################################################
 
-def _ghost_value_nonslip(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int32[:,:]', bc_faces: 'int32[:]',
+def _ghost_value_nonslip(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
                         cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
     w_ghost[i] = -1 * w_c[face_cellid[i][0]]
 
 
-def _ghost_value_neumann(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int32[:,:]', bc_faces: 'int32[:]',
+def _ghost_value_neumann(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
                         cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
     w_ghost[i] = w_c[face_cellid[i][0]]
 
 
-def _ghost_value_neumannNH(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int32[:,:]', bc_faces: 'int32[:]',
+def _ghost_value_neumannNH(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
                           cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
     w_ghost[i] = w_c[face_cellid[i][0]] + cst[i] * face_dist_ortho[i]
 
 
-def _ghost_value_dirichlet(value: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int32[:,:]', bc_faces: 'int32[:]',
+def _ghost_value_dirichlet(value: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
                           cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
     w_ghost[i] = value[i]
@@ -47,7 +47,7 @@ def _ghost_value_dirichlet(value: 'float[:]', w_ghost: 'float[:]', face_cellid: 
 #################################################################################
 
 def _haloghost_value_neumann(w_halo: 'float[:]', w_haloghost: 'float[:]', node_haloghostcenter: 'float[:,:,:]',
-                            node_haloghostcenter_info: 'int32[:,:,:]', BCindex: 'int32', d_halonodes: 'int32[:]', cst: 'float[:]'):
+                            node_haloghostcenter_info: 'int[:,:,:]', BCindex: 'int', d_halonodes: 'int[:]', cst: 'float[:]'):
   for i in d_halonodes:
     for j in range(node_haloghostcenter_info[i].shape[0]):
       if node_haloghostcenter_info[i, j, -1] != -1:
@@ -58,7 +58,7 @@ def _haloghost_value_neumann(w_halo: 'float[:]', w_haloghost: 'float[:]', node_h
 
 
 def _haloghost_value_neumannNH(w_halo: 'float[:]', w_haloghost: 'float[:]', node_haloghostcenter: 'float[:,:,:]',
-                              node_haloghostcenter_info: 'int32[:,:,:]', BCindex: 'int32', d_halonodes: 'int32[:]', cst: 'float[:]'):
+                              node_haloghostcenter_info: 'int[:,:,:]', BCindex: 'int', d_halonodes: 'int[:]', cst: 'float[:]'):
   # TODO dist is not well computed (work only if NH is in the infaces)
   for i in d_halonodes:
     for j in range(node_haloghostcenter_info[i].shape[0]):
@@ -73,7 +73,7 @@ def _haloghost_value_neumannNH(w_halo: 'float[:]', w_haloghost: 'float[:]', node
 
 
 def _haloghost_value_dirichlet(value: 'float[:]', w_haloghost: 'float[:]', node_haloghostcenter: 'float[:,:,:]',
-                              node_haloghostcenter_info: 'int32[:,:,:]', BCindex: 'int32', d_halonodes: 'int32[:]', cst: 'float[:]'):
+                              node_haloghostcenter_info: 'int[:,:,:]', BCindex: 'int', d_halonodes: 'int[:]', cst: 'float[:]'):
   for i in d_halonodes:
     for j in range(node_haloghostcenter_info[i].shape[0]):
       if node_haloghostcenter_info[i, j, -1] != -1:
@@ -83,7 +83,7 @@ def _haloghost_value_dirichlet(value: 'float[:]', w_haloghost: 'float[:]', node_
 
 
 def _haloghost_value_nonslip(w_halo: 'float[:]', w_haloghost: 'float[:]', node_haloghostcenter: 'float[:,:,:]',
-                            node_haloghostcenter_info: 'int32[:,:,:]', BCindex: 'int32', d_halonodes: 'int32[:]', cst: 'float[:]'):
+                            node_haloghostcenter_info: 'int[:,:,:]', BCindex: 'int', d_halonodes: 'int[:]', cst: 'float[:]'):
   for i in d_halonodes:
     for j in range(node_haloghostcenter_info[i].shape[0]):
       if node_haloghostcenter_info[i, j, -1] != -1:

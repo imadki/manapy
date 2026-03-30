@@ -5,14 +5,13 @@ from manapy.backends.debug import log_step
 import time
 import numpy as np
 import subprocess
-
+import manapy.backends.types as types
 
 class SingleCoreDomainTables:
-  def __init__(self, local_domains, float_precision):
+  def __init__(self, local_domains):
 
 
     self.nb_partitions = len(local_domains)
-    self.float_precision = float_precision
 
     self.d_cells = []
     self.d_faces = []
@@ -172,7 +171,6 @@ class DomainTables:
         raise SystemExit(result.returncode)
 
     self.nb_partitions = nb_partitions
-    self.float_precision = float_precision
 
     for i in range(nb_partitions):
       mesh_dir = "domain_meshes" + str(nb_partitions) + "PROC"
@@ -207,8 +205,7 @@ class LocalDomain1Cpu(LocalDomain):
       self.rank = rank
       self.size = size
       self.dim = local_domain_struct.dim
-      self.float_precision = 'float32' if local_domain_struct.float_precision == 32 else 'float64'
-      self.nodes = local_domain_struct.nodes.astype(self.float_precision)
+      self.nodes = local_domain_struct.nodes
       self.cells = local_domain_struct.cells
       self.cells_type = local_domain_struct.cells_type
       self.phy_faces = local_domain_struct.phy_faces
@@ -220,7 +217,7 @@ class LocalDomain1Cpu(LocalDomain):
       self.halo_neighsub = local_domain_struct.halo_neighsub
       self.halo_halosint = local_domain_struct.halo_halosint
       self.halo_halosext = local_domain_struct.halo_halosext
-      self.halo_centvol = local_domain_struct.halo_centvol.astype(self.float_precision)
+      self.halo_centvol = local_domain_struct.halo_centvol
       self.node_halos = local_domain_struct.node_halos
       self.phyid_neighbor = local_domain_struct.phyid_neighbor
       self.phyid_recv = local_domain_struct.phyid_recv
@@ -236,9 +233,9 @@ class LocalDomain1Cpu(LocalDomain):
       self.max_node_halophyid = local_domain_struct.max_node_halophyid
       self.max_cell_phyid = local_domain_struct.max_cell_phyid
       self.max_cell_halophyid = local_domain_struct.max_cell_halophyid
-      self.nb_nodes = np.int32(len(self.nodes))
-      self.nb_cells = np.int32(len(self.cells))
-      self.nb_phy_faces = np.int32(len(self.phy_faces))
+      self.nb_nodes = types.np_int_type(len(self.nodes))
+      self.nb_cells = types.np_int_type(len(self.cells))
+      self.nb_phy_faces = types.np_int_type(len(self.phy_faces))
       self.test = True
 
       self.start = time.time()
@@ -359,10 +356,10 @@ class LocalDomain1Cpu(LocalDomain):
       log_step.out()
 
       ## TODO the use of this tables !?
-      self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=np.int32)
-      self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=np.int32)
-      self.cell_periodicfid = np.zeros(self.nb_cells, dtype=np.int32)
-      self.cell_shift = np.zeros((self.nb_cells, 3), dtype=self.float_precision)
+      self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=types.np_int_type)
+      self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=types.np_int_type)
+      self.cell_periodicfid = np.zeros(self.nb_cells, dtype=types.np_int_type)
+      self.cell_shift = np.zeros((self.nb_cells, 3), dtype=types.np_float_type)
 
       log_step.log("face_gradient_info")
       (

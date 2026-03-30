@@ -8,7 +8,7 @@ Created on Wed Feb 16 20:53:35 2022
 
 import numpy as np
 from manapy.domain import Domain
-from manapy.backends.types import FLOAT_TYPE
+import manapy.backends.types as types
 from manapy.core.Boundary import Boundary
 from types import LambdaType
 import manapy.core.variable_compute_2d as variable_compute_2d
@@ -58,33 +58,33 @@ class Variable:
     self._nbghost = domain.nbfaces
     self._mpi_precision = domain.mpi_precision
 
-    self.cell = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
-    self.node = np.zeros(self._nbnodes, dtype=FLOAT_TYPE)
-    self.face = np.zeros(self._nbfaces, dtype=FLOAT_TYPE)
-    self.ghost = np.zeros(self._nbfaces, dtype=FLOAT_TYPE)
-    self.halo = np.zeros(self._nbhalos, dtype=FLOAT_TYPE)
+    self.cell = np.zeros(self._nbcells, dtype=types.np_float_type)
+    self.node = np.zeros(self._nbnodes, dtype=types.np_float_type)
+    self.face = np.zeros(self._nbfaces, dtype=types.np_float_type)
+    self.ghost = np.zeros(self._nbfaces, dtype=types.np_float_type)
+    self.halo = np.zeros(self._nbhalos, dtype=types.np_float_type)
 
-    self.gradcellx = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
-    self.gradcelly = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
-    self.gradcellz = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
+    self.gradcellx = np.zeros(self._nbcells, dtype=types.np_float_type)
+    self.gradcelly = np.zeros(self._nbcells, dtype=types.np_float_type)
+    self.gradcellz = np.zeros(self._nbcells, dtype=types.np_float_type)
 
-    self.gradhalocellx = np.zeros(self._nbhalos, dtype=FLOAT_TYPE)
-    self.gradhalocelly = np.zeros(self._nbhalos, dtype=FLOAT_TYPE)
-    self.gradhalocellz = np.zeros(self._nbhalos, dtype=FLOAT_TYPE)
+    self.gradhalocellx = np.zeros(self._nbhalos, dtype=types.np_float_type)
+    self.gradhalocelly = np.zeros(self._nbhalos, dtype=types.np_float_type)
+    self.gradhalocellz = np.zeros(self._nbhalos, dtype=types.np_float_type)
 
-    self.gradfacex = np.zeros(self._nbfaces, dtype=FLOAT_TYPE)
-    self.gradfacey = np.zeros(self._nbfaces, dtype=FLOAT_TYPE)
-    self.gradfacez = np.zeros(self._nbfaces, dtype=FLOAT_TYPE)
+    self.gradfacex = np.zeros(self._nbfaces, dtype=types.np_float_type)
+    self.gradfacey = np.zeros(self._nbfaces, dtype=types.np_float_type)
+    self.gradfacez = np.zeros(self._nbfaces, dtype=types.np_float_type)
 
-    self.psi = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
-    self.psihalo = np.zeros(self._nbhalos, dtype=FLOAT_TYPE)
+    self.psi = np.zeros(self._nbcells, dtype=types.np_float_type)
+    self.psihalo = np.zeros(self._nbhalos, dtype=types.np_float_type)
 
-    self.halotosend = np.zeros(len(domain.halos.halosint), dtype=FLOAT_TYPE)
-    self.haloghost = np.zeros(domain.halos.sizehaloghost, dtype=FLOAT_TYPE)
+    self.halotosend = np.zeros(len(domain.halos.halosint), dtype=types.np_float_type)
+    self.haloghost = np.zeros(domain.halos.sizehaloghost, dtype=types.np_float_type)
 
     # TODO these attribute should be declared inside domain class
-    self._domain.Pbordnode = np.zeros(self._domain.nbnodes, dtype=FLOAT_TYPE)
-    self._domain.Pbordface = np.zeros(self._domain.nbfaces, dtype=FLOAT_TYPE)
+    self._domain.Pbordnode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
+    self._domain.Pbordface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
     (self.neumannfaces,
     self.BCneumann,
     self.dirichletfaces,
@@ -122,9 +122,9 @@ class Variable:
     self.__dict__[name] = np.zeros(self._nbcells)
 
   def _update_boundaries(self, BC:dict, values_dict:dict):
-    valueface = np.zeros(self._domain.nbfaces, dtype=FLOAT_TYPE)
-    valuenode = np.zeros(self._domain.nbnodes, dtype=FLOAT_TYPE)
-    valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=FLOAT_TYPE)
+    valueface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
+    valuenode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
+    valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=types.np_float_type)
 
     neumannfaces = []
     BCneumann = []
@@ -145,9 +145,9 @@ class Variable:
         if domain_bc_typename == "periodic":
           BCs[loc] = Boundary(BCtype="periodic",
                               BCloc=loc,
-                              BCvalueface=np.array([],dtype=FLOAT_TYPE),
-                              BCvaluenode=np.array([], dtype=FLOAT_TYPE),
-                              BCvaluehalo=np.array([], dtype=FLOAT_TYPE),
+                              BCvalueface=np.array([],dtype=types.np_float_type),
+                              BCvaluenode=np.array([], dtype=types.np_float_type),
+                              BCvaluehalo=np.array([], dtype=types.np_float_type),
                               BCtypeindex=domain_bc_type_idx,
                               domain=self._domain)
 
@@ -315,9 +315,9 @@ class Variable:
                               BCtypeindex=domain_bc_type_idx,
                               domain=self._domain)
 
-          BCs[loc].BCvalueface = np.array([], dtype=FLOAT_TYPE)
-          BCs[loc].BCvaluenode = np.array([], dtype=FLOAT_TYPE)
-          BCs[loc].BCvaluehalo = np.array([], dtype=FLOAT_TYPE)
+          BCs[loc].BCvalueface = np.array([], dtype=types.np_float_type)
+          BCs[loc].BCvaluenode = np.array([], dtype=types.np_float_type)
+          BCs[loc].BCvaluehalo = np.array([], dtype=types.np_float_type)
 
 
         elif bct == "slip":
@@ -367,12 +367,12 @@ class Variable:
 
     neumannfaces.sort()
     dirichletfaces.sort()
-    neumannfaces = np.asarray(neumannfaces, dtype=np.int32)
-    BCneumann = np.asarray(BCneumann, dtype=np.int32)
-    dirichletfaces = np.asarray(dirichletfaces, dtype=np.int32)
-    BCdirichlet = np.asarray(BCdirichlet, dtype=np.int32)
-    neumannNHfaces = np.asarray(neumannNHfaces, dtype=np.int32)
-    BCneumannNH = np.asarray(BCdirichlet, dtype=np.int32)
+    neumannfaces = np.asarray(neumannfaces, dtype=types.np_int_type)
+    BCneumann = np.asarray(BCneumann, dtype=types.np_int_type)
+    dirichletfaces = np.asarray(dirichletfaces, dtype=types.np_int_type)
+    BCdirichlet = np.asarray(BCdirichlet, dtype=types.np_int_type)
+    neumannNHfaces = np.asarray(neumannNHfaces, dtype=types.np_int_type)
+    BCneumannNH = np.asarray(BCdirichlet, dtype=types.np_int_type)
 
     return (neumannfaces,
             BCneumann,
@@ -512,7 +512,7 @@ class Variable:
   def update_ghost_value(self):
     for BC in self._BCs.values():
       BC.func_ghost(BC.BCvalueface, self.ghost, self._domain.faces.cellid,
-                     np.asarray(BC.BCfaces, dtype=np.int32),
+                     np.asarray(BC.BCfaces, dtype=types.np_int_type),
                      BC.constNH, self._domain.faces.dist_ortho)
       BC.func_haloghost(BC.BCvaluehalo, self.haloghost, self._domain.nodes.haloghostcenter,
                          self._domain.nodes.haloghostcenter_info, BC.BCtypeindex, self._domain.halonodes, BC.constNHNode)
@@ -523,8 +523,8 @@ class Variable:
       order = 1
     assert self._nbcells == len(exact), 'exact solution must have length of cells'
 
-    Error = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
-    Ex = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
+    Error = np.zeros(self._nbcells, dtype=types.np_float_type)
+    Ex = np.zeros(self._nbcells, dtype=types.np_float_type)
 
     for i in range(len(exact)):
       Error[i] = np.fabs(self.cell[i] - exact[i]) * self._domain.cells.volume[i]
