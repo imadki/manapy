@@ -5,34 +5,53 @@ import numpy as np
 Define for symmetrical communication.
 """
 class NeighborCommunication:
-  def __init__(self, neighbors, send_counts, send_indices):
-    self.comm = MPI.COMM_WORLD
+  def __init__(self, neighbors: 'int[:]', send_counts: 'int[:]', send_indices: 'int[:]'):
     self.size = MPI.COMM_WORLD.Get_size()
     self.rank = MPI.COMM_WORLD.Get_rank()
-    self.neighbors = neighbors.astype(np.uint32)
-    self.send_counts = send_counts.astype(np.uint32)
-    self.send_indices = send_indices
     self.cache = {}
+    self.neighbors = None
+    self.send_counts = None
+    self.send_indices = None
+    self.recv_counts = None
+    self.recv_total = None
+    self.graph_comm = None
 
-    # Check of send_counts and send_indices are will construct.
-    if np.sum(send_counts) != len(send_indices):
-      raise ValueError("Mismatch: send_counts sum != send_data size")
+    if self.size == 1:
+      self.neighbors = [0]
+      self.send_counts = np.zeros(1, dtype=np.uint32)
+      self.send_indices = np.zeros(1, dtype=np.uint32)
+      self.recv_counts = np.zeros(1, dtype=np.uint32)
+      self.recv_total = np.zeros(1, dtype=np.uint32)
+      self.graph_comm = MPI.COMM_WORLD.Create_dist_graph_adjacent(
+        sources=self.neighbors,
+        destinations=self.neighbors,
+        sourceweights=None, destweights=None
+      )
+    else:
+      # Check of send_counts and send_indices are will construct.
+      if np.sum(send_counts) != len(send_indices):
+        raise ValueError("Mismatch: send_counts sum != send_data size")
 
-    # --- Create graph communicator ---
-    self.graph_comm = self.comm.Create_dist_graph_adjacent(
-      sources=neighbors,
-      destinations=neighbors
-    )
+      self.neighbors = neighbors.astype(np.uint32)
+      self.send_counts = send_counts.astype(np.uint32)
+      self.send_indices = send_indices
 
-    # Creat recv_counts
-    rcount = np.zeros(len(neighbors), dtype=np.uint32)
-    self.graph_comm.Neighbor_alltoallv(self.send_counts, rcount)
-    self.recv_counts = rcount
-    self.recv_total = np.sum(rcount)
+      # --- Create graph communicator ---
+      self.graph_comm = MPI.COMM_WORLD.Create_dist_graph_adjacent(
+        sources=neighbors,
+        destinations=neighbors,
+        sourceweights=None, destweights=None
+      )
+
+      # Creat recv_counts
+      rcount = np.zeros(len(neighbors), dtype=np.uint32)
+      self.graph_comm.Neighbor_alltoallv(self.send_counts, rcount)
+      self.recv_counts = rcount
+      self.recv_total = np.sum(rcount)
 
   def exchange(self, data, recv_buffer=None):
     if self.size == 1 or self.neighbors.shape[0] == 0:
-      return np.empty_like(data)
+      return np.copy(data)
     # --- MPI datatype ---
     mpi_type = MPI._typedict.get(data.dtype.char)
     if mpi_type is None:

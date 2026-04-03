@@ -1,4 +1,3 @@
-import os
 from manapy.domain import Domain, Mesh, Partitioning
 from manapy.tests import LocalDomain1Cpu, SingleCoreDomainTables
 from manapy.tests.GeneralChecker import GeneralChecker
