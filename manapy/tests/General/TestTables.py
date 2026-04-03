@@ -1,11 +1,6 @@
 import numpy as np
 import h5py
 
-
-
-def _reinterpret_float32_as_int32(i: 'float32'):
-  return np.float32(i).view(np.int32)
-
 class Locals:
   def __init__(self):
     self.map_cells = {}
@@ -37,9 +32,9 @@ class Locals:
     self.cell_haloghostnid = np.zeros(shape=(1, 1), dtype=np.int32)
     self.face_ghostid = np.zeros(shape=1, dtype=np.int32)
 
-class HybridTestTables:
-  def __init__(self, d_cell_loctoglob, dim):
-    path = 'hybrid_test_tables.hd5'
+class TestTables:
+  def __init__(self, test_tables_path, part_vert, dim):
+    path = test_tables_path
     with h5py.File(path, 'r') as f:
       self.cells = f['cells'][...]
       self.cell_center = f['cell_center'][...]
@@ -59,7 +54,8 @@ class HybridTestTables:
       self.nodes = f['nodes'][...]
       self.node_cellid = f['node_cellid'][...]
       self.node_oldname = f['node_oldname'][...]
-      self.ghost_info = f['shared_ghost_info'][...] # indexed by physical id
+      self.ghost_info_flt = f['shared_ghost_info_flt'][...] # indexed by physical id
+      self.ghost_info_int = f['shared_ghost_info_int'][...] # indexed by physical id
       self.cell_ghostnid = f['cell_ghostnid'][...] # point to self.ghost_info
       self.node_ghostid = f['node_ghostid'][...] # point to self.ghost_info
       self.face_ghostid = f['face_to_phyid'][...]  # point to self.ghost_info which is index physical id
@@ -68,25 +64,13 @@ class HybridTestTables:
     self.nb_cells = len(self.cells)
     self.nb_nodes = len(self.nodes)
     self.nb_faces = len(self.faces)
-    self.part_vert = self._create_part_vert(d_cell_loctoglob, self.nb_cells)
+    self.part_vert = part_vert
     self.dim = dim
     self.nb_parts = max(self.part_vert) + 1
-    self.nb_phyid = len(self.ghost_info)
+    self.nb_phyid = len(self.ghost_info_int)
     self.face_name = self._define_face_name(self.faces, self.face_cellid, self.part_vert, self.face_oldname)
-    self.locals = self._create_local(self.part_vert, self.cells, self.cell_faceid, self.faces, self.nodes, self.nb_parts, self.ghost_info, self.face_cellid, self.cell_cellnid, self.cell_cellfid, self.node_cellid, self.node_ghostid, self.node_oldname, self.cell_ghostnid, self.face_ghostid)
+    self.locals = self._create_local(self.part_vert, self.cells, self.cell_faceid, self.faces, self.nodes, self.nb_parts, self.ghost_info_int, self.face_cellid, self.cell_cellnid, self.cell_cellfid, self.node_cellid, self.node_ghostid, self.node_oldname, self.cell_ghostnid, self.face_ghostid)
 
-
-  @staticmethod
-  def _create_part_vert(d_cell_loctoglob, nb_cells):
-    part_vert = np.zeros(shape=nb_cells, dtype=np.int32)
-    nb_partitions = len(d_cell_loctoglob)
-
-    for p in range(nb_partitions):
-      loctoglob = d_cell_loctoglob[p]
-      for j in range(len(loctoglob)):
-        global_index = loctoglob[j]
-        part_vert[global_index] = p
-    return part_vert
 
   @staticmethod
   def _define_face_name(
@@ -104,7 +88,7 @@ class HybridTestTables:
 
 
   @staticmethod
-  def _create_local(part_vert, cells, cell_faceid, faces, nodes, nb_parts, ghost_info, face_cellid, cell_cellnid, cell_cellfid, node_cellid, node_ghostnid, node_oldname, cell_ghostnid, face_ghostid):
+  def _create_local(part_vert, cells, cell_faceid, faces, nodes, nb_parts, ghost_info_int, face_cellid, cell_cellnid, cell_cellfid, node_cellid, node_ghostnid, node_oldname, cell_ghostnid, face_ghostid):
     l = [Locals() for _ in range(nb_parts)]
 
     # Determine Cells, Faces and nodes For evert partition `p`.
@@ -232,11 +216,11 @@ class HybridTestTables:
       l[p].cell_haloghostnid = np.zeros(shape=(l[p].nb_cells, cell_ghostnid.shape[1]), dtype=np.int32)
       l[p].face_ghostid = np.zeros(shape=l[p].nb_faces, dtype=np.int32)
       for g_id, l_id in l[p].map_nodes.items():
-        copy_lambda(l[p].node_ghostnid[l_id], node_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] == p else -1)
-        copy_lambda(l[p].node_haloghostnid[l_id], node_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] != p else -1)
+        copy_lambda(l[p].node_ghostnid[l_id], node_ghostnid[g_id], lambda x: x if part_vert[ghost_info_int[x, 0]] == p else -1)
+        copy_lambda(l[p].node_haloghostnid[l_id], node_ghostnid[g_id], lambda x: x if part_vert[ghost_info_int[x, 0]] != p else -1)
       for g_id, l_id in l[p].map_cells.items():
-        copy_lambda(l[p].cell_ghostnid[l_id], cell_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] == p else -1)
-        copy_lambda(l[p].cell_haloghostnid[l_id], cell_ghostnid[g_id], lambda x: x if part_vert[_reinterpret_float32_as_int32(ghost_info[x, 0])] != p else -1)
+        copy_lambda(l[p].cell_ghostnid[l_id], cell_ghostnid[g_id], lambda x: x if part_vert[ghost_info_int[x, 0]] == p else -1)
+        copy_lambda(l[p].cell_haloghostnid[l_id], cell_ghostnid[g_id], lambda x: x if part_vert[ghost_info_int[x, 0]] != p else -1)
 
 
       l[p].face_ghostid[:] = face_ghostid[np.array(list(l[p].map_faces.keys()))]

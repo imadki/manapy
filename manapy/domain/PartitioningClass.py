@@ -50,6 +50,7 @@ class Partitioning:
     nb_parts = len(unique_vals)
     self.part_vert = part_vert
     self.nb_parts = nb_parts
+    return part_vert, nb_parts
 
   def make_n_part_graph_k_way(self, nb_parts):
     if nb_parts <= 1:
@@ -88,6 +89,19 @@ class Partitioning:
     elem = [sublist[0:sublist[-1]] for sublist in self.cells]
     _, e_part, _ = metis.part_mesh_dual(nb_parts, elem, opts=options, nv=self.nb_nodes)
     return self._remap_part_vert(e_part, nb_parts)
+
+  def set_part_vert(self, nb_parts, partitioning_type, n_common=None):
+    if partitioning_type == self.Par_Mgmetis:
+      return self.make_n_part_old(nb_parts)
+    elif partitioning_type == self.Par_Dual:
+      if n_common is None:
+        raise TypeError("n_common must be specified")
+      return self.make_n_part_mesh_dual(nb_parts, n_common)
+    elif partitioning_type == self.Par_Nodal:
+      return self.make_n_part_mesh_nodal(nb_parts)
+    elif partitioning_type == self.Par_Graph_K_Way:
+      return self.make_n_part_graph_k_way(nb_parts)
+    raise ValueError(f"Unknown partitioning type: {partitioning_type}")
 
   def _create_one_partition(self):
     local_domains = LocalDomainInterface.new_local_domains(1)
@@ -134,19 +148,6 @@ class Partitioning:
 
 
     return local_domains
-
-  def set_part_vert(self, nb_parts, partitioning_type, n_common=None):
-    if partitioning_type == self.Par_Mgmetis:
-      return self.make_n_part_old(nb_parts)
-    elif partitioning_type == self.Par_Dual:
-      if n_common is None:
-        raise TypeError("n_common must be specified")
-      return self.make_n_part_mesh_dual(nb_parts, n_common)
-    elif partitioning_type == self.Par_Nodal:
-      return self.make_n_part_mesh_nodal(nb_parts)
-    elif partitioning_type == self.Par_Graph_K_Way:
-      return self.make_n_part_graph_k_way(nb_parts)
-    raise ValueError(f"Unknown partitioning type: {partitioning_type}")
 
 
   def create_sub_domains(self):

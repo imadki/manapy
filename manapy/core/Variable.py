@@ -471,7 +471,7 @@ class Variable:
                            self.psi, self._domain.faces.cellid, self._domain.cells.faceid, self._domain.faces.name,
                            self._domain.faces.halofid, self._domain.cells.center, self._domain.faces.center)
 
-    self.domain.halo_comm.comm.Barrier()
+    self.domain.halo_comm.graph_comm.Barrier()
     # update the halo values
     self.domain.halo_comm.exchange(self.gradcellx, recv_buffer=self.gradhalocellx)
     self.domain.halo_comm.exchange(self.gradcelly, recv_buffer=self.gradhalocelly)

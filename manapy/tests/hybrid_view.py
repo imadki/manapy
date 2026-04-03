@@ -9,13 +9,13 @@ from manapy.tests.meshes import get_mesh
 ##### Create domain
 ########################################################
 
-dim, mesh_path, mesh_name = get_mesh(2)
+dim, mesh_path, mesh_name = get_mesh(0)
 
 
 def create_domain(nb_parts):
   mesh = Mesh(mesh_path, dim)
   partitioning = Partitioning(mesh)
-  partitioning.make_n_part_old(nb_parts)
+  partitioning.make_n_part_mesh_nodal(nb_parts)
   local_domain_data = partitioning.create_sub_domains()
 
   local_domains = LocalDomain1Cpu.create_local_domains(local_domain_data)
@@ -23,7 +23,7 @@ def create_domain(nb_parts):
 
   return domains, local_domains
 
-size = 1
+size = 4
 l_domains, l = create_domain(size)
 g_domains, g = create_domain(1)
 
@@ -58,11 +58,11 @@ g_2idx = 0
 
 class   Renderer:
   def __init__(self, name):
-    sc = 1
+    sc = 2
     self.root = tk.Tk()
-    self.width = 1500 * sc
-    self.height = 1000 * sc
-    self.font_size = 12 * sc
+    self.width = 1000 * sc
+    self.height = 1500 * sc
+    self.font_size = 5 * sc
     self.x_scale = 100 // 2.0 * sc
     self.x_offset = 200 // 2.0 * sc
     self.y_scale = 100 // 2.0 * sc
@@ -269,8 +269,8 @@ def cell_ghostnid(k):
     if i == g_index:
       ghosts = l[k].cell_ghostnid[i]
       for j in range(ghosts[-1]):
-        ghost_info = l[k].shared_ghost_info[ghosts[j]]
-        p = ghost_info[2:4]
+        ghost_info = l[k].ghost_info_flt[ghosts[j]]
+        p = ghost_info
         render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
 
 def node_ghostid(k):
@@ -284,9 +284,25 @@ def node_ghostid(k):
           for z in range(l[k].node_ghostid[node_id, -1]):
             ghosts = l[k].node_ghostid[node_id]
             for y in range(ghosts[-1]):
-              ghost_info = l[k].shared_ghost_info[ghosts[y]]
-              p = ghost_info[2:4]
+              ghost_info = l[k].ghost_info_flt[ghosts[y]]
+              p = ghost_info
               render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
+
+def tmp_1(k):
+  for i in range(len(l[k].face_center)):
+    p = l[k].face_center[i]
+    render.ft_put_item(p, f"{i}", render.getColor(0))
+
+def tmp_2(k):
+  for i in range(len(l[k].cell_center)):
+    p = l[k].cell_center[i]
+    g_id = l[k].cell_loctoglob[i]
+    render.ft_put_item(p, f"{g_id}", render.getColor(0))
+
+def tmp_3(k):
+  for i in range(len(l[k].ghost_info_flt)):
+    p = l[k].ghost_info_flt[i]
+    render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
 
 def test():
   for k in range(size):
@@ -298,6 +314,8 @@ def test():
       if i == g_index:
         render.create_polygon(p, render.getColor(k))
 
+    tmp_3(k)
+    # draw_cellfid(k)
     # draw_center(k)
     # draw_area(k)
     # draw_cellfid(k)
@@ -310,7 +328,7 @@ def test():
     # draw_face_measure(k)
     # draw_node_cellid(k)
     # draw_node_oldname(k)
-    cell_ghostnid(k)
+    # cell_ghostnid(k)
     # node_ghostid(k)
 
 

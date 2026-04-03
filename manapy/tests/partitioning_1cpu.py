@@ -241,6 +241,7 @@ class LocalDomain1Cpu(LocalDomain):
 
 
       self.phy_faces_comm = None
+      self.halo_comm = None
       log_step.log("Prepare communication")
       (
         self.halo_scount,
