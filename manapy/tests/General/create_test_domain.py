@@ -7,7 +7,7 @@ from manapy.tests.meshes import get_mesh
 
 
 # Create global domain
-dim, mesh_path, mesh_name = get_mesh(2)
+dim, mesh_path, mesh_name = get_mesh(5)
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh)
 local_domain_data = partitioning.create_sub_domains()
@@ -33,7 +33,7 @@ def _remap_fid_to_phyid(cell_ghostnid, node_ghostid, face_to_phyid):
 
 
 # Create the hd5 file
-path = 'hybrid_test_tables.hd5'
+path = 'tetra_test_tables.hd5'
 with h5py.File(path, 'w') as f:
   face_to_phyid = _create_face_to_phyid(len(global_domain[0].faces), global_domain[0].phyid_to_faceid)
   _remap_fid_to_phyid(global_domain[0].cell_ghostnid, global_domain[0].node_ghostid, face_to_phyid)
@@ -48,7 +48,6 @@ with h5py.File(path, 'w') as f:
   f.create_dataset('face_cellid', data=global_domain[0].face_cellid) #
   f.create_dataset('face_center', data=global_domain[0].face_center) #
   f.create_dataset('face_oldname', data=global_domain[0].face_oldname) #
-  f.create_dataset('face_to_phyid', data=face_to_phyid) #
   f.create_dataset('phy_faces', data=global_domain[0].phy_faces) #
   f.create_dataset('face_normal', data=global_domain[0].face_normal) #
   f.create_dataset('face_measure', data=global_domain[0].face_measure) #
@@ -57,6 +56,8 @@ with h5py.File(path, 'w') as f:
   f.create_dataset('nodes', data=global_domain[0].nodes) #
   f.create_dataset('node_cellid', data=global_domain[0].node_cellid) #
   f.create_dataset('node_oldname', data=global_domain[0].node_oldname) #
-  f.create_dataset('shared_ghost_info', data=global_domain[0].shared_ghost_info) #
+  f.create_dataset('shared_ghost_info_flt', data=global_domain[0].ghost_info_flt) #
+  f.create_dataset('shared_ghost_info_int', data=global_domain[0].ghost_info_int) #
   f.create_dataset('cell_ghostnid', data=global_domain[0].cell_ghostnid) #
   f.create_dataset('node_ghostid', data=global_domain[0].node_ghostid) #
+  f.create_dataset('face_to_phyid', data=face_to_phyid) #

@@ -83,7 +83,7 @@ class AdvectionSolver:
     d_t = self._time_step(self.u.cell, self.v.cell, self.w.cell, self.cfl, self.domain.faces.normal,
                           self.domain.faces.mesure,
                           self.domain.cells.volume, self.domain.cells.faceid, self.dim)
-    self.dt = self.domain.halo_comm.comm.allreduce(d_t, op=MPI.MIN)
+    self.dt = self.domain.halo_comm.graph_comm.allreduce(d_t, op=MPI.MIN)
     return self.dt
 
   def compute_fluxes(self):

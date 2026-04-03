@@ -52,8 +52,8 @@ class LocalDomain:
 
     log_step.log("Prepare communication")
     tmp = self.prepare_comm(self.halo_neighsub, self.halo_halosint)
-    self.halo_comm : NeighborCommunication | None = tmp[0]
-    self.phy_faces_comm : NeighborCommunication | None = tmp[1]
+    self.halo_comm : NeighborCommunication = tmp[0]
+    self.phy_faces_comm : NeighborCommunication = tmp[1]
     log_step.out()
 
     log_step.log("bounds")
@@ -232,7 +232,7 @@ class LocalDomain:
 
   def prepare_comm(self, halo_neighsub, halo_halosint):
     if self.size == 1:
-      return None, None
+      return NeighborCommunication(None, None, None), NeighborCommunication(None, None, None)
 
     halo_cells_comm = NeighborCommunication(
       neighbors=halo_neighsub[0],
