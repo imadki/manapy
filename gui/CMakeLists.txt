@@ -8,9 +8,11 @@ add_subdirectory(extern/pybind11)
 add_subdirectory(extern/glfw)
 
 find_package(Vulkan REQUIRED)
+find_package(gmsh REQUIRED)
 
-file(GLOB SRC_FILES src/*.cpp)
-pybind11_add_module(manapyGUI ${SRC_FILES})
+file(GLOB_RECURSE SRC_FILES src/*.cpp)
+file(GLOB_RECURSE IMGUI_SRC extern/imgui/*.cpp)
+pybind11_add_module(manapyGUI ${SRC_FILES} ${IMGUI_SRC})
 
 
 target_compile_definitions(manapyGUI PRIVATE
@@ -19,11 +21,13 @@ target_compile_definitions(manapyGUI PRIVATE
 
 target_include_directories(manapyGUI PRIVATE
     extern/glm
+    extern/imgui
 )
 
 target_link_libraries(manapyGUI PRIVATE 
     Vulkan::Vulkan
     glfw
+    gmsh
 )
 
 

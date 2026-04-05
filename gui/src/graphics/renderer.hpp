@@ -1,9 +1,13 @@
 #pragma once
 
+#include "../common.hpp"
+#include "../core/window.hpp"
+#include "../ui/editorUI.hpp"
+#include "../resources/meshManager.hpp"
 #include "camera.hpp"
-#include "common.hpp"
 #include "rendererUtils.hpp"
-#include "window.hpp"
+
+static constexpr uint32_t VULKAN_API_VERSION = VK_API_VERSION_1_3;
 
 class Renderer {
   public:
@@ -24,21 +28,11 @@ class Renderer {
 #else
     static constexpr bool enableValidationLayers = true;
 #endif
-    const std::vector<Vertex> vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}},
 
-        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-    };
-
-    const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
-
-    Window& window;
+    Window&     window;
+    EditorUI    editorUI;
+    Camera      camera;
+    MeshManager meshManager;
 
     std::shared_ptr<bool> pFrameBufferResized;
 
@@ -57,33 +51,43 @@ class Renderer {
     VkSurfaceKHR   surface   = VK_NULL_HANDLE;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 
-    std::vector<VkImage>       swapchainImages;
-    VkFormat                   swapchainImageFormat;
-    VkExtent2D                 swapchainExtent;
-    std::vector<VkImageView>   swapchainImageViews;
-    std::vector<VkFramebuffer> swapchainFramebuffers;
+    VkRenderPass UIRenderPass       = VK_NULL_HANDLE;
+    VkRenderPass meshViewRenderPass = VK_NULL_HANDLE;
 
-    VkImage        depthImage       = VK_NULL_HANDLE;
-    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
-    VkImageView    depthImageView   = VK_NULL_HANDLE;
-
-    VkRenderPass     renderPass       = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout   = VK_NULL_HANDLE;
     VkPipeline       graphicsPipeline = VK_NULL_HANDLE;
+
+    std::vector<VkImage>       swapchainImages;
+    std::vector<VkImageView>   swapchainImageViews;
+    VkFormat                   swapchainImageFormat;
+    VkExtent2D                 swapchainExtent;
+    std::vector<VkFramebuffer> swapchainFramebuffers;
+
+    struct {
+        VkExtent2D extent{800, 600};
+        VkFormat   format{VK_FORMAT_B8G8R8A8_UNORM};
+
+        std::vector<VkImage>        colorImages;
+        std::vector<VkDeviceMemory> colorImagesMemory;
+        std::vector<VkImageView>    colorImageViews;
+
+        VkImage        depthImage       = VK_NULL_HANDLE;
+        VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+        VkImageView    depthImageView   = VK_NULL_HANDLE;
+
+        std::vector<VkFramebuffer> framebuffers;
+
+        std::vector<VkDescriptorSet> descriptorSets;
+    } meshViewFrameData;
+
+    VkSampler sampler = VK_NULL_HANDLE;
 
     VkCommandPool                graphicsCommandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> graphicsCommandBuffers;
 
-    VkBuffer       vertexBuffer       = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer       indexBuffer        = VK_NULL_HANDLE;
-    VkDeviceMemory indexBufferMemory  = VK_NULL_HANDLE;
-
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence>     inFlightFences;
-
-    Camera camera;
 
   private:
     // ─[ MAIN FUNCTIONS ]─────────────────────────────────────────────────
@@ -93,18 +97,22 @@ class Renderer {
     void pickPhysicalDevice();
     void createLogicalDevice();
     void createSwapchain();
-    void createImageViews();
-    void createRenderPass();
+    void createSwapchainImageViews();
+    void createRenderPasses();
     void createGraphicsPipeline();
     void createCommandPools();
-    void createDepthResources();
-    void createFramebuffers();
-    void createVertexBuffer();
-    void createIndexBuffer();
+    void initMeshManager();
+    void initEditorUI();
+    void createSampler();
+    void createMeshViewResources();
+    void createSwapchainFramebuffers();
     void allocateCommandBuffers();
     void createSyncObjects();
 
     void recordDrawCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx);
+
+    void recreateMeshViewResources();
+    void cleanupMeshViewResources();
 
     void recreateSwapchain();
     void cleanupSwapchain();
@@ -143,16 +151,6 @@ class Renderer {
     chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
 
     VkShaderModule createShaderModule(const char* bytecodePath);
-
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-
-    void createBuffer(VkDeviceSize          size,
-                      VkBufferUsageFlags    usage,
-                      VkMemoryPropertyFlags properties,
-                      VkBuffer&             buffer,
-                      VkDeviceMemory&       bufferMemory);
-
-    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
                                  VkImageTiling                tiling,

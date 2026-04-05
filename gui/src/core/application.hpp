@@ -1,6 +1,6 @@
 #pragma once
 
-#include "renderer.hpp"
+#include "../graphics/renderer.hpp"
 #include "window.hpp"
 
 class Application {

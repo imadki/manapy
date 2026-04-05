@@ -1,5 +1,5 @@
 #include "bindings.hpp"
-#include "application.hpp"
+#include "../core/application.hpp"
 
 PYBIND11_MODULE(manapyGUI, m, py::mod_gil_not_used())
 {

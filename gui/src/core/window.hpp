@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.hpp"
+#include "../common.hpp"
 
 class Window {
   public:
@@ -10,6 +10,8 @@ class Window {
     Window(const char* title);
     ~Window();
 
+    GLFWwindow* getNative() const;
+
     bool shouldClose();
     void pollEvents();
     void waitEvents();
@@ -17,10 +19,10 @@ class Window {
     void createSurface(VkInstance vkInstance, VkSurfaceKHR* pSurface);
     void getFramebufferSize(int* pWidth, int* pHeight);
 
-    glm::vec2 getDragOffset();
+    glm::vec2 consumeDragOffset();
 
     void  addScrollOffset(float offset);
-    float getAndResetScrollOffset();
+    float consumeScrollOffset();
 
   private:
     static const int defaultWidth  = 800;

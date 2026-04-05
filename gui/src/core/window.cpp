@@ -24,6 +24,8 @@ Window::~Window()
     glfwTerminate();
 }
 
+GLFWwindow* Window::getNative() const { return glfwWindow; }
+
 bool Window::shouldClose() { return glfwWindowShouldClose(glfwWindow); }
 void Window::pollEvents() { glfwPollEvents(); }
 void Window::waitEvents() { glfwWaitEvents(); }
@@ -38,7 +40,7 @@ void Window::getFramebufferSize(int* pWidth, int* pHeight)
     glfwGetFramebufferSize(glfwWindow, pWidth, pHeight);
 }
 
-glm::vec2 Window::getDragOffset()
+glm::vec2 Window::consumeDragOffset()
 {
     static glm::dvec2 lastMousePos;
 
@@ -60,7 +62,7 @@ glm::vec2 Window::getDragOffset()
 }
 
 void  Window::addScrollOffset(float offset) { scrollOffset += offset; }
-float Window::getAndResetScrollOffset()
+float Window::consumeScrollOffset()
 {
     float offset = scrollOffset;
     scrollOffset = 0.f;
