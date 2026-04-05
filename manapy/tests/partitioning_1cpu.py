@@ -355,6 +355,18 @@ class LocalDomain1Cpu(LocalDomain):
                                          self.cell_halophyid, self.node_haloid, self.halo_halosext)
       log_step.out()
 
+    # Check if mesh is will constructed
+    log_step.log("_check_phy_faces")
+    LocalDomain._local_check_phy_faces(local_domain_objs)
+    log_step.out()
+
+    # ------------------------------------------------------------------
+    # Part 3
+    # ------------------------------------------------------------------
+
+    for rank in range(size):
+      self = local_domain_objs[rank]
+
       ## TODO the use of this tables !?
       self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=types.np_int_type)
       self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=types.np_int_type)
@@ -442,5 +454,7 @@ class LocalDomain1Cpu(LocalDomain):
       self.face_dist_ortho = self._dist_ortho_function_2d(self.innerfaces, self.boundaryfaces, self.face_cellid,
                                                           self.cell_center, self.face_center, self.face_normal)
       log_step.out()
+
+
 
     return local_domain_objs

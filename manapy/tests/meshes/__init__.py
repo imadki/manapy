@@ -15,7 +15,6 @@ def get_mesh(name: 'int || str'):
     (3, 'Hexahedron.msh'),  # 9
     (2, 'one_triangles.msh'),  # 10
     (2, 'one_hybrid.msh'),  # 11
-    (2, 'wrong_cube.msh'),  # 12
   ]
   dic = {}
   for item in mesh_list:

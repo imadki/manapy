@@ -32,6 +32,6 @@ Physical Surface("1") = {1};
 Mesh 2;
 
 
-Save "triangles.msh";
+// Save "triangles.msh";
 
 
