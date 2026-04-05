@@ -11,7 +11,8 @@ class Mesh:
     mesh, cells_dict, points, cell_data_dict = self._read_mesh(mesh_path)
     cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid = self._create_cells(cells_dict, dim)
     phy_faces, phy_faces_name = self._create_phy_faces(cells_dict, cell_data_dict, dim)
-    print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Physical Faces: {len(phy_faces)}")
+    nb_faces = self._compute_nb_faces(cells_dict, len(phy_faces), dim)
+    print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
 
     self.mesh = mesh
     self.cells = cells
@@ -23,6 +24,7 @@ class Mesh:
     self.phy_faces = phy_faces
     self.phy_faces_name = phy_faces_name
     self.dim = dim
+    self.nb_faces = nb_faces
 
     if len(cells) == 0 or len(points) == 0:
       raise ValueError('Empty mesh')
@@ -82,6 +84,29 @@ class Mesh:
 
     return phy_faces, phy_faces_name
 
+  def _compute_nb_faces(self, meshio_mesh_dic, nb_physical_faces, dim):
+    allowed_cells = ['triangle', 'quad']
+    if dim == 3:
+      allowed_cells = ['tetra', 'pyramid', 'hexahedron']
+    cell_nb_faces = {
+      'triangle': 3,
+      'quad': 4,
+      'tetra': 4,
+      'hexahedron': 6,
+      'pyramid': 5,
+    }
+    nb_faces = 0
+    for item in allowed_cells:
+      if meshio_mesh_dic.get(item) is not None:
+        nb_faces = len(meshio_mesh_dic[item]) * cell_nb_faces[item]
+
+    # Each internal face has two cells therefore it count two times
+    # Each extrnal face has only a neighbor cell therefore it should be only count once
+    # extranal faces are the same as physical faces
+    # If the result of the division is not an integer, it means the mesh is miss‑constructed.
+    nb_faces = (nb_faces - nb_physical_faces) // 2 + nb_physical_faces
+    return nb_faces
+
   def _create_cells(self, meshio_mesh_dic, dim):
     # TODO make cell Types global constant
     allowed_cells = ['triangle', 'quad']
@@ -123,6 +148,9 @@ class Mesh:
     for item in allowed_cells:
       if meshio_mesh_dic.get(item) is not None:
         number_of_cells += len(meshio_mesh_dic[item])
+
+    if number_of_cells * max_cell_faceid > 2 ** 31 - 1 and types.INT_TYPE == "int32":
+      raise RuntimeError("The mesh is too large to be indexed with an int32")
 
     cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=types.np_int_type)
     cells_type = np.zeros(shape=number_of_cells, dtype=np.int8)

@@ -74,7 +74,7 @@ Physical Surface(4) = {3};
 Physical Surface(2) = {4};
 Physical Surface(3) = {5};
 Physical Surface(1) = {6};
-Physical Volume(1) = {1,2};
+Physical Volume (1) = {1};
 
 Mesh 3;
 
