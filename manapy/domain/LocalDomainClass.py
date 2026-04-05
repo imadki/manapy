@@ -393,10 +393,9 @@ class LocalDomain:
     ghost_info_size = self.nb_phy_faces
 
     # ---- bf_cellid
-    # the order of boundary cells in bf_cellid follows the same order of physical faces in phyid_send
     bf_cellid = np.zeros(shape=(ghost_info_size, 2), dtype=types.np_int_type)
     intersect = np.zeros(shape=2, dtype=types.np_int_type)
-    compute.create_bf_cellid(phy_faces, phyid_send, node_cellid, phyid_to_faceid, cell_faceid, intersect, bf_cellid)
+    compute.create_bf_cellid(phy_faces, node_cellid, phyid_to_faceid, cell_faceid, intersect, bf_cellid)
 
     # ---- ghost_info_flt, ghost_info_int
     ghost_info_data_size_flt = 10 # (ghostcenter_x&y&z, gamma, face_center_x&y&z, face_normal_x&y&z)

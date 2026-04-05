@@ -7,7 +7,7 @@ from manapy.tests.meshes import get_mesh
 
 
 # Create global domain
-dim, mesh_path, mesh_name = get_mesh(5)
+dim, mesh_path, mesh_name = get_mesh(11)
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh)
 local_domain_data = partitioning.create_sub_domains()
@@ -33,7 +33,7 @@ def _remap_fid_to_phyid(cell_ghostnid, node_ghostid, face_to_phyid):
 
 
 # Create the hd5 file
-path = 'tetra_test_tables.hd5'
+path = 'tmp.hd5'
 with h5py.File(path, 'w') as f:
   face_to_phyid = _create_face_to_phyid(len(global_domain[0].faces), global_domain[0].phyid_to_faceid)
   _remap_fid_to_phyid(global_domain[0].cell_ghostnid, global_domain[0].node_ghostid, face_to_phyid)
@@ -56,8 +56,24 @@ with h5py.File(path, 'w') as f:
   f.create_dataset('nodes', data=global_domain[0].nodes) #
   f.create_dataset('node_cellid', data=global_domain[0].node_cellid) #
   f.create_dataset('node_oldname', data=global_domain[0].node_oldname) #
-  f.create_dataset('shared_ghost_info_flt', data=global_domain[0].ghost_info_flt) #
-  f.create_dataset('shared_ghost_info_int', data=global_domain[0].ghost_info_int) #
+  f.create_dataset('ghost_info_flt', data=global_domain[0].ghost_info_flt) #
+  f.create_dataset('ghost_info_int', data=global_domain[0].ghost_info_int) #
   f.create_dataset('cell_ghostnid', data=global_domain[0].cell_ghostnid) #
   f.create_dataset('node_ghostid', data=global_domain[0].node_ghostid) #
   f.create_dataset('face_to_phyid', data=face_to_phyid) #
+
+print("nodes", global_domain[0].nodes)
+print("node_oldname", global_domain[0].node_oldname)
+print("cells", global_domain[0].cells)
+print("node_cellid", global_domain[0].node_cellid)
+print("cell_cellnid", global_domain[0].cell_cellnid)
+print("faces", global_domain[0].faces)
+print("cell_faceid", global_domain[0].cell_faceid)
+print("face_cellid", global_domain[0].face_cellid)
+print("face_oldname", global_domain[0].face_oldname)
+print("cell_cellfid", global_domain[0].cell_cellfid)
+print("phy_faces", global_domain[0].phy_faces)
+print("phy_id_to_face_id", global_domain[0].phyid_to_faceid)
+print("face_to_phyid", face_to_phyid)
+print("node_ghostid", global_domain[0].node_ghostid)
+print("cell_ghostnid", global_domain[0].cell_ghostnid)

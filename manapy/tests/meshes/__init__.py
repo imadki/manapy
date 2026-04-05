@@ -11,6 +11,11 @@ def get_mesh(name: 'int || str'):
     # gmsh ./meshes/tetra_test_2.geo -3 -setnumber Nx 100 -setnumber Ny 100 -setnumber Nz 100  -o ./meshes/big/tetra_test_100.msh > /dev/null
     (3, 'big/tetra_test_100.msh'),#6
     (3, 'big/tetra_test_200.msh'),  #7
+    (3, 'one_tetrahedron.msh'),#8
+    (3, 'Hexahedron.msh'),  # 9
+    (2, 'one_triangles.msh'),  # 10
+    (2, 'one_hybrid.msh'),  # 11
+    (2, 'wrong_cube.msh'),  # 12
   ]
   dic = {}
   for item in mesh_list:
