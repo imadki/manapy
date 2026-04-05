@@ -9,7 +9,7 @@ from manapy.tests.meshes import get_mesh
 ##### Create domain
 ########################################################
 
-dim, mesh_path, mesh_name = get_mesh(0)
+dim, mesh_path, mesh_name = get_mesh(1)
 
 
 def create_domain(nb_parts):
@@ -58,7 +58,7 @@ g_2idx = 0
 
 class   Renderer:
   def __init__(self, name):
-    sc = 2
+    sc = 4
     self.root = tk.Tk()
     self.width = 1000 * sc
     self.height = 1500 * sc
@@ -150,7 +150,7 @@ class   Renderer:
     ])
 
   def ft_put_item(self, p, item, color):
-    a = self.get_rect_point(p, 0.6, 0.15)
+    a = self.get_rect_point(p, 0.3, 0.15)
     self.create_polygon(a, self.specialColor(1))
 
     p = self.scale(p)
@@ -300,9 +300,12 @@ def tmp_2(k):
     render.ft_put_item(p, f"{g_id}", render.getColor(0))
 
 def tmp_3(k):
-  for i in range(len(l[k].ghost_info_flt)):
-    p = l[k].ghost_info_flt[i]
-    render.ft_put_item(p, f"{p[0]:.3}, {p[1]:.3}", render.getColor(0))
+  for i in range(len(l[k].cells)):
+    for j in range(l[k].cells[i, -1]):
+      node_id = l[k].cells[i][j]
+      node_loc = l[k].node_loctoglob[node_id]
+      p = l[k].nodes[node_id]
+      render.ft_put_item(p, f"{node_loc}", render.getColor(0))
 
 def test():
   for k in range(size):
