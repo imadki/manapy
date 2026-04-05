@@ -1,5 +1,8 @@
 import numpy as np
 import h5py
+from manapy.tests.General import *
+
+TestTablesClasses = (RectTables, TriangleTables, CubeTables, TetraTables, SmallHexaTables, SmallTriangleTables, SmallHybrid2DTables)
 
 class Locals:
   def __init__(self):
@@ -34,31 +37,61 @@ class Locals:
 
 class TestTables:
   def __init__(self, test_tables_path, part_vert, dim):
-    path = test_tables_path
-    with h5py.File(path, 'r') as f:
-      self.cells = f['cells'][...]
-      self.cell_center = f['cell_center'][...]
-      self.cell_area = f['cell_volume'][...]
-      self.cell_cellfid = f['cell_cellfid'][...]
-      self.cell_cellnid = f['cell_cellnid'][...]
-      self.cell_faceid = f['cell_faceid'][...]
-      self.faces = f['faces'][...]
-      self.face_cellid = f['face_cellid'][...]
-      self.face_center = f['face_center'][...]
-      self.face_oldname = f['face_oldname'][...]
-      self.phy_faces = f['phy_faces'][...]
-      self.face_normal = f['face_normal'][...]
-      self.face_measure = f['face_measure'][...]
-      self.face_tangent = np.array([]) if dim == 2 else f['face_tangent'][...]
-      self.face_binormal = np.array([]) if dim == 2 else f['face_binormal'][...]
-      self.nodes = f['nodes'][...]
-      self.node_cellid = f['node_cellid'][...]
-      self.node_oldname = f['node_oldname'][...]
-      self.ghost_info_flt = f['shared_ghost_info_flt'][...] # indexed by physical id
-      self.ghost_info_int = f['shared_ghost_info_int'][...] # indexed by physical id
-      self.cell_ghostnid = f['cell_ghostnid'][...] # point to self.ghost_info
-      self.node_ghostid = f['node_ghostid'][...] # point to self.ghost_info
-      self.face_ghostid = f['face_to_phyid'][...]  # point to self.ghost_info which is index physical id
+    if isinstance(test_tables_path, str):
+      path = test_tables_path
+      with h5py.File(path, 'r') as f:
+        self.cells = f['cells'][...]
+        self.cell_center = f['cell_center'][...]
+        self.cell_area = f['cell_volume'][...]
+        self.cell_cellfid = f['cell_cellfid'][...]
+        self.cell_cellnid = f['cell_cellnid'][...]
+        self.cell_faceid = f['cell_faceid'][...]
+        self.faces = f['faces'][...]
+        self.face_cellid = f['face_cellid'][...]
+        self.face_center = f['face_center'][...]
+        self.face_oldname = f['face_oldname'][...]
+        self.phy_faces = f['phy_faces'][...]
+        self.face_normal = f['face_normal'][...]
+        self.face_measure = f['face_measure'][...]
+        # self.face_tangent = np.array([]) if dim == 2 else f['face_tangent'][...]
+        # self.face_binormal = np.array([]) if dim == 2 else f['face_binormal'][...]
+        self.nodes = f['nodes'][...]
+        self.node_cellid = f['node_cellid'][...]
+        self.node_oldname = f['node_oldname'][...]
+        self.ghost_info_flt = f['ghost_info_flt'][...] # indexed by physical id
+        self.ghost_info_int = f['ghost_info_int'][...] # indexed by physical id
+        self.cell_ghostnid = f['cell_ghostnid'][...] # point to self.ghost_info
+        self.node_ghostid = f['node_ghostid'][...] # point to self.ghost_info
+        self.face_ghostid = f['face_to_phyid'][...]  # point to self.ghost_info which is index physical id
+        self.meshio_cells = self.cells
+    elif isinstance(test_tables_path, TestTablesClasses):
+        mesh = test_tables_path
+        self.cells = mesh.cells
+        self.cell_center = mesh.cell_center
+        self.cell_area = mesh.cell_volume
+        self.cell_cellfid = mesh.cell_cellfid
+        self.cell_cellnid = mesh.cell_cellnid
+        self.cell_faceid = mesh.cell_faceid
+        self.faces = mesh.faces
+        self.face_cellid = mesh.face_cellid
+        self.face_center = mesh.face_center
+        self.face_oldname = mesh.face_oldname
+        self.phy_faces = mesh.phy_faces
+        self.face_normal = mesh.face_normal
+        self.face_measure = mesh.face_measure
+        # self.face_tangent = mesh.face_tangent
+        # self.face_binormal = mesh.face_binormal
+        self.nodes = mesh.nodes
+        self.node_cellid = mesh.node_cellid
+        self.node_oldname = mesh.node_oldname
+        self.ghost_info_flt = mesh.ghost_info_flt
+        self.ghost_info_int = mesh.ghost_info_int
+        self.cell_ghostnid = mesh.cell_ghostnid
+        self.node_ghostid = mesh.node_ghostid
+        self.face_ghostid = mesh.face_to_phyid
+        self.meshio_cells = mesh.meshio_cells
+    else:
+      raise RuntimeError("Unknown test_tables_path")
 
 
     self.nb_cells = len(self.cells)

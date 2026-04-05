@@ -1,12 +1,12 @@
 import pytest
 from manapy.domain import Domain
-from manapy.tests.General.TestTables import TestTables
 import numpy as np
 import subprocess
 import sys
 import os
 import pickle
 from manapy.tests.meshes import get_mesh
+from manapy.tests.General import *
 
 def sort_float_arr(dim, arr):
   # Lexicographic sort by rows.
@@ -107,6 +107,9 @@ if rank == 0 and size > 1:
 @pytest.fixture(scope="class")
 def reference_domain(config, local_domains):
   reference_domain_path = config["reference_domain_path"]
+  if isinstance(reference_domain_path, str):
+    root_file = os.path.dirname(os.path.abspath(__file__))
+    reference_domain_path = os.path.join(root_file, reference_domain_path)
   dim = config["dim"]
   nb_parts = len(local_domains)
   mesh_dir = "domain_meshes" + str(nb_parts) + "PROC"
@@ -118,34 +121,62 @@ def reference_domain(config, local_domains):
 @pytest.mark.parametrize(
   "config",
   [
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('rectangles.msh')[0],
+    #   "mesh_path": get_mesh('rectangles.msh')[1],
+    #   "reference_domain_path": RectTables(),
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # },
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('triangles.msh')[0],
+    #   "mesh_path": get_mesh('triangles.msh')[1],
+    #   "reference_domain_path": TriangleTables(),
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # },
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('cube.msh')[0],
+    #   "mesh_path": get_mesh('cube.msh')[1],
+    #   "reference_domain_path": CubeTables(),
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # },
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('one_tetrahedron.msh')[0],
+    #   "mesh_path": get_mesh('one_tetrahedron.msh')[1],
+    #   "reference_domain_path": TetraTables(),
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # },
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('Hexahedron.msh')[0],
+    #   "mesh_path": get_mesh('Hexahedron.msh')[1],
+    #   "reference_domain_path": SmallHexaTables(),
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # },
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('one_triangles.msh')[0],
+    #   "mesh_path": get_mesh('one_triangles.msh')[1],
+    #   "reference_domain_path": SmallTriangleTables(),
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # },
     {
       "nb_parts": 4,
-      "dim": get_mesh('rectangles.msh')[0],
-      "mesh_path": get_mesh('rectangles.msh')[1],
-      "reference_domain_path": "rectangles_test_tables.hd5",
+      "dim": get_mesh('one_hybrid.msh')[0],
+      "mesh_path": get_mesh('one_hybrid.msh')[1],
+      "reference_domain_path": SmallHybrid2DTables(),
       "partitioning_type": "Partitioning.Par_Nodal",
     },
-    {
-      "nb_parts": 4,
-      "dim": get_mesh('triangles.msh')[0],
-      "mesh_path": get_mesh('triangles.msh')[1],
-      "reference_domain_path": "triangles_test_tables.hd5",
-      "partitioning_type": "Partitioning.Par_Nodal",
-    },
-    {
-      "nb_parts": 4,
-      "dim": get_mesh('cube.msh')[0],
-      "mesh_path": get_mesh('cube.msh')[1],
-      "reference_domain_path": "cube_test_tables.hd5",
-      "partitioning_type": "Partitioning.Par_Nodal",
-    },
-    {
-      "nb_parts": 4,
-      "dim": get_mesh('tetrahedron.msh')[0],
-      "mesh_path": get_mesh('tetrahedron.msh')[1],
-      "reference_domain_path": "tetra_test_tables.hd5",
-      "partitioning_type": "Partitioning.Par_Nodal",
-    }
+    # {
+    #   "nb_parts": 4,
+    #   "dim": get_mesh('tetrahedron.msh')[0],
+    #   "mesh_path": get_mesh('tetrahedron.msh')[1],
+    #   "reference_domain_path": "tetra_test_tables.hd5",
+    #   "partitioning_type": "Partitioning.Par_Nodal",
+    # }
   ],
   indirect=True
 )
@@ -370,14 +401,13 @@ class TestDomain:
         cell_nodes = ld.cells.nodeid[i]
         cell_nodes = cell_nodes[0:cell_nodes[-1]]
         c_node_loctoglob = ld.nodes.loctoglob[cell_nodes]
-        d_cell_vertices = reference_domain.nodes[c_node_loctoglob]
 
         g_id = ld.cells.loctoglob[i]
-        t_cells = reference_domain.cells[g_id]
-        t_cells = t_cells[0:t_cells[-1]]
-        r_cell_vertices = reference_domain.nodes[t_cells]
+        g_cell_nodes = reference_domain.meshio_cells[g_id]
+        r_cell_nodes = g_cell_nodes[0:g_cell_nodes[-1]]
 
-        np.testing.assert_almost_equal(d_cell_vertices, r_cell_vertices, decimal=self.decimal)
+        print(g_id, c_node_loctoglob)
+        np.testing.assert_equal(c_node_loctoglob, r_cell_nodes)
 
   def test_node_halonid(self, local_domains: 'list[Domain]', reference_domain):
     if len(local_domains) <= 1:
@@ -534,7 +564,7 @@ class TestDomain:
           c_node_ghostcenter_info = ld.nodes.ghostcenter_info[node_id][0:nb_ghost] # cell_id, face_oldname, face_id
           c_node_ghostfaceinfo = ld.nodes.ghostfaceinfo[node_id][0:nb_ghost] # fc_x, fc_y, fc_z, fn_x, fn_y, fn_z
           c_node_ghostface_center = c_node_ghostfaceinfo[:, 0:dim]
-          c_node_ghostface_normal = c_node_ghostfaceinfo[:, dim:]
+          c_node_ghostface_normal = np.abs(c_node_ghostfaceinfo[:, dim:])
 
           # Sort
           _, order = sort_float_arr(dim, c_node_ghostcenter)
@@ -545,7 +575,8 @@ class TestDomain:
 
           # --------------------------------------------------------
 
-          node_gid = ld.nodes.loctoglob[node_id]
+          g_id = ld.cells.loctoglob[i]
+          node_gid = reference_domain.cells[g_id, k]
           r_node_id = reference_domain.locals[part].map_nodes[node_gid]
           r_node_ghostnid = reference_domain.locals[part].node_ghostnid[r_node_id]
           r_node_ghostnid = r_node_ghostnid[0:r_node_ghostnid[-1]]
@@ -553,7 +584,7 @@ class TestDomain:
           r_ghost_info_flt = reference_domain.ghost_info_flt[r_node_ghostnid]
           r_node_ghostcenter = r_ghost_info_flt[:, 0:dim]
           r_node_ghostface_center = r_ghost_info_flt[:, 4:4+dim]
-          r_node_ghostface_normal = r_ghost_info_flt[:, 7:7+dim]
+          r_node_ghostface_normal = np.abs(r_ghost_info_flt[:, 7:7+dim])
           r_ghost_info_int = reference_domain.ghost_info_int[r_node_ghostnid] # cell_id, face index inside the cell, face_oldname
 
           # Sort
@@ -585,7 +616,7 @@ class TestDomain:
             # face_center
             np.testing.assert_almost_equal(c_node_ghostface_center[j], r_node_ghostface_center[j], decimal=self.decimal)
 
-            # face_normal
+            # face_normal (only abs)
             np.testing.assert_almost_equal(c_node_ghostface_normal[j], r_node_ghostface_normal[j], decimal=self.decimal)
 
   def test_node_haloghostcenter(self, local_domains: 'list[Domain]', reference_domain):
@@ -616,10 +647,11 @@ class TestDomain:
           c_node_haloghostcenterinfo = c_node_haloghostcenterinfo[order]
           c_node_haloghostfaceinfo = c_node_haloghostfaceinfo[order]
           c_node_haloghostface_center = c_node_haloghostfaceinfo[:, 0:dim]
-          c_node_haloghostface_normal = c_node_haloghostfaceinfo[:, dim:]
+          c_node_haloghostface_normal = np.abs(c_node_haloghostfaceinfo[:, dim:])
 
 
-          node_gid = ld.nodes.loctoglob[node_id]
+          g_id = ld.cells.loctoglob[i]
+          node_gid = reference_domain.cells[g_id, k]
           r_node_id = reference_domain.locals[part].map_nodes[node_gid]
           r_node_haloghostnid = reference_domain.locals[part].node_haloghostnid[r_node_id]
           r_node_haloghostnid = r_node_haloghostnid[0:r_node_haloghostnid[-1]]
@@ -633,7 +665,7 @@ class TestDomain:
           r_haloghost_info_int = r_haloghost_info_int[order]
           r_node_haloghostcenter = r_haloghost_info_flt[:, 0:dim]
           r_node_haloghostface_center = r_haloghost_info_flt[:, 4:4+dim]
-          r_node_haloghostface_normal = r_haloghost_info_flt[:, 7:7+dim]
+          r_node_haloghostface_normal = np.abs(r_haloghost_info_flt[:, 7:7+dim])
 
           assert  len(c_node_haloghostcenter) == len(r_haloghost_info_int)
 
@@ -655,7 +687,7 @@ class TestDomain:
             # face_center
             np.testing.assert_almost_equal(c_node_haloghostface_center[j], r_node_haloghostface_center[j], decimal=self.decimal)
 
-            # face_normal
+            # face_normal (only abs)
             np.testing.assert_almost_equal(c_node_haloghostface_normal[j], r_node_haloghostface_normal[j], decimal=self.decimal)
 
   def test_nb_nodes(self, local_domains: 'list[Domain]', reference_domain):
@@ -684,6 +716,13 @@ class TestDomain:
         g_id = ld.cells.loctoglob[i]
         r_cell_faces = reference_domain.cell_faceid[g_id]
         r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
+
+        # order the faces using center coordinate
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[r_cell_faces])
+
+        cell_faces = cell_faces[d_order]
+        r_cell_faces = r_cell_faces[r_order]
 
         for j in range(len(cell_faces)):
           face_id = cell_faces[j]
@@ -714,7 +753,11 @@ class TestDomain:
         r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
         r_face_measure = reference_domain.face_measure[r_cell_faces]
 
-        np.testing.assert_almost_equal(d_face_measure, r_face_measure, decimal=self.decimal)
+        # order the faces using center coordinate
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[r_cell_faces])
+
+        np.testing.assert_almost_equal(d_face_measure[d_order], r_face_measure[r_order], decimal=self.decimal)
 
   def test_face_center(self, local_domains: 'list[Domain]', reference_domain):
     for part in range(len(local_domains)):
@@ -730,7 +773,11 @@ class TestDomain:
         r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
         r_face_center = reference_domain.face_center[r_cell_faces]
 
-        np.testing.assert_almost_equal(d_face_center, r_face_center, decimal=self.decimal)
+        # order the faces using center coordinate
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[r_cell_faces])
+
+        np.testing.assert_almost_equal(d_face_center[d_order], r_face_center[r_order], decimal=self.decimal)
 
   def test_face_name(self, local_domains: 'list[Domain]', reference_domain):
     for part in range(len(local_domains)):
@@ -746,7 +793,11 @@ class TestDomain:
         r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
         r_face_name = reference_domain.face_name[r_cell_faces]
 
-        np.testing.assert_equal(d_face_name, r_face_name)
+        # order the faces using center coordinate
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[r_cell_faces])
+
+        np.testing.assert_equal(d_face_name[d_order], r_face_name[r_order])
 
   def test_face_oldname(self, local_domains: 'list[Domain]', reference_domain):
     for part in range(len(local_domains)):
@@ -764,7 +815,11 @@ class TestDomain:
         r_face_oldname = reference_domain.face_oldname[r_cell_faces].copy()
         r_face_oldname[r_face_oldname == 10] = 0
 
-        np.testing.assert_equal(d_face_oldname, r_face_oldname)
+        # order the faces using center coordinate
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[r_cell_faces])
+
+        np.testing.assert_equal(d_face_oldname[d_order], r_face_oldname[r_order])
 
   def test_face_normal(self, local_domains: 'list[Domain]', reference_domain):
     for part in range(len(local_domains)):
@@ -780,7 +835,11 @@ class TestDomain:
         r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
         r_face_normal = np.abs(reference_domain.face_normal[r_cell_faces])
 
-        np.testing.assert_almost_equal(d_face_normal, r_face_normal, decimal=self.decimal)
+        # order the faces using center coordinate
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[r_cell_faces])
+
+        np.testing.assert_almost_equal(d_face_normal[d_order], r_face_normal[r_order], decimal=self.decimal)
 
   def test_face_cellid(self, local_domains: 'list[Domain]', reference_domain):
     for part in range(len(local_domains)):
@@ -790,25 +849,32 @@ class TestDomain:
         cell_faces = ld.cells.faceid[i]
         cell_faces = cell_faces[0:cell_faces[-1]]
 
-        d_face_cellid = ld.faces.cellid[cell_faces]
-
-        d_res = np.ones_like(d_face_cellid) * -1
-        for f in range(d_face_cellid.shape[0]):
-          for c in range(d_face_cellid.shape[1]):
-            val = d_face_cellid[f, c]
-            if val >= 0:
-              d_res[f, c] = ld.cells.loctoglob[val]
-        d_res = np.sort(d_res, axis=1)
-
         g_id = ld.cells.loctoglob[i]
         l_id = reference_domain.locals[part].map_cells[g_id]
-        tl_faces = reference_domain.locals[part].cell_faceid[l_id]
-        tl_faces = tl_faces[0:tl_faces[-1]]
+        r_cell_faces = reference_domain.locals[part].cell_faceid[l_id]
+        r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
 
-        r_face_cellid = reference_domain.locals[part].face_cellid[tl_faces]
-        r_res = np.sort(r_face_cellid, axis=1)
+        # order the faces using center coordinate
+        y = reference_domain.cell_faceid[g_id]
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[y[0:y[-1]]])
 
-        np.testing.assert_equal(d_res, r_res)
+        cell_faces = cell_faces[d_order]
+        r_cell_faces = r_cell_faces[r_order]
+
+        d_face_cellid = np.copy(ld.faces.cellid[cell_faces])
+        r_face_cellid = reference_domain.locals[part].face_cellid[r_cell_faces]
+
+        for i in range(len(d_face_cellid)):
+          local_cell_id = d_face_cellid[i]
+          if local_cell_id[1] != -1:
+            d_face_cellid[i, 1] = ld.cells.loctoglob[local_cell_id[1]]
+          if local_cell_id[0] != -1:
+            d_face_cellid[i, 0] = ld.cells.loctoglob[local_cell_id[0]]
+        print(d_face_cellid)
+        print(r_face_cellid)
+
+        np.testing.assert_equal(d_face_cellid, r_face_cellid)
 
   def test_face_ghostcenter(self, local_domains: 'list[Domain]', reference_domain):
     for part in range(len(local_domains)):
@@ -818,19 +884,29 @@ class TestDomain:
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
         cell_faces = cell_faces[0:cell_faces[-1]]
-        d_face_ghostcenter = ld.faces.ghostcenter[cell_faces][:, 0:dim]
 
         g_id = ld.cells.loctoglob[i]
         l_id = reference_domain.locals[part].map_cells[g_id]
-        cell_faces = reference_domain.locals[part].cell_faceid[l_id]
-        cell_faces = cell_faces[0:cell_faces[-1]]
-        faces_ghostid = reference_domain.locals[part].face_ghostid[cell_faces]
+        r_cell_faces = reference_domain.locals[part].cell_faceid[l_id]
+        r_cell_faces = r_cell_faces[0:r_cell_faces[-1]]
 
-        g_face_ghostcenter = np.ones(shape=(len(cell_faces), dim), dtype=d_face_ghostcenter.dtype) * -1
-        mask = faces_ghostid != -1
-        if np.any(mask):
-          centers = reference_domain.ghost_info_flt[faces_ghostid[mask]][:, [0, 1, 2]]
-          g_face_ghostcenter[mask] = centers[:, 0:dim]
+        # order the faces using center coordinate
+        y = reference_domain.cell_faceid[g_id]
+        _, d_order = sort_float_arr(ld.dim, ld.faces.center[cell_faces])
+        _, r_order = sort_float_arr(ld.dim, reference_domain.face_center[y[0:y[-1]]])
+
+        cell_faces = cell_faces[d_order]
+        r_cell_faces = r_cell_faces[r_order]
+
+        d_face_ghostcenter = ld.faces.ghostcenter[cell_faces][:, 0:dim]
+        faces_ghostid = reference_domain.locals[part].face_ghostid[r_cell_faces]
+
+        g_face_ghostcenter = np.ones(shape=(len(r_cell_faces), dim), dtype=np.float64) * -1
+        for k in range(len(faces_ghostid)):
+          ghost_id = faces_ghostid[k]
+          if ghost_id != -1:
+            ghost_center = reference_domain.ghost_info_flt[ghost_id, [0, 1, 2]]
+            g_face_ghostcenter[k] = ghost_center[0:dim]
 
         np.testing.assert_almost_equal(d_face_ghostcenter, g_face_ghostcenter, decimal=self.decimal)
 
@@ -857,7 +933,7 @@ class TestDomain:
         halo_nodes = ld.halos.halosext[i]
         d_halo_nodes = halo_nodes[0:halo_nodes[-1]][1:]
 
-        halo_nodes = reference_domain.cells[halo_id]
+        halo_nodes = reference_domain.meshio_cells[halo_id]
         r_halo_nodes = halo_nodes[0:halo_nodes[-1]]
 
         np.testing.assert_equal(d_halo_nodes, r_halo_nodes)

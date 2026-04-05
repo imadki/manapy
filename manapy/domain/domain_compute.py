@@ -537,7 +537,7 @@ def _get_bf_recv_part_info(phyid_recv_part_size: 'int[:]', rank: 'int', part_inf
 # #########################################################
 # #########################################################
 
-def _create_bf_cellid(phy_faces: 'int[:, :]', phyid_send: 'int[:]', node_cellid: 'int[:, :]',
+def _create_bf_cellid(phy_faces: 'int[:, :]', node_cellid: 'int[:, :]',
                       phyid_to_faceid: 'int[:]', cell_faceid: 'int[:, :]', intersect: 'int[:]', bf_cellid: 'int[:, :]'):
   #! Here a boundary cell is a cell that is connected to a physical face.
   #! It is different from a boundary cell that has a node of at least one neighbor physical face.
@@ -567,8 +567,8 @@ def _create_bf_cellid(phy_faces: 'int[:, :]', phyid_send: 'int[:]', node_cellid:
 def _create_ghost_info(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_faceid: 'int[:, :]',
                           cell_loctoglob: 'int[:]', faces: 'int[:, :]', nodes: 'float[:, :]', face_oldname: 'int[:]', face_normal: 'float[:, :]',
                           face_center: 'float[:, :]', face_measure: 'float[:]', ghost_info_int: 'int[:, :]', ghost_info_flt: 'float[:, :]', dim: 'int'):
-  # Return ghost_info_int # (0=ghostcenter_x&y&z, 3=gamma, 4=face_center_x&y&z, 7=face_normal_x&y&z)
-  # Return ghost_info_flt # (0=cell_id, 1=face index inside the cell, 2=face_oldname, 3=cell global id)
+  # Return ghost_info_flt # (0=ghostcenter_x&y&z, 3=gamma, 4=face_center_x&y&z, 7=face_normal_x&y&z)
+  # Return ghost_info_int # (0=cell_id, 1=face index inside the cell, 2=face_oldname, 3=cell global id)
 
   for i in range(bf_cellid.shape[0]):
     cid = bf_cellid[i, 0]
