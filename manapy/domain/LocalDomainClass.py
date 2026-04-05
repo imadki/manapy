@@ -1,9 +1,10 @@
 import numpy as np
+from mpi4py import MPI
 from manapy.backends.debug import log_step
 import manapy.domain.domain_compute as compute
 import manapy.domain.utils as utils
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
-import os
+import sys
 from manapy.comms.NeighborCommunication import NeighborCommunication
 import manapy.backends.types as types
 
@@ -148,6 +149,11 @@ class LocalDomain:
     ) = self._create_halo_ghost_tables(self.ext_ghost_info_flt, self.ext_ghost_info_int, self.node_halophyid, self.cell_halophyid, self.node_haloid, self.halo_halosext)
     log_step.out()
 
+    # Check if mesh is will constructed
+    log_step.log("_check_phy_faces")
+    self._check_phy_faces(self.face_cellid, self.face_haloid)
+    log_step.out()
+
     ## TODO the use of this tables !?
     self.node_periodicid = np.zeros((self.nb_nodes, 2), dtype=types.np_int_type)
     self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=types.np_int_type)
@@ -267,7 +273,7 @@ class LocalDomain:
     tmp_cell_faces = np.zeros(shape=(max_cell_faceid, max_face_nodeid), dtype=types.np_int_type)
     tmp_size_info = np.zeros(shape=(max_cell_faceid + 1), dtype=types.np_int_type)
     tmp_cell_faces_map = np.zeros(shape=(nb_cells, max_cell_faceid * 2 + 1), dtype=types.np_int_type)
-    apprx_nb_faces = nb_cells * max_cell_faceid # TODO ((nb_cells * max_cell_faceid + boundary_faces) / 2)
+    apprx_nb_faces = nb_cells * max_cell_faceid
     faces = np.zeros(shape=(apprx_nb_faces, max_face_nodeid + 1), dtype=types.np_int_type)
     cell_faceid = np.zeros(shape=(nb_cells, max_cell_faceid + 1), dtype=types.np_int_type)
     face_cellid = np.ones(shape=(apprx_nb_faces, 2), dtype=types.np_int_type) * -1
@@ -595,6 +601,37 @@ class LocalDomain:
       node_haloghostfaceinfo,
       halo_sizehaloghost
     )
+
+  def _check_phy_faces(self, face_cellid, face_haloid):
+    if self.size == 1:
+      ext_faces = np.sum(face_cellid[:, 1] == -1)
+    else:
+      ext_faces = np.sum((face_cellid[:, 1] == -1) & (face_haloid == -1))
+    total_ext_faces = MPI.COMM_WORLD.reduce(ext_faces, op=MPI.SUM, root=0)
+    if total_ext_faces == 0:
+      print("No physical faces found", file=sys.stderr)
+      MPI.COMM_WORLD.Abort(1)
+    total_phy_faces = MPI.COMM_WORLD.reduce(self.nb_phy_faces, op=MPI.SUM, root=0)
+    if self.rank == 0 and total_ext_faces != total_phy_faces:
+      print(f"Mess-constructed mesh number of physical faces are not equal to boundary faces. nb_physical={total_phy_faces} nb_boundary={total_ext_faces}", file=sys.stderr)
+      MPI.COMM_WORLD.Abort(1)
+    MPI.COMM_WORLD.barrier()
+
+  @staticmethod
+  def _local_check_phy_faces(ld: 'LocalDomain[:]'):
+    total_ext_faces = 0
+    total_phy_faces = 0
+    for i in range(len(ld)):
+      if ld[i].size == 1:
+        ext_faces = np.sum(ld[i].face_cellid[:, 1] == -1)
+      else:
+        ext_faces = np.sum((ld[i].face_cellid[:, 1] == -1) & (ld[i].face_haloid == -1))
+      total_ext_faces += ext_faces
+      total_phy_faces += len(ld[i].phy_faces)
+    if total_ext_faces == 0:
+      raise RuntimeError("No physical faces found")
+    if total_ext_faces != total_phy_faces:
+      raise RuntimeError(f"Mess-constructed mesh number of physical faces are not equal to boundary faces. nb_physical={total_phy_faces} nb_boundary={total_ext_faces}")
 
 
   def _face_gradient_info(self, face_cellid, faces, face_ghostcenter, face_name, face_normal, cell_center, halo_centvol, face_haloid, nodes, cell_shift):
