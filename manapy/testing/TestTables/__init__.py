@@ -1,0 +1,7 @@
+from manapy.testing.TestTables.cuboidTables import CuboidTables
+from manapy.testing.TestTables.rectanglesTables import RectanglesTables
+from manapy.testing.TestTables.smallTetrahedronTables import SmallTetrahedronTables
+from manapy.testing.TestTables.smallCuboidTables import SmallCuboidTables
+from manapy.testing.TestTables.smallHybrid2DTables import SmallHybrid2DTables
+from manapy.testing.TestTables.smallTrianglesTables import SmallTrianglesTables
+from manapy.testing.TestTables.trianglesTables import TrianglesTables
