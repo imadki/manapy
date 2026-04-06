@@ -21,7 +21,7 @@ from manapy.solvers.advec import AdvectionSolver
 
 from manapy.ast import Variable
 from manapy.base.base import Struct
-from manapy.tests.meshes import get_mesh
+from manapy.helpers import get_mesh
 
 import os
 
