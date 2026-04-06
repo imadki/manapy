@@ -216,8 +216,6 @@ class Domain:
           import traceback
           print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
     else:
-      status = 0
-
       if rank == 0:
         print("====> Start <=====")
         try:
@@ -233,14 +231,10 @@ class Domain:
         except Exception as e:
           import traceback
           print(f"[Rank 0] failed: {e} {traceback.format_exc()}")
-          status = 1
+          comm.Abort(1)
 
-      # Broadcast rank 0's status to all
-      status = comm.bcast(status, root=0)
+      comm.Barrier()
 
-      # Now all ranks wait and check status
-      if status != 0:
-        comm.Abort(1)
 
       try:
         local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
@@ -250,7 +244,7 @@ class Domain:
         print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
         comm.Abort(1)
 
-      # TODO ckeck if local_domain failed and abort
+      comm.Barrier()
       return Domain(local_domain)
 
   ##########################################################################
