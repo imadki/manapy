@@ -47,6 +47,7 @@ class Partitioning:
         f"The original number of partitions (nb_parts={nb_parts}) was changed by METIS to {len(unique_vals)}. "
         f"This means some partitions have no cells. Forcing the number of partitions to {len(unique_vals)}."
       )
+      raise ValueError(f"The original number of partitions (nb_parts={nb_parts}) was changed please choose a smaller one.")
     nb_parts = len(unique_vals)
     self.part_vert = part_vert
     self.nb_parts = nb_parts
