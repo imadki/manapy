@@ -28,6 +28,8 @@ class Mesh:
 
     if len(cells) == 0 or len(points) == 0:
       raise ValueError('Empty mesh')
+    if len(phy_faces) == 0:
+      raise ValueError('No boundary/physical faces')
 
   def _read_mesh(self, mesh_path):
     mesh = meshio.read(mesh_path)
