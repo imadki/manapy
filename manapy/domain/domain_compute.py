@@ -551,7 +551,7 @@ def _create_bf_cellid(phy_faces: 'int[:, :]', node_cellid: 'int[:, :]',
     if cellid == -1:
       raise RuntimeError("cellid must exist for a physical face")
     if faceid == -1:
-      raise RuntimeError("faceid must exist for a physical face")
+      raise RuntimeError("faceid must exist for a physical face (High probability that the physical faces on the mesh are not well placed.)")
     face_index = -1
     for j in range(cell_faceid[cellid, -1]):
       if cell_faceid[cellid, j] == faceid:
@@ -999,7 +999,9 @@ def _get_phyid(
   n = face_nodes[0]  # select any node, choosing node 0
   for k in range(node_phyid[n, -1]):
     phyid = node_phyid[n, k]
-    phyid_nodes = phy_faces[phyid][0:-1]
+    if phy_faces[phyid, -1] != face_nodes[-1]:
+      continue
+    phyid_nodes = phy_faces[phyid][0:face_nodes[-1]]
     phyid_nodes.sort()
     if np.all(phyid_nodes == sorted_face_node):
       return phyid
