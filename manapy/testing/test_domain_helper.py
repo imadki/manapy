@@ -8,6 +8,33 @@ import numpy as np
 from manapy.testing.ReferenceTables import ReferenceTables
 from manapy.helpers.mesh_files import test_meshes_folder
 
+
+def _supports_oversubscribe(mpi_exec_path):
+  try:
+    result = subprocess.run(
+      [mpi_exec_path, "--oversubscribe", "-n", "4", "hostname"],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      text=True,
+    )
+    return result.returncode == 0
+  except:
+    return False
+
+def duplicate_config(configs):
+  import copy
+  # duplicate config for nb_parts
+  res = []
+  for config in configs:
+    if isinstance(config["nb_parts"], list):
+      for nb_part in config["nb_parts"]:
+        new_config = copy.copy(config)
+        new_config["nb_parts"] = nb_part
+        res.append(new_config)
+    else:
+      res.append(config)
+  return res
+
 def sort_float_arr(dim, arr):
   # Lexicographic sort by rows.
   if dim == 3:
@@ -80,17 +107,22 @@ if rank == 0:
   mpirun_path = os.path.join(os.path.dirname(sys.executable), "mpirun")
   python_path = os.path.join(os.path.dirname(sys.executable), "python3")
 
-  # try:
-  subprocess.run([
-    mpirun_path,
-    "--oversubscribe",
-    "-n", str(nb_parts),
-    python_path,
-    tmp_file_name
-  ], check=True)
-  # except subprocess.CalledProcessError as e:
-  #   print(f"Error: command failed with exit code {e.returncode}", file=sys.stderr)
-  #   sys.exit(e.returncode)
+  is_supports_oversubscribe = _supports_oversubscribe(mpirun_path)
+  if is_supports_oversubscribe:
+    subprocess.run([
+      mpirun_path,
+      "--oversubscribe",
+      "-n", str(nb_parts),
+      python_path,
+      tmp_file_name
+    ], check=True)
+  else:
+    subprocess.run([
+      mpirun_path,
+      "-n", str(nb_parts),
+      python_path,
+      tmp_file_name
+    ], check=True)
 
   os.remove(tmp_file_name)
 

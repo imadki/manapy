@@ -12,9 +12,10 @@ meshes_list = [
   (2, 'hybrid2d.msh'),#2
   (3, 'cuboid.msh'),#3
   (3, 'tetrahedrons.msh'),#4
-  (2, 'big/carre.msh'),#5
-  (3, 'big/tetra_test_100.msh'),#6
-  (3, 'big/tetra_test_200.msh'), #7
+  (3, 'hybrid3d.msh'), #5
+  (2, 'big/carre.msh'),#6
+  (3, 'big/tetra_test_100.msh'),#7
+  (3, 'big/tetra_test_200.msh'), #8
 ]
 
 test_meshes_list = [
@@ -26,7 +27,9 @@ test_meshes_list = [
   (3, "cuboid.msh"),
   (3, "smallCuboid.msh"),
   (3, "smallTetrahedrons.msh"),
-  (3, 'tetrahedrons.msh')
+  (3, 'tetrahedrons.msh'),
+  (3, "hybrid3d.msh"),
+  (3, "smallHybrid3d.msh"),
 ]
 
 def get_mesh(name: 'int || str'):

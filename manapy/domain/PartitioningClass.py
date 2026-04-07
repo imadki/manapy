@@ -10,7 +10,7 @@ import manapy.c_api.manapy_c_api as manapy_c_api
 class Partitioning:
 
   Par_Graph_K_Way = 0
-  Par_Dual = 1
+  Par_Dual = 1 # n_common=3 by default
   Par_Nodal = 2
   Par_Mgmetis = 3
   def __init__(self, mesh: 'Mesh'):
@@ -91,7 +91,7 @@ class Partitioning:
     _, e_part, _ = metis.part_mesh_dual(nb_parts, elem, opts=options, nv=self.nb_nodes)
     return self._remap_part_vert(e_part, nb_parts)
 
-  def set_part_vert(self, nb_parts, partitioning_type, n_common=None):
+  def set_part_vert(self, nb_parts, partitioning_type, n_common=3):
     if partitioning_type == self.Par_Mgmetis:
       return self.make_n_part_old(nb_parts)
     elif partitioning_type == self.Par_Dual:
