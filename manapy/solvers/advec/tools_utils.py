@@ -6,13 +6,13 @@ def initialisation_gaussian_2d(ne,  u, v, P, center, Pinit):
 
     nbelements = len(center)
     
-    sigma = 0.05
+    sigma = 0.5
     for i in range(nbelements):
         xcent = center[i][0]
         ycent = center[i][1]
         
-        ne[i] = 5 * exp(-1.*((xcent-0.2)**2 + (ycent-0.2)**2) / sigma**2) + 1
-        u[i]  = 0.
+        ne[i] = 50 * exp(-1.*((xcent-2)**2 + (ycent-2)**2) / sigma**2) + 1
+        u[i]  = 2.
         v[i]  = 0.
         P[i]  = Pinit * (.5 - xcent)
 #@njit

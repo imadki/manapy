@@ -35,7 +35,7 @@ except:
     BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
  
-filename = "rectangle_2K.msh"
+filename = "rectangle.msh"
 
 #File name
 filename = os.path.join(MESH_DIR, filename)
@@ -68,24 +68,24 @@ if RANK == 0:
 #TODO tfinal
 if RANK == 0: print("Start Computation ...")
 time = 0
-tfinal = .06
+tfinal = 1
 miter = 0
 niter = 1
 saving_at_node = 1
 
 boundaries = {"in" : "neumann",
               "out" : "neumann",
-              "upper":"nonslip",
-              "bottom":"nonslip"
+              "upper":"neumann",
+              "bottom":"neumann"
               }
 
 h   = Variable(domain=domain)
-hu  = Variable(domain=domain, BC=boundaries)
-hv  = Variable(domain=domain, BC=boundaries)
+hu  = Variable(domain=domain)#, BC=boundaries)
+hv  = Variable(domain=domain)#, BC=boundaries)
 hc  = Variable(domain=domain)
 Z   = Variable(domain=domain)
 
-initialisation_SW(h.cell, hu.cell, hv.cell, hc.cell, Z.cell, cells.center)
+initialisation_SW(h.cell, hu.cell, hv.cell, hc.cell, Z.cell, cells.center, choix=0)
 
 #Call the transport solver
 conf = Struct(order=2, cfl=0.8)
@@ -98,10 +98,10 @@ if RANK == 0: print("Start While loop ...")
 #loop over time
 while time < tfinal:
     
-    d_t = S.stepper()
-    tot = int(tfinal/d_t/50)+1
+    S.stepper()
+    tot = int(tfinal/S.dt/50)+1
 
-    time = time + d_t
+    time = time + S.dt
     
     S.compute_fluxes()
     S.compute_new_val()
@@ -124,10 +124,10 @@ while time < tfinal:
             hv.interpolate_celltonode()
    
     
-            domain.save_on_node_multi(d_t, time, niter, miter, variables=["h", "hu","hv"],
+            domain.save_on_node_multi(S.dt, time, niter, miter, variables=["h", "hu","hv"],
                                       values=[h.node, hu.node, hv.node])
         else:
-            domain.save_on_cell_multi(d_t, time, niter, miter, variables=["h", "hu","hv"],
+            domain.save_on_cell_multi(S.dt, time, niter, miter, variables=["h", "hu","hv"],
                                       values=[h.cell, hu.cell, hv.cell])
         miter += 1
 

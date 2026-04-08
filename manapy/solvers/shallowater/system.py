@@ -271,7 +271,7 @@ class ShallowWaterSolver():
             self.explicit_dissipative()
         
         # update term source
-        self.update_term_source()
+        # self.update_term_source()
         
         if self.fc != 0:
             #update coriolis forces

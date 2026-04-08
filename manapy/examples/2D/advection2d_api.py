@@ -22,7 +22,7 @@ from manapy.solvers.advec.tools_utils import initialisation_gaussian_2d
 # Mesh
 # ---------------------------------------------------------------------------
 BASE_DIR  = os.path.join(os.path.dirname(__file__), "..", "..", "..")
-MESH_FILE = os.path.join(BASE_DIR, "mesh", "carre.msh")
+MESH_FILE = os.path.join(BASE_DIR, "mesh", "rectangle.msh")
 
 mesh = Mesh(MESH_FILE, dim=2, backend="numba", cache=True)
 domain = mesh.domain
@@ -36,11 +36,6 @@ ne = Variable(domain=domain, name="ne")
 u  = Variable(domain=domain, name="u")
 v  = Variable(domain=domain, name="v")
 P  = Variable(domain=domain, name="P")
-
-ne.cell[:] = 0.0
-u.cell[:]  = 0.0
-v.cell[:]  = 0.0
-P.cell[:]  = 0.0
 
 # Custom initialisation (Gaussian profile)
 initialisation_gaussian_2d(
@@ -59,4 +54,4 @@ model = AdvectionModel(
     output=[(ne, "ne"), (u, "u"), (v, "v"), (P, "P")],
 )
 
-model.run(T=0.25, output_every=50, output_dir="output_advection")
+model.run(T=2.5, output_every=10)

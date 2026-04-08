@@ -34,7 +34,7 @@ except:
     BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
  
-filename = "cube_32K.msh"
+filename = "geofile/geo.msh"
 
 #File name
 filename = os.path.join(MESH_DIR, filename)
@@ -72,7 +72,7 @@ tfinal = .25
 miter = 0
 niter = 1
 Pinit = 2.
-saving_at_node = 0
+saving_at_node = 1
 
 boundaries = {"in" : "dirichlet",
               "out" : "dirichlet",

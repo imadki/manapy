@@ -13,7 +13,7 @@ def initialisation_SW(h:'float[:]', hu:'float[:]', hv:'float[:]', hc:'float[:]',
             h[i] = 2
             Z[i]  = 0.
             
-            if xcent < .5:
+            if xcent < 5:
                 h[i] = 5.
                 
             hu[i] = 0.

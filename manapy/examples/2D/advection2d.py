@@ -34,7 +34,7 @@ except:
     BASE_DIR = os.path.join(BASE_DIR , '..', '..','..')
     MESH_DIR = os.path.join(BASE_DIR, 'mesh')
  
-filename = "carre.msh"
+filename = "rectangle.msh"
 
 #File name
 filename = os.path.join(MESH_DIR, filename)
@@ -68,7 +68,7 @@ if RANK == 0:
 #TODO tfinal
 if RANK == 0: print("Start Computation ...")
 time = 0
-tfinal = .25
+tfinal = 2.5
 miter = 0
 niter = 1
 Pinit = 2.
@@ -86,10 +86,10 @@ values = {"in" : Pinit,
 ne = Variable(domain=domain)
 u  = Variable(domain=domain)
 v  = Variable(domain=domain)
-P  = Variable(domain=domain)
+P  = Variable(domain=domain)#, BC=boundaries, values=values)
 
 #Call the transport solver
-conf = Struct(order=1, cfl=0.8)
+conf = Struct(order=2, cfl=0.8)
 S = AdvectionSolver(ne, vel=(u, v), conf=conf)
 
 ####Initialisation
@@ -135,6 +135,11 @@ while time < tfinal:
             v.update_halo_value()
             v.update_ghost_value()  
             v.interpolate_celltonode()
+            
+            #save vtk files for the solution
+            P.update_halo_value()
+            P.update_ghost_value()  
+            P.interpolate_celltonode()
    
     
             domain.save_on_node_multi(d_t, time, niter, miter, variables=["ne", "u","v", "P"],
