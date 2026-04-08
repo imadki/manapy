@@ -69,14 +69,14 @@ Line Loop (4) = {12, 13, 14, 15};
 Plane Surface(4) = {2,4};
 //Plane Surface(1) = {4};
 
-Transfinite Surface {1};
-Recombine Surface {1};
+//Transfinite Surface {1};
+//Recombine Surface {1};
 
 //Transfinite Surface {4};
 //Recombine Surface {4};
 
-Transfinite Line { 5,6,7,-2, 12, 13, 14,15} = 20 Using Progression 1;
-Recombine Surface {4};
+//Transfinite Line { 5,6,7,-2, 12, 13, 14,15} = 20 Using Progression 1;
+//Recombine Surface {4};
 
 //Periodic Line {1} ={3};
 //Periodic Line {2} ={4};
