@@ -74,7 +74,7 @@ def _save(domain, variables, names, dt, time, niter, miter, mode, fmt):
 
 class AdvectionModel:
     """
-    Explicit advection solver.
+    Explicit advection solver.AdvectionModel
 
     Parameters
     ----------
@@ -117,7 +117,7 @@ class AdvectionModel:
             self._out_names = [n for _, n in output]
 
     def run(self, T, output_every=50, output_dir=".",
-            output_mode="cell", format="vtu"):
+            output_mode="node", format="vtu"):
         """
         Run the time loop until t = T.
 
