@@ -12,7 +12,6 @@ class Partitioning:
   Par_Graph_K_Way = 0
   Par_Dual = 1 # n_common=3 by default
   Par_Nodal = 2
-  Par_Mgmetis = 3
   def __init__(self, mesh: 'Mesh'):
     self.nodes = mesh.points
     self.cells = mesh.cells
@@ -72,29 +71,8 @@ class Partitioning:
     part_vert = manapy_c_api.make_n_part_mesh_nodal(self.cells, nb_parts)
     return self._remap_part_vert(part_vert, nb_parts)
 
-  def make_n_part_old(self, nb_parts):
-    if nb_parts <= 1:
-      return
-    from mgmetis import metis
-    from mgmetis.enums import OPTION
-
-    # Partitioning mesh
-    opts = metis.get_default_options()
-    opts[OPTION.MINCONN] = 1
-    opts[OPTION.CONTIG] = 1
-    opts[OPTION.NUMBERING] = 0
-    opts[OPTION.OBJTYPE] = 1
-    options = opts
-
-
-    elem = [sublist[0:sublist[-1]] for sublist in self.cells]
-    _, e_part, _ = metis.part_mesh_dual(nb_parts, elem, opts=options, nv=self.nb_nodes)
-    return self._remap_part_vert(e_part, nb_parts)
-
   def set_part_vert(self, nb_parts, partitioning_type, n_common=3):
-    if partitioning_type == self.Par_Mgmetis:
-      return self.make_n_part_old(nb_parts)
-    elif partitioning_type == self.Par_Dual:
+    if partitioning_type == self.Par_Dual:
       if n_common is None:
         raise TypeError("n_common must be specified")
       return self.make_n_part_mesh_dual(nb_parts, n_common)

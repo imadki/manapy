@@ -1,0 +1,57 @@
+[build-system]
+requires = [
+    "setuptools>=69,<=82.0.1",
+    "wheel>=0.43,<1",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "manapy"
+dynamic = ["version"]
+description = "Finite-volume tools for unstructured meshes."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "Imad Kissami", email = "kissami.imad@gmail.ma" },
+]
+keywords = ["finite-volume", "mesh", "mpi", "numerics"]
+dependencies = [
+    "h5py>=3.12,<3.17",
+    "manapy-part>=1.0.0,<2",
+    "meshio>=5.3.5,<6",
+    "mpi4py>=4.0,<5",
+    "numba>=0.64,<1",
+    "numpy>=2.0,<3",
+    "scipy>=1.16,<1.20",
+    "six>=1.16,<2",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2,<2",
+    "pytest>=8,<10",
+    "twine>=5,<7",
+]
+
+[project.urls]
+Homepage = "https://github.com/imadki/manapy"
+Repository = "https://github.com/imadki/manapy"
+
+[tool.setuptools.dynamic]
+version = { attr = "manapy.version.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["manapy*"]
