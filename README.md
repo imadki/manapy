@@ -1,55 +1,49 @@
-**MANAPY** is a Python 3 Library for Finite Volume using unstructured grids.
+`manapy` is a Python package for finite-volume methods on unstructured meshes.
 
 ## Requirements
------
 
-***Python3**:
-```bash
-sudo apt-get install python3 python3-dev
-```
+- Python 3.8+
+- A working MPI runtime for `mpi4py`
 
-***pip3**:
-```bash
-sudo apt-get install python3-pip
-```
+## Install
 
-## Installing the library
------
+Standard install:
 
-***Standard mode**:
 ```bash
 python3 -m pip install .
 ```
-   
-***Development mode**:
+
+Editable install for development:
+
 ```bash
-python3 -m pip install --user -e .
+python3 -m pip install -e .
 ```
 
-## Uninstall
------
-***Whichever the install mode**:
+Build distributions locally:
+
 ```bash
-python3 -m pip uninstall manapy
+python3 -m build
 ```
 
+## Tests
 
-## Running tests
------
 ```bash
-python3 -m pytest  manapy -m "not parallel"
+python3 -m pytest tests
 ```
 
+## Backend solver for Mumps and Petsc
 
-To use Mumps solver
+MUMPS support:
 
-- Install mumps libraries
-```sh
+```bash
 sudo apt install libmumps-ptscotch-dev
+python3 -m pip install mumps4py
 ```
 
-- Install mumps4py from https://github.com/imadki/mumps4py
+PETSc support:
 
-To use petsc4py solver
+```bash
+python3 -m pip install petsc4py
+```
 
-https://petsc.org/release/install/
+Follow the PETSc installation guide if your system packages are not already available: https://petsc.org/release/install/
