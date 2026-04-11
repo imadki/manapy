@@ -347,9 +347,9 @@ class LocalDomain:
     nb_halos = len(halo_halosext)
 
     if self.size == 1:
-      cell_halonid = np.zeros(shape=0, dtype=types.np_int_type)
+      cell_halonid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
       face_haloid = np.zeros(shape=0, dtype=types.np_int_type)
-      node_haloid = np.zeros(shape=(nb_nodes, 1), dtype=types.np_int_type)
+      node_haloid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
     else:
       cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=types.np_int_type)
       face_haloid = np.zeros(shape=nb_faces, dtype=types.np_int_type)
@@ -380,7 +380,8 @@ class LocalDomain:
     phyid_to_faceid = np.ones(shape=phy_faces.shape[0], dtype=types.np_int_type) * -1
 
     node_name = node_oldname.copy()
-    node_name[node_haloid[:, -1] != 0] = 10
+    if node_haloid.shape[0] != 0:
+      node_name[node_haloid[:, -1] != 0] = 10
 
     node_phyid = utils.create_node_phyid(phy_faces, nb_nodes)
 
@@ -546,13 +547,12 @@ class LocalDomain:
     max_cell_halophyid = self.max_cell_halophyid
 
     if self.size == 1:
-      cell_haloghostnid = np.zeros(shape=(0, 1), dtype=types.np_int_type)
-      cell_haloghostcenter = np.zeros(shape=(0, 1), dtype=types.np_float_type)
-      node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=types.np_int_type)
-      node_haloghostcenter = np.ones(shape=(self.nb_nodes, 1, 3), dtype=types.np_float_type) * -1 # TODO !! normally it should be zeros(0,1,1) but functions2d.py and core.py need it as ones(...)
-      node_haloghostcenter_info = np.ones(shape=(self.nb_nodes, 1, 3), dtype=types.np_int_type) * -1 # TODO
-      node_haloghostfaceinfo = np.zeros(shape=(0, 1, 1), dtype=types.np_float_type)
-
+      cell_haloghostnid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
+      cell_haloghostcenter = np.zeros(shape=(0, 0), dtype=types.np_float_type)
+      node_haloghostid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
+      node_haloghostcenter = np.zeros(shape=(0, 0, 0), dtype=types.np_float_type)
+      node_haloghostcenter_info = np.zeros(shape=(0, 0, 0), dtype=types.np_int_type)
+      node_haloghostfaceinfo = np.zeros(shape=(0, 0, 0), dtype=types.np_float_type)
     else:
       # ------------------------------------------------------------------
       # create_halo_ghost_tables
@@ -591,7 +591,9 @@ class LocalDomain:
 
         compute.create_halo_ghost_tables_3d(ext_ghost_info_flt, ext_ghost_info_int, node_halophyid, cell_halophyid, node_haloid, halo_halosext, cell_haloghostnid, cell_haloghostcenter, node_haloghostid, node_haloghostcenter, node_haloghostcenter_info, node_haloghostfaceinfo)
 
-    halo_sizehaloghost = np.sum(node_haloghostid[:, -1]) # Two nodes in the same partition can't have the same haloghostId
+    halo_sizehaloghost = 0
+    if node_haloghostid.shape[0] != 0:
+      halo_sizehaloghost = np.sum(node_haloghostid[:, -1]) # Two nodes in the same partition can't have the same haloghostId
     return (
       cell_haloghostnid,
       cell_haloghostcenter,

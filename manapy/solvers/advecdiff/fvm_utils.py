@@ -26,155 +26,154 @@ def explicitscheme_dissipative(wx_face:'float[:]',  wy_face:'float[:]', wz_face:
             dissip_w[cellidf[i][0]] += flux_w
 
 
-@njit('void(float64, float64, float64, float64, float64, float64[:], float64[:])')
-def compute_upwind_flux(w_l:'float', w_r:'float', u_face:'float', v_face:'float', w_face:'float', 
-                        normal:'float[:]', flux_w:'float[:]'):
-     
+def compute_upwind_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
+                        face_normal: 'float[:]', flux_w: 'float[:]'):
     sol = 0.
-    sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
+    sign = u_face * face_normal[0] + v_face * face_normal[1] + w_face * face_normal[2]
 
     if sign >= 0:
         sol = w_l
     else:
         sol = w_r
-    
+
     flux_w[0] = sign * sol
 
-def explicitscheme_convective_2d(rez_w:'float[:]', w_c:'float[:]', w_ghost:'float[:]', w_halo:'float[:]',
-                                 u_face:'float[:]', v_face:'float[:]', w_face:'float[:]', 
-                                 w_x:'float[:]', w_y:'float[:]', w_z:'float[:]', wx_halo:'float[:]', wy_halo:'float[:]', 
-                                 wz_halo:'float[:]', psi:'float[:]', psi_halo:'float[:]', 
-                                 centerc:'float[:,:]', centerf:'float[:,:]', centerh:'float[:,:]', centerg:'float[:,:]',
-                                 cellidf:'int32[:,:]',  normalf:'float[:,:]', halofid:'int32[:]',
-                                 name:'uint32[:]', innerfaces:'uint32[:]', halofaces:'uint32[:]', boundaryfaces:'uint32[:]', 
-                                 periodicboundaryfaces:'uint32[:]', shift:'float[:,:]',  order:'int32'):
 
-    
-    def compute_upwind_flux(w_l:'float', w_r:'float', u_face:'float', v_face:'float', w_face:'float', 
-                        normal:'float[:]', flux_w:'float[:]'):
-     
-        sol = 0.
-        sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
-    
-        if sign >= 0:
-            sol = w_l
-        else:
-            sol = w_r
-    
-        flux_w[0] = sign * sol
-        
+def explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
+                                 u_face: 'float[:]', v_face: 'float[:]', w_face: 'float[:]',
+                                 w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', wx_halo: 'float[:]',
+                                 wy_halo: 'float[:]',
+                                 wz_halo: 'float[:]', psi: 'float[:]', psi_halo: 'float[:]',
+                                 cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
+                                 face_ghostcenter: 'float[:,:]',
+                                 face_cellid: 'int32[:,:]', face_normal: 'float[:,:]', face_haloid: 'int32[:]',
+                                 face_name: 'uint32[:]', innerfaces: 'uint32[:]', halofaces: 'uint32[:]',
+                                 boundaryfaces: 'uint32[:]',
+                                 periodicboundaryfaces: 'uint32[:]', cell_shift: 'float[:,:]', order: 'int32'):
     center_left = np.zeros(2)
     center_right = np.zeros(2)
     r_l = np.zeros(2)
     r_r = np.zeros(2)
-   
+
     normal = np.zeros(3)
-    flux_w = np.zeros(1)    
-   
+    flux_w = np.zeros(1)
+
     rez_w[:] = 0.
 
     for i in innerfaces:
-        
-        w_l = w_c[cellidf[i][0]]
-        normal[:] = normalf[i][:]
-        
-        w_r = w_c[cellidf[i][1]]
-        
-        center_left[:] = centerc[cellidf[i][0]][0:2]
-        center_right[:] = centerc[cellidf[i][1]][0:2]
-        
-        w_x_left = w_x[cellidf[i][0]]; w_x_right = w_x[cellidf[i][1]]
-        w_y_left = w_y[cellidf[i][0]]; w_y_right = w_y[cellidf[i][1]]
-        
-        psi_left  = psi[cellidf[i][0]];  psi_right  = psi[cellidf[i][1]]
-        
-        r_l[0] = centerf[i][0] - center_left[0]; r_r[0] = centerf[i][0] - center_right[0]; 
-        r_l[1] = centerf[i][1] - center_left[1]; r_r[1] = centerf[i][1] - center_right[1]; 
-        
-        w_l  = w_l  + (order - 1) * psi_left  * (w_x_left * r_l[0]  + w_y_left * r_l[1] )
-        w_r  = w_r  + (order - 1) * psi_right * (w_x_right* r_r[0]  + w_y_right* r_r[1] )
-        
+        w_l = w_c[face_cellid[i][0]]
+        normal[:] = face_normal[i][:]
+
+        w_r = w_c[face_cellid[i][1]]
+
+        center_left[:] = cell_center[face_cellid[i][0]][0:2]
+        center_right[:] = cell_center[face_cellid[i][1]][0:2]
+
+        w_x_left = w_x[face_cellid[i][0]];
+        w_x_right = w_x[face_cellid[i][1]]
+        w_y_left = w_y[face_cellid[i][0]];
+        w_y_right = w_y[face_cellid[i][1]]
+
+        psi_left = psi[face_cellid[i][0]];
+        psi_right = psi[face_cellid[i][1]]
+
+        r_l[0] = face_center[i][0] - center_left[0];
+        r_r[0] = face_center[i][0] - center_right[0];
+        r_l[1] = face_center[i][1] - center_left[1];
+        r_r[1] = face_center[i][1] - center_right[1];
+
+        w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
+        w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1])
+
         compute_upwind_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
-        
-        rez_w[cellidf[i][0]]  -= flux_w[0]
-        rez_w[cellidf[i][1]]  += flux_w[0]
-    
+
+        rez_w[face_cellid[i][0]] -= flux_w[0]
+        rez_w[face_cellid[i][1]] += flux_w[0]
+
     for i in periodicboundaryfaces:
-        
-        w_l = w_c[cellidf[i][0]]
-        normal[:] = normalf[i][:]
-        
-        w_r = w_c[cellidf[i][1]]
-        
-        center_left[:] = centerc[cellidf[i][0]][0:2]
-        center_right[:] = centerc[cellidf[i][1]][0:2] 
 
-        w_x_left = w_x[cellidf[i][0]]; w_x_right = w_x[cellidf[i][1]]
-        w_y_left = w_y[cellidf[i][0]]; w_y_right = w_y[cellidf[i][1]]
-        
-        psi_left  = psi[cellidf[i][0]];  psi_right  = psi[cellidf[i][1]]
-           
-        if name[i] == 11 or name[i] == 22:
-            r_l[0] = centerf[i][0] - center_left[0]; r_r[0] = centerf[i][0] - center_right[0] - shift[cellidf[i][1]][0] 
-            r_l[1] = centerf[i][1] - center_left[1]; r_r[1] = centerf[i][1] - center_right[1] 
-            
-        if name[i] == 33 or name[i] == 44:
-            r_l[0] = centerf[i][0] - center_left[0]; r_r[0] = centerf[i][0] - center_right[0] 
-            r_l[1] = centerf[i][1] - center_left[1]; r_r[1] = centerf[i][1] - center_right[1] - shift[cellidf[i][1]][1] 
-        
-        w_l  = w_l  + (order - 1) * psi_left  * (w_x_left * r_l[0]  + w_y_left * r_l[1] )
-        w_r  = w_r  + (order - 1) * psi_right * (w_x_right* r_r[0]  + w_y_right* r_r[1] )
-        
+        w_l = w_c[face_cellid[i][0]]
+        normal[:] = face_normal[i][:]
+
+        w_r = w_c[face_cellid[i][1]]
+
+        center_left[:] = cell_center[face_cellid[i][0]][0:2]
+        center_right[:] = cell_center[face_cellid[i][1]][0:2]
+
+        w_x_left = w_x[face_cellid[i][0]];
+        w_x_right = w_x[face_cellid[i][1]]
+        w_y_left = w_y[face_cellid[i][0]];
+        w_y_right = w_y[face_cellid[i][1]]
+
+        psi_left = psi[face_cellid[i][0]];
+        psi_right = psi[face_cellid[i][1]]
+
+        if face_name[i] == 11 or face_name[i] == 22:
+            r_l[0] = face_center[i][0] - center_left[0];
+            r_r[0] = face_center[i][0] - center_right[0] - cell_shift[face_cellid[i][1]][0]
+            r_l[1] = face_center[i][1] - center_left[1];
+            r_r[1] = face_center[i][1] - center_right[1]
+
+        if face_name[i] == 33 or face_name[i] == 44:
+            r_l[0] = face_center[i][0] - center_left[0];
+            r_r[0] = face_center[i][0] - center_right[0]
+            r_l[1] = face_center[i][1] - center_left[1];
+            r_r[1] = face_center[i][1] - center_right[1] - cell_shift[face_cellid[i][1]][1]
+
+        w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
+        w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1])
+
         compute_upwind_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
-        rez_w[cellidf[i][0]]  -= flux_w[0]
-                
-    
+        rez_w[face_cellid[i][0]] -= flux_w[0]
+
     for i in halofaces:
-        
-        w_l = w_c[cellidf[i][0]]
-        normal[:] = normalf[i][:]
-        
-        w_r  = w_halo[halofid[i]]
-        
-        center_left[:] = centerc[cellidf[i][0]][0:2]
-        center_right[:] = centerh[halofid[i]][0:2]
+        w_l = w_c[face_cellid[i][0]]
+        normal[:] = face_normal[i][:]
 
-        w_x_left = w_x[cellidf[i][0]];  w_x_right = wx_halo[halofid[i]]
-        w_y_left = w_y[cellidf[i][0]];  w_y_right = wy_halo[halofid[i]]
-        
-        psi_left  = psi[cellidf[i][0]];   psi_right  = psi_halo[halofid[i]]
-        
-        r_l[0] = centerf[i][0] - center_left[0]; r_r[0] = centerf[i][0] - center_right[0]; 
-        r_l[1] = centerf[i][1] - center_left[1]; r_r[1] = centerf[i][1] - center_right[1]; 
-        
-        w_l  = w_l  + (order - 1) * psi_left  * (w_x_left   * r_l[0] + w_y_left   * r_l[1])
-        w_r  = w_r  + (order - 1) * psi_right * (w_x_right  * r_r[0] + w_y_right  * r_r[1])
-        
+        w_r = w_halo[face_haloid[i]]
+
+        center_left[:] = cell_center[face_cellid[i][0]][0:2]
+        center_right[:] = halo_centvol[face_haloid[i]][0:2]
+
+        w_x_left = w_x[face_cellid[i][0]];
+        w_x_right = wx_halo[face_haloid[i]]
+        w_y_left = w_y[face_cellid[i][0]];
+        w_y_right = wy_halo[face_haloid[i]]
+
+        psi_left = psi[face_cellid[i][0]];
+        psi_right = psi_halo[face_haloid[i]]
+
+        r_l[0] = face_center[i][0] - center_left[0];
+        r_r[0] = face_center[i][0] - center_right[0];
+        r_l[1] = face_center[i][1] - center_left[1];
+        r_r[1] = face_center[i][1] - center_right[1];
+
+        w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
+        w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1])
+
         compute_upwind_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
-        rez_w[cellidf[i][0]]  -= flux_w[0]
-   
+        rez_w[face_cellid[i][0]] -= flux_w[0]
+
     for i in boundaryfaces:
-      
-        w_l = w_c[cellidf[i][0]]
-        normal[:] = normalf[i][:]
-        
-        w_r  = w_ghost[i]
-        center_left[:] = centerc[cellidf[i][0]][0:2]
-        
-        w_x_left = w_x[cellidf[i][0]]; 
-        w_y_left = w_y[cellidf[i][0]]; 
-        
-        psi_left  = psi[cellidf[i][0]];  
-        
-        r_l[0] = centerf[i][0] - center_left[0]; 
-        r_l[1] = centerf[i][1] - center_left[1];
-        
-        w_l  = w_l  + (order - 1) * psi_left  * (w_x_left * r_l[0]  + w_y_left * r_l[1] )
-        w_r  = w_r  
-               
-        compute_upwind_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
-        rez_w[cellidf[i][0]]  -= flux_w[0]
+        w_l = w_c[face_cellid[i][0]]
+        normal[:] = face_normal[i][:]
 
+        w_r = w_ghost[i]
+        center_left[:] = cell_center[face_cellid[i][0]][0:2]
+
+        w_x_left = w_x[face_cellid[i][0]];
+        w_y_left = w_y[face_cellid[i][0]];
+
+        psi_left = psi[face_cellid[i][0]];
+
+        r_l[0] = face_center[i][0] - center_left[0];
+        r_l[1] = face_center[i][1] - center_left[1];
+
+        w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
+        w_r = w_r
+
+        compute_upwind_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+        rez_w[face_cellid[i][0]] -= flux_w[0]
 
 
 def explicitscheme_convective_3d(rez_w:'float[:]', w_c:'float[:]', w_ghost:'float[:]', w_halo:'float[:]',

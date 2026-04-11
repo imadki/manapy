@@ -1,5 +1,6 @@
 from mpi4py import MPI
 import numpy as np
+import numpy.typing as npt
 
 """
 Define for symmetrical communication.
@@ -9,19 +10,19 @@ class NeighborCommunication:
     self.size = MPI.COMM_WORLD.Get_size()
     self.rank = MPI.COMM_WORLD.Get_rank()
     self.cache = {}
-    self.neighbors = None
-    self.send_counts = None
-    self.send_indices = None
-    self.recv_counts = None
-    self.recv_total = None
-    self.graph_comm = None
+    self.neighbors: npt.NDArray[np.uint32]
+    self.send_counts: npt.NDArray[np.uint32]
+    self.send_indices: npt.NDArray[np.uint32]
+    self.recv_counts: npt.NDArray[np.uint32]
+    self.recv_total: int
+    self.graph_comm:  MPI.Distgraphcomm
 
     if self.size == 1:
-      self.neighbors = [0]
+      self.neighbors = np.array([0], dtype=np.uint32)
       self.send_counts = np.zeros(1, dtype=np.uint32)
       self.send_indices = np.zeros(1, dtype=np.uint32)
       self.recv_counts = np.zeros(1, dtype=np.uint32)
-      self.recv_total = np.zeros(1, dtype=np.uint32)
+      self.recv_total = 1
       self.graph_comm = MPI.COMM_WORLD.Create_dist_graph_adjacent(
         sources=self.neighbors,
         destinations=self.neighbors,
@@ -34,7 +35,7 @@ class NeighborCommunication:
 
       self.neighbors = neighbors.astype(np.uint32)
       self.send_counts = send_counts.astype(np.uint32)
-      self.send_indices = send_indices
+      self.send_indices = send_indices.astype(np.uint32)
 
       # --- Create graph communicator ---
       self.graph_comm = MPI.COMM_WORLD.Create_dist_graph_adjacent(
@@ -148,5 +149,4 @@ class NeighborCommunication:
       (send_data, (send_counts, send_displs), mpi_type),
       (recv_buffer, (recv_counts, recv_displs), mpi_type)
     )
-
 

@@ -1,9 +1,31 @@
 from manapy.backends.compile_fun import compile
 import numpy as np
 
+def _explicitscheme_dissipative(wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]',
+                               face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_name: 'int[:]',
+                               dissip_w: 'float[:]', Dxx: 'float', Dyy: 'float', Dzz: 'float'):
+  nbface = len(face_cellid)
+  norm = np.zeros(3)
+  dissip_w[:] = 0.
+
+  for i in range(nbface):
+
+    norm[:] = face_normal[i][:]
+    q = Dxx * wx_face[i] * norm[0] + Dyy * wy_face[i] * norm[1] + Dzz * wz_face[i] * norm[2]
+
+    flux_w = q
+
+    if face_name[i] == 0:
+
+      dissip_w[face_cellid[i][0]] += flux_w
+      dissip_w[face_cellid[i][1]] -= flux_w
+
+    else:
+      dissip_w[face_cellid[i][0]] += flux_w
+
 def _compute_upwind_flux(w_l: 'float64', w_r: 'float64', u_face: 'float64', v_face: 'float64', w_face: 'float64',
-                        normal: 'float64[:]', flux_w: 'float64[:]'):
-  sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
+                        face_normal: 'float64[:]', flux_w: 'float64[:]'):
+  sign = u_face * face_normal[0] + v_face * face_normal[1] + w_face * face_normal[2]
 
   if sign >= 0:
     sol = w_l
@@ -12,8 +34,7 @@ def _compute_upwind_flux(w_l: 'float64', w_r: 'float64', u_face: 'float64', v_fa
 
   flux_w[0] = sign * sol
 
-
-def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
+def explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                                  u_face: 'float[:]', v_face: 'float[:]', w_face: 'float[:]',
                                  w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', wx_halo: 'float[:]',
                                  wy_halo: 'float[:]',
@@ -24,13 +45,12 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                  face_name: 'int[:]', d_innerfaces: 'int[:]', d_halofaces: 'int[:]',
                                  d_boundaryfaces: 'int[:]',
                                  d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
-
   center_left = np.zeros(2)
   center_right = np.zeros(2)
   r_l = np.zeros(2)
   r_r = np.zeros(2)
 
-  normal = np.zeros(face_normal.shape[1])  # TODO 2 or 3
+  normal = np.zeros(3)
   flux_w = np.zeros(1)
 
   rez_w[:] = 0.
@@ -153,15 +173,17 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
 
 
 def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
-                                 u_face: 'float[:]', v_face: 'float[:]', w_face: 'float[:]',
-                                 w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', wx_halo: 'float[:]',
-                                 wy_halo: 'float[:]',
-                                 wz_halo: 'float[:]', psi: 'float[:]', psi_halo: 'float[:]',
-                                 cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
-                                 face_ghostcenter: 'float[:,:]',
-                                 face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]', face_name: 'int[:]',
-                                 d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
-                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
+                                  u_face: 'float[:]', v_face: 'float[:]', w_face: 'float[:]',
+                                  w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', wx_halo: 'float[:]',
+                                  wy_halo: 'float[:]',
+                                  wz_halo: 'float[:]', psi: 'float[:]', psi_halo: 'float[:]',
+                                  cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
+                                  face_ghostcenter: 'float[:,:]',
+                                  face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
+                                  face_name: 'int[:]',
+                                  d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
+                                  d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
+
   center_left = np.zeros(3)
   center_right = np.zeros(3)
   r_l = np.zeros(3)
@@ -313,7 +335,8 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
 
 
 def _time_step(u: 'float[:]', v: 'float[:]', w: 'float[:]', cfl: 'float', face_normal: 'float[:,:]',
-               face_measure: 'float[:]', cell_volume: 'float[:]', cell_faceid: 'int[:,:]', dim: 'int'):
+               face_measure: 'float[:]', cell_volume: 'float[:]', cell_faceid: 'int[:,:]', dim: 'int',
+               Dxx: 'float', Dyy: 'float', Dzz: 'float'):
   nbelement = len(cell_faceid)
   norm = np.zeros(3)
   dt = 1e6
@@ -322,16 +345,22 @@ def _time_step(u: 'float[:]', v: 'float[:]', w: 'float[:]', cfl: 'float', face_n
 
     for j in range(cell_faceid[i][-1]):
       norm[:] = face_normal[cell_faceid[i][j]][:]
+
       lam_convect = np.fabs(u[i] * norm[0] + v[i] * norm[1] + w[i] * norm[2])
       lam += lam_convect
+
+      mes = np.sqrt(norm[0] * norm[0] + norm[1] * norm[1] + norm[2] * norm[2])
+      lam_diff = Dxx * mes ** 2 + Dyy * mes ** 2 + Dzz * mes ** 2
+      lam += lam_diff / cell_volume[i]
 
     if lam != 0:
       dt = min(dt, cfl * cell_volume[i] / lam)
 
   return dt
 
+
 def _update_new_value(ne_c: 'float[:]', rez_ne: 'float[:]', dissip_ne: 'float[:]', src_ne: 'float[:]',
-                     dtime: 'float', cell_volume: 'float[:]'):
+                      dtime: 'float', cell_volume: 'float[:]'):
   nbelements = len(ne_c)
   for i in range(nbelements):
     ne_c[i] += dtime * ((rez_ne[i] + dissip_ne[i]) / cell_volume[i] + src_ne[i])
@@ -342,7 +371,7 @@ def _update_new_value(ne_c: 'float[:]', rez_ne: 'float[:]', dissip_ne: 'float[:]
 _compute_upwind_flux = compile(_compute_upwind_flux)
 
 # Public
-explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
+explicitscheme_dissipative = compile(_explicitscheme_dissipative)
 explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
 time_step = compile(_time_step)
 update_new_value = compile(_update_new_value)

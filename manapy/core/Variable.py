@@ -129,7 +129,7 @@ class Variable:
     neumannNHfaces = []
     BCneumannNH = []
 
-    BCs = {"in": None, "out": None, "bottom": None, "upper": None}
+    BCs : dict[str, Boundary | None] = {"in":  None, "out": None, "bottom": None, "upper": None}
     if self._dim == 3:
       BCs = {"in": None, "out": None, "bottom": None, "upper": None, "front": None, "back": None}
     domain_BCs = self._domain.BCs # See LocalDomainClass._define_BCs
@@ -205,11 +205,12 @@ class Variable:
               valuenode[i] = values_dict[loc](self._domain.nodes.vertex[i][0], self._domain.nodes.vertex[i][1],
                                                self._domain.nodes.vertex[i][2])
 
-              for j in range(len(self._domain.nodes.haloghostcenter[i])):
-                cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                if cell != -1:
-                  center = self._domain.nodes.haloghostfaceinfo[i][j][0:3]
-                  valuehalo[cell] = values_dict[loc](center[0], center[1], center[2])
+              if self._domain.nodes.haloghostcenter.shape[0] > 0:
+                for j in range(len(self._domain.nodes.haloghostcenter[i])):
+                  cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
+                  if cell != -1:
+                    center = self._domain.nodes.haloghostfaceinfo[i][j][0:3]
+                    valuehalo[cell] = values_dict[loc](center[0], center[1], center[2])
 
           elif isinstance(values_dict[loc], (int, float)):
             for i in BCs[loc].BCfaces:
@@ -218,10 +219,11 @@ class Variable:
             for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
               valuenode[i] = values_dict[loc]
 
-              for j in range(len(self._domain.nodes.haloghostcenter[i])):
-                cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                if cell != -1:
-                  valuehalo[cell] = values_dict[loc]
+              if self._domain.nodes.haloghostcenter.shape[0] > 0:
+                for j in range(len(self._domain.nodes.haloghostcenter[i])):
+                  cell = self._domain.nodes.haloghostcenter_info[i, j, -1]
+                  if cell != -1:
+                    valuehalo[cell] = values_dict[loc]
 
           BCs[loc].BCvalueface = valueface
           BCs[loc].BCvaluenode = valuenode
@@ -251,12 +253,13 @@ class Variable:
               valuenode[i] = values_dict[loc](self._domain.nodes.vertex[i][0], self._domain.nodes.vertex[i][1],
                                                self._domain.nodes.vertex[i][2])
 
-              for j in range(len(self._domain.nodes.haloghostcenter[i])):
+              if self._domain.nodes.haloghostcenter.shape[0] > 0:
+                for j in range(len(self._domain.nodes.haloghostcenter[i])):
 
-                cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                if cell != -1:
-                  center = self._domain.nodes.haloghostfaceinfo[i][j][0:3]
-                  valuehalo[cell] = values_dict[loc](center[0], center[1], center[2])
+                  cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
+                  if cell != -1:
+                    center = self._domain.nodes.haloghostfaceinfo[i][j][0:3]
+                    valuehalo[cell] = values_dict[loc](center[0], center[1], center[2])
 
           elif isinstance(values_dict[loc], (int, float)):
             for i in BCs[loc].BCfaces:
@@ -265,10 +268,11 @@ class Variable:
             for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
               valuenode[i] = values_dict[loc]
 
-              for j in range(len(self._domain.nodes.haloghostcenter[i])):
-                cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                if cell != -1:
-                  valuehalo[cell] = values_dict[loc]
+              if self._domain.nodes.haloghostcenter.shape[0] > 0:
+                for j in range(len(self._domain.nodes.haloghostcenter[i])):
+                  cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
+                  if cell != -1:
+                    valuehalo[cell] = values_dict[loc]
 
           BCs[loc].constNH = valueface
           BCs[loc].constNHNode = valuenode
@@ -462,7 +466,7 @@ class Variable:
                             self._domain.cells.halonid, self._domain.cells.nodeid, self._domain.cells.periodicnid,
                             self._domain.nodes.periodicid, self._domain.faces.ghostcenter,
                             self._domain.cells.haloghostcenter,
-                            self._domain.nodes.vertex, self._domain.halos.centvol, self._domain.cells.shift,
+                            self._domain.nodes.oldname, self._domain.halos.centvol, self._domain.cells.shift,
                             self.gradcellx,
                             self.gradcelly, self.gradcellz)
 
@@ -516,7 +520,7 @@ class Variable:
     return ErrorL2
 
   @property
-  def domain(self):
+  def domain(self) -> Domain:
     return self._domain
 
   @property
