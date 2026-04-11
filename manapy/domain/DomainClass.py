@@ -52,6 +52,7 @@ class Domain:
     self.cells._loctoglob = local_domain.cell_loctoglob
     self.cells._tc = local_domain.cell_tc
     self.cells._periodicfid = local_domain.cell_periodicfid
+    self.cells._periodicnid = local_domain.cell_periodicnid
     self.cells._shift = local_domain.cell_shift
 
     # Nodes

@@ -14,6 +14,7 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
   nbnode = len(nodes)
   center = np.zeros(3)
+  one_rank = (node_haloghostid.shape[0] == 0)
 
   for i in range(nbnode):
     for j in range(node_cellid[i][-1]):
@@ -38,28 +39,29 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
       w_n[i] += alpha * w_ghost[cell]
 
-    for j in range(node_haloghostid[i][-1]):
-      cell = node_haloghostid[i][j]
-      center[:] = cell_haloghostcenter[cell][0:3]
+    if not one_rank:
+      for j in range(node_haloghostid[i][-1]):
+        cell = node_haloghostid[i][j]
+        center[:] = cell_haloghostcenter[cell][0:3]
 
-      xdiff = center[0] - nodes[i][0]
-      ydiff = center[1] - nodes[i][1]
+        xdiff = center[0] - nodes[i][0]
+        ydiff = center[1] - nodes[i][1]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
-                node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
+        alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
+                  node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
 
-      w_n[i] += alpha * w_haloghost[cell]
+        w_n[i] += alpha * w_haloghost[cell]
 
-    for j in range(node_halonid[i][-1]):
-      cell = node_halonid[i][j]
-      center[:] = halo_centvol[cell][0:3]
+      for j in range(node_halonid[i][-1]):
+        cell = node_halonid[i][j]
+        center[:] = halo_centvol[cell][0:3]
 
-      xdiff = center[0] - nodes[i][0]
-      ydiff = center[1] - nodes[i][1]
-      alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
-                node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
+        xdiff = center[0] - nodes[i][0]
+        ydiff = center[1] - nodes[i][1]
+        alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
+                  node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
 
-      w_n[i] += alpha * w_halo[cell]
+        w_n[i] += alpha * w_halo[cell]
 
     # TODO Must be keeped like that checked ok ;)
     if node_oldname[i] == 11 or node_oldname[i] == 22:
@@ -91,11 +93,11 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
                      nodeidf: 'int[:,:]', face_ghostcenter: 'float[:,:]', halofid: 'int[:]', cell_center: 'float[:,:]',
                      halo_centvol: 'float[:,:]', nodes: 'float[:,:]', airDiamond: 'float[:]', normalf: 'float[:,:]',
                      f_1: 'float[:,:]', f_2: 'float[:,:]', f_3: 'float[:,:]', f_4: 'float[:,:]', cell_shift: 'float[:,:]',
-                     wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', innerfaces: 'int[:]',
-                     halofaces: 'int[:]',
-                     dirichletfaces: 'int[:]', neumann: 'int[:]', periodicfaces: 'int[:]'):
+                     wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', d_innerfaces: 'int[:]',
+                     d_halofaces: 'int[:]',
+                     dirichletfaces: 'int[:]', neumann: 'int[:]', d_periodicfaces: 'int[:]'):
 
-  for i in innerfaces:
+  for i in d_innerfaces:
     c_left = cellidf[i][0]
     c_right = cellidf[i][1]
 
@@ -112,7 +114,7 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     wy_face[i] = -1 / (2 * airDiamond[i]) * (
               (vi1 + vv1) * f_1[i][0] + (vv1 + vi2) * f_2[i][0] + (vi2 + vv2) * f_3[i][0] + (vv2 + vi1) * f_4[i][0])
 
-  for i in periodicfaces:
+  for i in d_periodicfaces:
     c_left = cellidf[i][0]
     c_right = cellidf[i][1]
 
@@ -129,7 +131,7 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     wy_face[i] = -1 / (2 * airDiamond[i]) * (
               (vi1 + vv1) * f_1[i][0] + (vv1 + vi2) * f_2[i][0] + (vi2 + vv2) * f_3[i][0] + (vv2 + vi1) * f_4[i][0])
 
-  for i in halofaces:
+  for i in d_halofaces:
     c_left = cellidf[i][0]
     c_right = halofid[i]
 
@@ -184,10 +186,11 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
                      cell_center: 'float[:,:]', cell_cellnid: 'int[:,:]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
                      cell_halonid: 'int[:,:]',
                      cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', face_ghostcenter: 'float[:,:]',
-                     cell_haloghostcenter: 'float[:,:]', nodes: 'float[:,:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
+                     cell_haloghostcenter: 'float[:,:]', node_oldname: 'int[:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
                      w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
   center = np.zeros(3)
   nbelement = len(w_c)
+  one_rank = cell_halonid.shape[0] == 0
 
   for i in range(nbelement):
     i_xx = 0.;
@@ -220,7 +223,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 
     for k in range(cells[i][-1]):
       nod = cells[i][k]
-      if nodes[nod][3] == 11 or nodes[nod][3] == 22:
+      if node_oldname[nod] == 11 or node_oldname[nod] == 22:
         for j in range(node_periodicid[nod][-1]):
           cell = node_periodicid[nod][j]
           center[:] = cell_center[cell][0:3]
@@ -234,7 +237,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
           j_xw += (j_x * (w_c[cell] - w_c[i]))
           j_yw += (j_y * (w_c[cell] - w_c[i]))
 
-      if nodes[nod][3] == 33 or nodes[nod][3] == 44:
+      if node_oldname[nod] == 33 or node_oldname[nod] == 44:
         for j in range(node_periodicid[nod][-1]):
           cell = node_periodicid[nod][j]
           center[:] = cell_center[cell][0:3]
@@ -248,31 +251,32 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
           j_xw += (j_x * (w_c[cell] - w_c[i]))
           j_yw += (j_y * (w_c[cell] - w_c[i]))
 
-    for j in range(cell_halonid[i][-1]):
-      cell = cell_halonid[i][j]
-      j_x = halo_centvol[cell][0] - cell_center[i][0]
-      j_y = halo_centvol[cell][1] - cell_center[i][1]
+    if not one_rank:
+      for j in range(cell_halonid[i][-1]):
+        cell = cell_halonid[i][j]
+        j_x = halo_centvol[cell][0] - cell_center[i][0]
+        j_y = halo_centvol[cell][1] - cell_center[i][1]
 
-      i_xx += j_x * j_x
-      i_yy += j_y * j_y
-      i_xy += (j_x * j_y)
+        i_xx += j_x * j_x
+        i_yy += j_y * j_y
+        i_xy += (j_x * j_y)
 
-      j_xw += (j_x * (w_halo[cell] - w_c[i]))
-      j_yw += (j_y * (w_halo[cell] - w_c[i]))
+        j_xw += (j_x * (w_halo[cell] - w_c[i]))
+        j_yw += (j_y * (w_halo[cell] - w_c[i]))
 
-    for j in range(cell_haloghostnid[i][-1]):
-      cell = cell_haloghostnid[i][j]
-      center[:] = cell_haloghostcenter[cell]
+      for j in range(cell_haloghostnid[i][-1]):
+        cell = cell_haloghostnid[i][j]
+        center[:] = cell_haloghostcenter[cell]
 
-      j_x = center[0] - cell_center[i][0]
-      j_y = center[1] - cell_center[i][1]
+        j_x = center[0] - cell_center[i][0]
+        j_y = center[1] - cell_center[i][1]
 
-      i_xx += j_x * j_x
-      i_yy += j_y * j_y
-      i_xy += (j_x * j_y)
+        i_xx += j_x * j_x
+        i_yy += j_y * j_y
+        i_xy += (j_x * j_y)
 
-      j_xw += (j_x * (w_haloghost[cell] - w_c[i]))
-      j_yw += (j_y * (w_haloghost[cell] - w_c[i]))
+        j_xw += (j_x * (w_haloghost[cell] - w_c[i]))
+        j_yw += (j_y * (w_haloghost[cell] - w_c[i]))
 
     dia = i_xx * i_yy - i_xy * i_xy
 
