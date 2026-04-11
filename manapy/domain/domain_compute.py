@@ -1147,7 +1147,6 @@ def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghos
 
     face_air_diamond[i] = 0.5 * ((xy_2[0] - xy_1[0]) * (v_2[1] - v_1[1]) + (v_1[0] - v_2[0]) * (xy_2[1] - xy_1[1]))
 
-    # TODO check why face_air_diamond is 0
     if face_air_diamond[i] == 0:
       raise RuntimeError("div 0")
 
@@ -1221,7 +1220,6 @@ def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghos
     s7 = v_2 - v_1
     face_air_diamond[i] = np.dot(face_normal[i], s7)
 
-    # TODO check why face_air_diamond is 0
     if face_air_diamond[i] == 0:
       raise RuntimeError("div 0")
 
@@ -1237,6 +1235,7 @@ def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
                   node_R_y: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'int[:]',
                   cell_shift: 'float[:,:]'):
   nbnode = len(node_R_x)
+  one_cpu = (node_haloid.shape[0] == 0)
 
   for i in range(nbnode):
     I_xx = 0.0
@@ -1296,36 +1295,37 @@ def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
         node_R_y[i] += Ry
         node_number[i] += 1
 
-    for j in range(node_haloghostid[i][-1]):
-      cell = node_haloghostid[i][j]
+    if not one_cpu:
+      for j in range(node_haloghostid[i][-1]):
+        cell = node_haloghostid[i][j]
 
-      center = cell_haloghostcenter[cell]
-      Rx = center[0] - nodes[i][0]
-      Ry = center[1] - nodes[i][1]
+        center = cell_haloghostcenter[cell]
+        Rx = center[0] - nodes[i][0]
+        Ry = center[1] - nodes[i][1]
 
-      I_xx += (Rx * Rx)
-      I_yy += (Ry * Ry)
-      I_xy += (Rx * Ry)
-      node_R_x[i] += Rx
-      node_R_y[i] += Ry
-      node_number[i] = node_number[i] + 1
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_xy += (Rx * Ry)
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_number[i] = node_number[i] + 1
 
-      # if haloidn[i][-1] > 0:
-    for j in range(node_haloid[i][-1]):
-      cell = node_haloid[i][j]
-      center = halo_centvol[cell][0:3]
-      Rx = center[0] - nodes[i][0]
-      Ry = center[1] - nodes[i][1]
-      I_xx += (Rx * Rx)
-      I_yy += (Ry * Ry)
-      I_xy += (Rx * Ry)
-      node_R_x[i] += Rx
-      node_R_y[i] += Ry
-      node_number[i] = node_number[i] + 1
+        # if haloidn[i][-1] > 0:
+
+      for j in range(node_haloid[i][-1]):
+        cell = node_haloid[i][j]
+        center = halo_centvol[cell][0:3]
+        Rx = center[0] - nodes[i][0]
+        Ry = center[1] - nodes[i][1]
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_xy += (Rx * Ry)
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_number[i] = node_number[i] + 1
 
     D = I_xx * I_yy - I_xy * I_xy
 
-    # TODO check why D is 0
     if D == 0.0:
       raise RuntimeError("div 0")
 
@@ -1340,6 +1340,7 @@ def _variables_3d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
                   node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]',
                   node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]'):
   nbnode = len(node_R_x)
+  one_cpu = (node_haloid.shape[0] == 0)
 
   for i in range(nbnode):
     I_xx = 0.0
@@ -1457,47 +1458,47 @@ def _variables_3d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
         node_R_z[i] += Rz
         node_number[i] = node_number[i] + 1
 
-    for j in range(node_haloid[i][-1]):
-      cell = node_haloid[i][j]
-      center = halo_centvol[cell][0:3]
-      Rx = center[0] - nodes[i][0]
-      Ry = center[1] - nodes[i][1]
-      Rz = center[2] - nodes[i][2]
+    if not one_cpu:
+      for j in range(node_haloid[i][-1]):
+        cell = node_haloid[i][j]
+        center = halo_centvol[cell][0:3]
+        Rx = center[0] - nodes[i][0]
+        Ry = center[1] - nodes[i][1]
+        Rz = center[2] - nodes[i][2]
 
-      I_xx += (Rx * Rx)
-      I_yy += (Ry * Ry)
-      I_zz += (Rz * Rz)
-      I_xy += (Rx * Ry)
-      I_xz += (Rx * Rz)
-      I_yz += (Ry * Rz)
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_zz += (Rz * Rz)
+        I_xy += (Rx * Ry)
+        I_xz += (Rx * Rz)
+        I_yz += (Ry * Rz)
 
-      node_R_x[i] += Rx
-      node_R_y[i] += Ry
-      node_R_z[i] += Rz
-      node_number[i] = node_number[i] + 1
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_R_z[i] += Rz
+        node_number[i] = node_number[i] + 1
 
-    for j in range(node_haloghostid[i][-1]):
-      cell = node_haloghostid[i][j]
-      center = cell_haloghostcenter[cell]
-      Rx = center[0] - nodes[i][0]
-      Ry = center[1] - nodes[i][1]
-      Rz = center[2] - nodes[i][2]
+      for j in range(node_haloghostid[i][-1]):
+        cell = node_haloghostid[i][j]
+        center = cell_haloghostcenter[cell]
+        Rx = center[0] - nodes[i][0]
+        Ry = center[1] - nodes[i][1]
+        Rz = center[2] - nodes[i][2]
 
-      I_xx += (Rx * Rx)
-      I_yy += (Ry * Ry)
-      I_zz += (Rz * Rz)
-      I_xy += (Rx * Ry)
-      I_xz += (Rx * Rz)
-      I_yz += (Ry * Rz)
+        I_xx += (Rx * Rx)
+        I_yy += (Ry * Ry)
+        I_zz += (Rz * Rz)
+        I_xy += (Rx * Ry)
+        I_xz += (Rx * Rz)
+        I_yz += (Ry * Rz)
 
-      node_R_x[i] += Rx
-      node_R_y[i] += Ry
-      node_R_z[i] += Rz
-      node_number[i] = node_number[i] + 1
+        node_R_x[i] += Rx
+        node_R_y[i] += Ry
+        node_R_z[i] += Rz
+        node_number[i] = node_number[i] + 1
 
     D = I_xx * I_yy * I_zz + 2 * I_xy * I_xz * I_yz - I_xx * I_yz * I_yz - I_yy * I_xz * I_xz - I_zz * I_xy * I_xy
 
-    # TODO check why D is 0
     if D == 0.0:
       raise RuntimeError("div 0")
 

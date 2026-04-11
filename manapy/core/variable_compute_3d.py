@@ -12,6 +12,7 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
   w_n[:] = 0.
   nbnode = len(nodes)
   center = np.zeros(3)
+  one_rank = (node_haloghostid.shape[0] == 0)
 
   for i in range(nbnode):
 
@@ -42,33 +43,34 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
       w_n[i] += alpha * w_ghost[cell]
 
-    for j in range(node_haloghostid[i][-1]):
-      cell = node_haloghostid[i][j]
-      center[:] = cell_haloghostcenter[cell]
+    if not one_rank:
+      for j in range(node_haloghostid[i][-1]):
+        cell = node_haloghostid[i][j]
+        center[:] = cell_haloghostcenter[cell]
 
-      xdiff = center[0] - nodes[i][0]
-      ydiff = center[1] - nodes[i][1]
-      zdiff = center[2] - nodes[i][2]
+        xdiff = center[0] - nodes[i][0]
+        ydiff = center[1] - nodes[i][1]
+        zdiff = center[2] - nodes[i][2]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + \
-               node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
-                                                             node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
+        alpha = (1. + node_lambda_x[i] * xdiff + \
+                 node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
+                                                               node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
 
-      w_n[i] += alpha * w_haloghost[cell]
+        w_n[i] += alpha * w_haloghost[cell]
 
-    for j in range(node_halonid[i][-1]):
-      cell = node_halonid[i][j]
-      center[:] = halo_centvol[cell][0:3]
+      for j in range(node_halonid[i][-1]):
+        cell = node_halonid[i][j]
+        center[:] = halo_centvol[cell][0:3]
 
-      xdiff = center[0] - nodes[i][0]
-      ydiff = center[1] - nodes[i][1]
-      zdiff = center[2] - nodes[i][2]
+        xdiff = center[0] - nodes[i][0]
+        ydiff = center[1] - nodes[i][1]
+        zdiff = center[2] - nodes[i][2]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + \
-               node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
-                                                             node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
+        alpha = (1. + node_lambda_x[i] * xdiff + \
+                 node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
+                                                               node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
 
-      w_n[i] += alpha * w_halo[cell]
+        w_n[i] += alpha * w_halo[cell]
 
     if node_oldname[i] == 11 or node_oldname[i] == 22:
 
@@ -248,11 +250,12 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
                      cell_center: 'float[:,:]', cell_cellnid: 'int[:,:]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
                      cell_halonid: 'int[:,:]',
                      cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', face_ghostcenter: 'float[:,:]',
-                     cell_haloghostcenter: 'float[:,:]', nodes: 'float[:,:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
+                     cell_haloghostcenter: 'float[:,:]', node_oldname: 'int[:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
                      w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
 
   nbelement = len(w_c)
   center = np.zeros(3)
+  one_rank = (cell_halonid.shape[0] == 0)
 
   for i in range(nbelement):
     i_xx = 0.
@@ -318,44 +321,44 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       j_y += (jy * (w_c[cell] - w_c[i]))
       j_z += (jz * (w_c[cell] - w_c[i]))
 
-    # if nbproc > 1:
-    for j in range(cell_halonid[i][-1]):
-      cell = cell_halonid[i][j]
+    if not one_rank:
+      for j in range(cell_halonid[i][-1]):
+        cell = cell_halonid[i][j]
 
-      jx = halo_centvol[cell][0] - cell_center[i][0]
-      jy = halo_centvol[cell][1] - cell_center[i][1]
-      jz = halo_centvol[cell][2] - cell_center[i][2]
+        jx = halo_centvol[cell][0] - cell_center[i][0]
+        jy = halo_centvol[cell][1] - cell_center[i][1]
+        jz = halo_centvol[cell][2] - cell_center[i][2]
 
-      i_xx += jx * jx
-      i_yy += jy * jy
-      i_zz += jz * jz
-      i_xy += (jx * jy)
-      i_xz += (jx * jz)
-      i_yz += (jy * jz)
+        i_xx += jx * jx
+        i_yy += jy * jy
+        i_zz += jz * jz
+        i_xy += (jx * jy)
+        i_xz += (jx * jz)
+        i_yz += (jy * jz)
 
-      j_x += (jx * (w_halo[cell] - w_c[i]))
-      j_y += (jy * (w_halo[cell] - w_c[i]))
-      j_z += (jz * (w_halo[cell] - w_c[i]))
+        j_x += (jx * (w_halo[cell] - w_c[i]))
+        j_y += (jy * (w_halo[cell] - w_c[i]))
+        j_z += (jz * (w_halo[cell] - w_c[i]))
 
-    for j in range(cell_haloghostnid[i][-1]):
-      # -3 the index of global face
-      cell = cell_haloghostnid[i][j]
-      center[:] = cell_haloghostcenter[cell]
+      for j in range(cell_haloghostnid[i][-1]):
+        # -3 the index of global face
+        cell = cell_haloghostnid[i][j]
+        center[:] = cell_haloghostcenter[cell]
 
-      jx = center[0] - cell_center[i][0]
-      jy = center[1] - cell_center[i][1]
-      jz = center[2] - cell_center[i][2]
+        jx = center[0] - cell_center[i][0]
+        jy = center[1] - cell_center[i][1]
+        jz = center[2] - cell_center[i][2]
 
-      i_xx += jx * jx
-      i_yy += jy * jy
-      i_zz += jz * jz
-      i_xy += (jx * jy)
-      i_xz += (jx * jz)
-      i_yz += (jy * jz)
+        i_xx += jx * jx
+        i_yy += jy * jy
+        i_zz += jz * jz
+        i_xy += (jx * jy)
+        i_xz += (jx * jz)
+        i_yz += (jy * jz)
 
-      j_x += (jx * (w_haloghost[cell] - w_c[i]))
-      j_y += (jy * (w_haloghost[cell] - w_c[i]))
-      j_z += (jz * (w_haloghost[cell] - w_c[i]))
+        j_x += (jx * (w_haloghost[cell] - w_c[i]))
+        j_y += (jy * (w_haloghost[cell] - w_c[i]))
+        j_z += (jz * (w_haloghost[cell] - w_c[i]))
 
     dia = i_xx * i_yy * i_zz + 2. * i_xy * i_xz * i_yz - i_xx * i_yz ** 2 - i_yy * i_xz ** 2 - i_zz * i_xy ** 2
 
