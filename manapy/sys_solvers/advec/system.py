@@ -24,7 +24,7 @@ class AdvectionSolver:
                  ]
   def __init__(self,
                var: Variable,
-               vel: tuple[Variable, Variable, Variable],
+               vel: tuple[Variable, Variable]|tuple[Variable, Variable, Variable],
                dt: float = 0.0,
                order=1,
                cfl=0.8
@@ -38,8 +38,6 @@ class AdvectionSolver:
     self.v = vel[1]
 
     if len(vel) == 3:
-      if not isinstance(vel[2], Variable):
-        raise ValueError("w must be a Variable type")
       self.w = vel[2]
     else:
       self.w = Variable(domain=self.domain)

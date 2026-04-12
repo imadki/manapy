@@ -14,6 +14,7 @@ from types import LambdaType
 import manapy.core.variable_compute_2d as variable_compute_2d
 import manapy.core.variable_compute_3d as variable_compute_3d
 import manapy.core.variable_compute_utils as variable_compute_utils
+from manapy.backends.types import FLOAT_TYPE
 
 """
 # self, domain=None, terms=None, comm=None, name=None, BC=None, values=None, *args, **kwargs
@@ -115,7 +116,7 @@ class Variable:
       self._barthlimiter = variable_compute_3d.barthlimiter_3d
 
   def add_term(self, name):
-    self.__dict__[name] = np.zeros(self._nbcells)
+    self.__dict__[name] = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
 
   def _update_boundaries(self, BC:dict, values_dict:dict):
     valueface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
