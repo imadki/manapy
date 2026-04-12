@@ -34,7 +34,7 @@ def _compute_upwind_flux(w_l: 'float64', w_r: 'float64', u_face: 'float64', v_fa
 
   flux_w[0] = sign * sol
 
-def explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
+def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                                  u_face: 'float[:]', v_face: 'float[:]', w_face: 'float[:]',
                                  w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', wx_halo: 'float[:]',
                                  wy_halo: 'float[:]',
@@ -372,6 +372,7 @@ _compute_upwind_flux = compile(_compute_upwind_flux)
 
 # Public
 explicitscheme_dissipative = compile(_explicitscheme_dissipative)
+explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
 explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
 time_step = compile(_time_step)
 update_new_value = compile(_update_new_value)
