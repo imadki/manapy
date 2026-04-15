@@ -107,7 +107,7 @@ class PETScKrylovSolver(LinearSolver):
 
 
 
-  def __call__(self, rhs=None):
+  def __call__(self, rhs: npt.NDArray[Union[np.float32, np.float64]]=None):
 
     def custom_monitor(ksp, its, r_norm):
       print(f"Iteration {its}: Residual Norm = {r_norm}")
