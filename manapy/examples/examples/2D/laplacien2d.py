@@ -12,7 +12,7 @@ from manapy.domain import Domain, Partitioning
 from manapy.helpers import get_mesh
 import numpy as np
 from manapy.core.Variable import Variable
-from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
+from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver, ScipySolver
 
 
 COMM = MPI.COMM_WORLD
@@ -65,6 +65,7 @@ L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 #               precond='gamg', sub_precond="amg",  # with_mtx=False,
 #               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
+# L = ScipySolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
 # Solve the system
 ts = MPI.Wtime()
