@@ -19,11 +19,22 @@ Editable install for development:
 python3 -m pip install -e .
 ```
 
+## Build
+
 Build distributions locally:
 
 ```bash
 python3 -m build
+
+# 2. Install the generated wheel
+pip install dist/*.whl
 ```
+
+
+See the [c_api readme](./manapy/c_api/README.md)
+- **Section 7** – *Uploading the package to PyPI*  
+- **Section 4** – *Manylinux wheel build (Linux platform)* 
+
 
 ## Tests
 
@@ -33,17 +44,6 @@ python3 -m pytest tests
 
 ## Backend solver for Mumps and Petsc
 
-MUMPS support:
+- [Mumps](./tools/install_mumps4py.md)
+- [PETSc](./tools/install_petsc4py.md)
 
-```bash
-sudo apt install libmumps-ptscotch-dev
-python3 -m pip install mumps4py
-```
-
-PETSc support:
-
-```bash
-python3 -m pip install petsc4py
-```
-
-Follow the PETSc installation guide if your system packages are not already available: https://petsc.org/release/install/

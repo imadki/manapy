@@ -1,9 +1,7 @@
-from numba import njit
+from manapy.backends.compile_fun import compile
 import numpy as np
-@njit("void(float64[:,:], float64[:,:], float64[:,:], int32[:,:], int32[:,:], int32[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], uint32[:])", fastmath=True,cache=True)
-def node_for_interpolation_3d(xCenterForInterp, yCenterForInterp,zCenterForInterp,
-                              nodefid, cellfid, halofid,cellcenter,
-                              vertexcenter, ghostcenter, halocenter, name):
+
+def _node_for_interpolation_3d(xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', zCenterForInterp: 'float64[:,:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', cellcenter: 'float64[:,:]', vertexcenter: 'float64[:,:]', ghostcenter: 'float64[:,:]', halocenter: 'float64[:,:]', name: 'uint32[:]'):
 
     nbfaces = len(nodefid)
     for i in range(nbfaces):
@@ -35,10 +33,7 @@ def node_for_interpolation_3d(xCenterForInterp, yCenterForInterp,zCenterForInter
             yCenterForInterp[i][4] = ghostcenter[i][1]
             zCenterForInterp[i][4] = ghostcenter[i][2]
             
-@njit("void(float64[:,:], float64[:], float64[:], float64[:], float64[:], int32[:,:], int32[:,:], int32[:], uint32[:])", fastmath=True,cache=True)
-def node_value_for_interpolation_3d(ValForInterp,w_cell,w_node,
-                                    w_ghost, w_halo, nodefid,
-                                    cellfid, halofid, name):
+def _node_value_for_interpolation_3d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]'):
 
 
     nbfaces = len(nodefid)
@@ -56,9 +51,7 @@ def node_value_for_interpolation_3d(ValForInterp,w_cell,w_node,
         else:
             ValForInterp[i][4] = w_ghost[i]
 
-@njit("Tuple((float64, float64, float64, float64, float64, float64))(float64[:], float64[:], float64[:], float64, float64, float64)", fastmath=True,cache=True)
-def weight_parameters_carac_3d(xCenterForInterp, yCenterForInterp,zCenterForInterp,
-                               X0, Y0, Z0):
+def _weight_parameters_carac_3d(xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', zCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64', Z0: 'float64'):
 
     I_xx = 0.
     I_yy = 0.
@@ -100,9 +93,8 @@ def weight_parameters_carac_3d(xCenterForInterp, yCenterForInterp,zCenterForInte
     lambda_z = ((I_xz*I_yy - I_xy*I_yz)*R_x + (I_yz*I_xx - I_xz*I_xy)*R_y + (I_xy*I_xy - I_xx*I_yy)*R_z) / D
     
     return R_x, R_y, R_z, lambda_x, lambda_y, lambda_z
-@njit("float64(float64[:], float64[:], float64[:], float64[:], float64, float64, float64)", fastmath=True,cache=True)
-def set_carac_field_3d(ValForInterp, xCenterForInterp, yCenterForInterp, 
-                       zCenterForInterp, X0, Y0, Z0):
+
+def _set_carac_field_3d(ValForInterp: 'float64[:]', xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', zCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64', Z0: 'float64'):
 
     w_carac = 0.
     R_x = 0.
@@ -111,7 +103,7 @@ def set_carac_field_3d(ValForInterp, xCenterForInterp, yCenterForInterp,
     lambda_x = 0.
     lambda_y = 0.
     lambda_z = 0.
-    R_x, R_y, R_z, lambda_x, lambda_y, lambda_z = weight_parameters_carac_3d(xCenterForInterp, yCenterForInterp, zCenterForInterp, X0, Y0, Z0)
+    R_x, R_y, R_z, lambda_x, lambda_y, lambda_z = _weight_parameters_carac_3d(xCenterForInterp, yCenterForInterp, zCenterForInterp, X0, Y0, Z0)
     
     for i in range(0, 5):
         
@@ -125,9 +117,7 @@ def set_carac_field_3d(ValForInterp, xCenterForInterp, yCenterForInterp,
    
     return w_carac
 
-@njit("void(float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:])", fastmath=True,cache=True)
-def compute_normale_inverse(inormal,itangent,ibinormal,
-                            normal,tangent,binormal):
+def _compute_normale_inverse(inormal: 'float64[:,:]', itangent: 'float64[:,:]', ibinormal: 'float64[:,:]', normal: 'float64[:,:]', tangent: 'float64[:,:]', binormal: 'float64[:,:]'):
     nbfaces = len(normal)
     for k in range(nbfaces): 
         a = normal[k][0]/np.sqrt(normal[k][0]*normal[k][0]+normal[k][1]*normal[k][1]+normal[k][2]*normal[k][2])
@@ -156,15 +146,7 @@ def compute_normale_inverse(inormal,itangent,ibinormal,
         ibinormal[k][1]=(b*g-a*h)/det
         ibinormal[k][2]=(a*e-b*d)/det
         
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], int32[:,:], float64[:,:], float64[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], uint32[:], float64, float64)", fastmath=True,cache=True)
-def departure_euler_3d(X0,Y0,Z0,rhof,
-                       rhouf,rhovf,rhowf,
-                       rhoValForInterp,uValForInterp,
-                       vValForInterp,wValForInterp, 
-                       xCenterForInterp, yCenterForInterp, 
-                       zCenterForInterp, nodeidf, normalf,
-                       mesuref,centerf,vertexn,centerc,
-                       centerg,centerh,name,dt, alphaf):
+def _departure_euler_3d(X0: 'float64[:]', Y0: 'float64[:]', Z0: 'float64[:]', rhof: 'float64[:]', rhouf: 'float64[:]', rhovf: 'float64[:]', rhowf: 'float64[:]', rhoValForInterp: 'float64[:,:]', uValForInterp: 'float64[:,:]', vValForInterp: 'float64[:,:]', wValForInterp: 'float64[:,:]', xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', zCenterForInterp: 'float64[:,:]', nodeidf: 'int32[:,:]', normalf: 'float64[:,:]', mesuref: 'float64[:]', centerf: 'float64[:,:]', vertexn: 'float64[:,:]', centerc: 'float64[:,:]', centerg: 'float64[:,:]', centerh: 'float64[:,:]', name: 'uint32[:]', dt: 'float64', alphaf: 'float64'):
 
     nbfaces = len(nodeidf)
     
@@ -178,10 +160,10 @@ def departure_euler_3d(X0,Y0,Z0,rhof,
     
     for i in range(nbfaces):  
         
-        rho_ed = set_carac_field_3d(rhoValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
-        u_ed   = set_carac_field_3d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])/rho_ed
-        v_ed   = set_carac_field_3d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])/rho_ed
-        w_ed   = set_carac_field_3d(wValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])/rho_ed
+        rho_ed = _set_carac_field_3d(rhoValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
+        u_ed   = _set_carac_field_3d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])/rho_ed
+        v_ed   = _set_carac_field_3d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])/rho_ed
+        w_ed   = _set_carac_field_3d(wValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])/rho_ed
         
         rhof[i]  = rho_ed 
         rhouf[i] = rho_ed*u_ed
@@ -207,47 +189,35 @@ def departure_euler_3d(X0,Y0,Z0,rhof,
         # yrk1 =  Y0[i] - alphaf*dt*u_ny
         # zrk1 =  Z0[i] - alphaf*dt*u_nz
                 
-        # u    =  set_carac_field_3d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk1,yrk1,zrk1)/rho_ed
-        # v    =  set_carac_field_3d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk1,yrk1,zrk1)/rho_ed
-        # w    =  set_carac_field_3d(wValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk1,yrk1,zrk1)/rho_ed
+        # u    =  _set_carac_field_3d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk1,yrk1,zrk1)/rho_ed
+        # v    =  _set_carac_field_3d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk1,yrk1,zrk1)/rho_ed
+        # w    =  _set_carac_field_3d(wValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk1,yrk1,zrk1)/rho_ed
       
                     
         # xrk2 = 0.75*X0[i]+0.25*xrk1-0.25*dt*alphaf*u
         # yrk2 = 0.75*Y0[i]+0.25*yrk1-0.25*dt*alphaf*v
         # zrk2 = 0.75*Z0[i]+0.25*zrk1-0.25*dt*alphaf*w
         
-        # u    =  set_carac_field_3d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk2,yrk2,zrk2)/rho_ed
-        # v    =  set_carac_field_3d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk2,yrk2,zrk2)/rho_ed
-        # w    =  set_carac_field_3d(wValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk2,yrk2,zrk2)/rho_ed
+        # u    =  _set_carac_field_3d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk2,yrk2,zrk2)/rho_ed
+        # v    =  _set_carac_field_3d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk2,yrk2,zrk2)/rho_ed
+        # w    =  _set_carac_field_3d(wValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i],xrk2,yrk2,zrk2)/rho_ed
         
         # X0[i] = (X0[i] + 2.0*xrk2-2.0*alphaf*dt*u)/3.0
         # Y0[i] = (Y0[i] + 2.0*yrk2-2.0*alphaf*dt*v)/3.0
         # Z0[i] = (Z0[i] + 2.0*yrk2-2.0*alphaf*dt*w)/3.0
         
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64, float64, float64, int32[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:])", fastmath=True,cache=True)
-def predictor_euler_3d(rho_p,P_p,rhou_p,rhov_p,rhow_p,
-                       rhoE_p,rhof,rhouf,rhovf,rhowf,
-                       rhoValForInterp,rhouValForInterp,rhovValForInterp,
-                       rhowValForInterp,rhoEValForInterp, xCenterForInterp,
-                       yCenterForInterp, zCenterForInterp, X0,Y0,
-                       Z0, ugradfacex,ugradfacey,ugradfacez,
-                       vgradfacex,vgradfacey,vgradfacez,
-                       wgradfacex,wgradfacey,wgradfacez,
-                       Pgradfacex,Pgradfacey,Pgradfacez,
-                       gamma, d_t, alphaf,nodeidf,
-                       normal, tangent, binormal,
-                       inormal, itangent, ibinormal, mesuref):
+def _predictor_euler_3d(rho_p: 'float64[:]', P_p: 'float64[:]', rhou_p: 'float64[:]', rhov_p: 'float64[:]', rhow_p: 'float64[:]', rhoE_p: 'float64[:]', rhof: 'float64[:]', rhouf: 'float64[:]', rhovf: 'float64[:]', rhowf: 'float64[:]', rhoValForInterp: 'float64[:,:]', rhouValForInterp: 'float64[:,:]', rhovValForInterp: 'float64[:,:]', rhowValForInterp: 'float64[:,:]', rhoEValForInterp: 'float64[:,:]', xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', zCenterForInterp: 'float64[:,:]', X0: 'float64[:]', Y0: 'float64[:]', Z0: 'float64[:]', ugradfacex: 'float64[:]', ugradfacey: 'float64[:]', ugradfacez: 'float64[:]', vgradfacex: 'float64[:]', vgradfacey: 'float64[:]', vgradfacez: 'float64[:]', wgradfacex: 'float64[:]', wgradfacey: 'float64[:]', wgradfacez: 'float64[:]', Pgradfacex: 'float64[:]', Pgradfacey: 'float64[:]', Pgradfacez: 'float64[:]', gamma: 'float64', d_t: 'float64', alphaf: 'float64', nodeidf: 'int32[:,:]', normal: 'float64[:,:]', tangent: 'float64[:,:]', binormal: 'float64[:,:]', inormal: 'float64[:,:]', itangent: 'float64[:,:]', ibinormal: 'float64[:,:]', mesuref: 'float64[:]'):
     
     
     nbfaces = len(nodeidf)
 
     for i in range(nbfaces):
         
-        rho_ed  = set_carac_field_3d(rhoValForInterp[i],  xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
-        rhou_ed = set_carac_field_3d(rhouValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
-        rhov_ed = set_carac_field_3d(rhovValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
-        rhow_ed = set_carac_field_3d(rhowValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
-        rhoE_ed = set_carac_field_3d(rhoEValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
+        rho_ed  = _set_carac_field_3d(rhoValForInterp[i],  xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
+        rhou_ed = _set_carac_field_3d(rhouValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
+        rhov_ed = _set_carac_field_3d(rhovValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
+        rhow_ed = _set_carac_field_3d(rhowValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
+        rhoE_ed = _set_carac_field_3d(rhoEValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], zCenterForInterp[i], X0[i], Y0[i], Z0[i])
 
         rhop  = rho_ed
         rhoup = rhou_ed
@@ -311,11 +281,8 @@ def predictor_euler_3d(rho_p,P_p,rhou_p,rhov_p,rhow_p,
         rhow_p[i] = (rhounp*ibinormal[i,0] + rhoutp*ibinormal[i,1] + rhoubp*ibinormal[i,2])/np.sqrt(ibinormal[i,0]*ibinormal[i,0]+ibinormal[i,1]*ibinormal[i,1]+ibinormal[i,2]*ibinormal[i,2]) 
         rhoE_p[i] = rhoEpre
         P_p[i]    = (gamma-1)*(rhoE_p[i] - 0.5*(rhou_p[i]*rhou_p[i] + rhov_p[i]*rhov_p[i] + rhow_p[i]*rhow_p[i])/rho_p[i])
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:,:], float64, float64, float64, float64, float64, float64, float64, float64, int32)", fastmath=True,cache=True)
-def initialisation_euler_3d(rho,P,rhou,rhov,
-                            rhow,rhoE, center,
-                            rho1,rho2,P1,P2,
-                            u1,u2,xm,gamma, choix):
+
+def _initialisation_euler_3d(rho: 'float64[:]', P: 'float64[:]', rhou: 'float64[:]', rhov: 'float64[:]', rhow: 'float64[:]', rhoE: 'float64[:]', center: 'float64[:,:]', rho1: 'float64', rho2: 'float64', P1: 'float64', P2: 'float64', u1: 'float64', u2: 'float64', xm: 'float64', gamma: 'float64', choix: 'int32'):
 
     nbelements = len(center)
     
@@ -389,12 +356,8 @@ def initialisation_euler_3d(rho,P,rhou,rhov,
             w = rhow[i]/rho[i] 
             
             rhoE[i]  = 0.5*rho[i]*(u**2 + v**2 + w**2)  + P[i]/(gamma-1)  
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:])", fastmath=True,cache=True)
-def ghost_value_Neumann3D(rhog,Pg,rhoug,rhovg,
-                     rhowg,ug,vg,wg,
-                     rhoEg, rhoc,Pc,rhouc,
-                     rhovc,rhowc,rhoEc, cellid,
-                     name, normal,mesure):
+
+def _ghost_value_Neumann3D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhowc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]'):
     
     nbface = len(cellid)
     
@@ -438,12 +401,7 @@ def ghost_value_Neumann3D(rhog,Pg,rhoug,rhovg,
             vg[i]    = rhovg[i]/rhog[i]
             wg[i]    = rhowg[i]/rhog[i]  
             
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:])", fastmath=True,cache=True)        
-def ghost_value_TubeSchok3D(rhog,Pg,rhoug,rhovg,
-                     rhowg,ug,vg,wg,
-                     rhoEg, rhoc,Pc,rhouc,
-                     rhovc,rhowc,rhoEc, cellid,
-                     name, normal,mesure):
+def _ghost_value_TubeSchok3D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhowc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]'):
     
     nbface = len(cellid)
     s_n = np.zeros(3)
@@ -498,12 +456,8 @@ def ghost_value_TubeSchok3D(rhog,Pg,rhoug,rhovg,
             ug[i]    = rhoug[i]/rhog[i]
             vg[i]    = rhovg[i]/rhog[i]
             wg[i]    = rhowg[i]/rhog[i]
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:])", fastmath=True,cache=True)                                 
-def ghost_value_gamm(rhog,Pg,rhoug,rhovg,
-                     rhowg,ug,vg,wg,
-                     rhoEg, rhoc,Pc,rhouc,
-                     rhovc,rhowc,rhoEc, cellid,
-                     name, normal,mesure):
+
+def _ghost_value_gamm(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhowc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]'):
     
     nbface = len(cellid)
     s_n = np.zeros(3)
@@ -587,11 +541,8 @@ def ghost_value_gamm(rhog,Pg,rhoug,rhovg,
             ug[i]    = rhoug[i]/rhog[i]
             vg[i]    = rhovg[i]/rhog[i]
             wg[i]    = rhowg[i]/rhog[i]             
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:])", fastmath=True,cache=True)
-def halghost_value_Neumann3D(rhog,Pg,rhoug,rhovg, rhowg, ug,
-                        vg, wg, rhoEg, rho_halo,P_halo,rhou_halo,
-                        rhov_halo, rhow_halo, rhoE_halo, cellid, name, normal,
-                        halonodes, haloghostcenter, haloghostfaceinfo):
+
+def _halghost_value_Neumann3D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhow_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]'):
     
     for i in halonodes:
         for j in range(len(haloghostcenter[i])):
@@ -637,11 +588,7 @@ def halghost_value_Neumann3D(rhog,Pg,rhoug,rhovg, rhowg, ug,
                     vg[cellghost]    = rhovg[cellghost]/rhog[cellghost]
                     wg[cellghost]    = rhowg[cellghost]/rhog[cellghost]
                     
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:])", fastmath=True,cache=True)               
-def halghost_value_TubeSchok3D(rhog,Pg,rhoug,rhovg, rhowg, ug,
-                        vg, wg, rhoEg, rho_halo,P_halo,rhou_halo,
-                        rhov_halo, rhow_halo, rhoE_halo, cellid, name, normal,
-                        halonodes, haloghostcenter, haloghostfaceinfo):
+def _halghost_value_TubeSchok3D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhow_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]'):
     
     s_n = np.zeros(3) 
     for i in halonodes:
@@ -706,11 +653,7 @@ def halghost_value_TubeSchok3D(rhog,Pg,rhoug,rhovg, rhowg, ug,
                     wg[cellghost] = rhowg[cellghost]/rhog[cellghost]
                     
             
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:])", fastmath=True,cache=True) 
-def halghost_value_gamm(rhog,Pg,rhoug,rhovg, rhowg, ug,
-                        vg, wg, rhoEg, rho_halo,P_halo,rhou_halo,
-                        rhov_halo, rhow_halo, rhoE_halo, cellid, name, normal,
-                        halonodes, haloghostcenter, haloghostfaceinfo):
+def _halghost_value_gamm(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhow_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]'):
     s_n = np.zeros(3)
     for i in halonodes:
         for j in range(len(haloghostcenter[i])):
@@ -806,10 +749,7 @@ def halghost_value_gamm(rhog,Pg,rhoug,rhovg, rhowg, ug,
                     vg[cellghost]    = rhovg[cellghost]/rhog[cellghost]
                     wg[cellghost]    = rhowg[cellghost]/rhog[cellghost]  
                 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64, float64[:,:], float64[:], float64[:], int32[:,:], float64, float64[:])", fastmath=True,cache=True)           
-def time_step_euler_3d(rho,P,rhou, rhov, rhow,
-                       cfl, normal,mesure, volume,
-                       faceid,gamma, dt_c):
+def _time_step_euler_3d(rho: 'float64[:]', P: 'float64[:]', rhou: 'float64[:]', rhov: 'float64[:]', rhow: 'float64[:]', cfl: 'float64', normal: 'float64[:,:]', mesure: 'float64[:]', volume: 'float64[:]', faceid: 'int32[:,:]', gamma: 'float64', dt_c: 'float64[:]'):
     
     nbelement =  len(faceid)
     u_n = 0.
@@ -823,8 +763,8 @@ def time_step_euler_3d(rho,P,rhou, rhov, rhow,
             lam += lam_convect * mesure[faceid[i][j]]
                
         dt_c[i]  = cfl * volume[i]/lam            
-@njit("Tuple((float64,float64,float64,float64,float64))(float64, float64, float64, float64, float64, float64, float64[:], float64)", fastmath=True,cache=True) 
-def compute_flux_euler_3d_fvc(rhop,Pp,rhoup,rhovp,rhowp,rhoEp,normal, mesure):
+
+def _compute_flux_euler_3d_fvc(rhop: 'float64', Pp: 'float64', rhoup: 'float64', rhovp: 'float64', rhowp: 'float64', rhoEp: 'float64', normal: 'float64[:]', mesure: 'float64'):
           
         flux_rho   = (rhoup*normal[0] + rhovp*normal[1] + rhowp*normal[2])
         flux_rhou  = ((rhoup*rhoup/rhop+Pp)*normal[0]   + (rhoup*rhovp/rhop)*normal[1]    + (rhoup*rhowp/rhop)*normal[2])
@@ -835,8 +775,7 @@ def compute_flux_euler_3d_fvc(rhop,Pp,rhoup,rhovp,rhowp,rhoEp,normal, mesure):
         return flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE     
 
 ######
-@njit("Tuple((float64,float64,float64,float64,float64))(float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64[:], float64,float64)", fastmath=True,cache=True) 
-def compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr, normal, mesure, gamma):
+def _compute_flux_euler_3d_rusanov(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhowl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhowr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gamma: 'float64'):
     
     ql = (rhoul*normal[0] + rhovl*normal[1] + rhowl*normal[2])
     qr = (rhour*normal[0] + rhovl*normal[1] + rhowl*normal[2])
@@ -885,10 +824,7 @@ def compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,
 
     return flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE 
 ######################
-@njit("Tuple((float64,float64,float64,float64,float64))(float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64[:], float64, float64, float64[:], float64[:])", fastmath=True,cache=True) 
-def compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,
-                              rhor,Pr,rhour,rhovr,rhowr,rhoEr,
-                              normal, mesure, gamma,tangent,binormal):
+def _compute_flux_euler_3d_Roe(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhowl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhowr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gamma: 'float64', tangent: 'float64[:]', binormal: 'float64[:]'):
  
     normal[:]=normal[:]/np.sqrt(normal[0]*normal[0]+normal[1]*normal[1]+normal[2]*normal[2])
     tangent[:]=tangent[:]/np.sqrt(tangent[0]*tangent[0]+tangent[1]*tangent[1]+tangent[2]*tangent[2])
@@ -1080,15 +1016,7 @@ def compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,
 
 
 ############"
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], int32[:], float64[:,:], float64[:], uint32[:], float64, float64[:,:], float64[:,:])", fastmath=True,cache=True) 
-def explicitscheme_euler_3d_rusanov(rez_rho,rez_rhou,rez_rhov,rez_rhow,
-                                    rez_rhoE,rho_c,P_c,
-                                    rhou_c,rhov_c,rhow_c,rhoE_c,
-                                    rho_g,P_g,rhou_g,
-                                    rhov_g,rhow_g,rhoE_g,rho_h,
-                                    P_h,rhou_h,rhov_h,rhow_h,
-                                    rhoE_h, cellidf,halofid,
-                                    normal,mesurf,name,gamma,tangent,binormal):
+def _explicitscheme_euler_3d_rusanov(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma: 'float64', tangent: 'float64[:,:]', binormal: 'float64[:,:]'):
 
     nbface = len(cellidf)
        
@@ -1122,7 +1050,7 @@ def explicitscheme_euler_3d_rusanov(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rhowr=rhow_c[cellidf[i][1]]
                 rhoEr=rhoE_c[cellidf[i][1]]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma)
                 
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rho[cellidf[i][1]] += flux_rho
@@ -1144,7 +1072,7 @@ def explicitscheme_euler_3d_rusanov(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rhowr=rhow_h[halofid[i]]
                 rhoEr=rhoE_h[halofid[i]]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma)
                 
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
@@ -1161,7 +1089,7 @@ def explicitscheme_euler_3d_rusanov(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rhowr=rhow_g[i]
                 rhoEr=rhoE_g[i]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE  = compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE  = _compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma)
                                
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
@@ -1170,15 +1098,7 @@ def explicitscheme_euler_3d_rusanov(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE             
 
 #############""
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], int32[:], float64[:,:], float64[:], uint32[:], float64, float64[:,:], float64[:,:])", fastmath=True,cache=True) 
-def explicitscheme_euler_3d_Roe(rez_rho,rez_rhou,rez_rhov,rez_rhow,
-                                    rez_rhoE,rho_c,P_c,
-                                    rhou_c,rhov_c,rhow_c,rhoE_c,
-                                    rho_g,P_g,rhou_g,
-                                    rhov_g,rhow_g,rhoE_g,rho_h,
-                                    P_h,rhou_h,rhov_h,rhow_h,
-                                    rhoE_h, cellidf,halofid,
-                                    normal,mesurf,name,gamma,tangent,binormal):
+def _explicitscheme_euler_3d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma: 'float64', tangent: 'float64[:,:]', binormal: 'float64[:,:]'):
 
     nbface = len(cellidf)
        
@@ -1212,7 +1132,7 @@ def explicitscheme_euler_3d_Roe(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rhowr=rhow_c[cellidf[i][1]]
                 rhoEr=rhoE_c[cellidf[i][1]]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm)
                 
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rho[cellidf[i][1]] += flux_rho
@@ -1234,7 +1154,7 @@ def explicitscheme_euler_3d_Roe(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rhowr=rhow_h[halofid[i]]
                 rhoEr=rhoE_h[halofid[i]]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm) 
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm) 
                 
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
@@ -1251,18 +1171,15 @@ def explicitscheme_euler_3d_Roe(rez_rho,rez_rhou,rez_rhov,rez_rhow,
                 rhowr=rhow_g[i]
                 rhoEr=rhoE_g[i]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm)
                
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
                 rez_rhov[cellidf[i][0]] -= flux_rhov
                 rez_rhow[cellidf[i][0]] -= flux_rhow
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE     
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], float64[:,:], float64[:], uint32[:])", fastmath=True,cache=True)               
-def explicitscheme_euler_3d_fvc(rez_rho,rez_rhou,rez_rhov,
-                                rez_rhow,rez_rhoE,rho_p,
-                                P_p,rhou_p,rhov_p,rhow_p,
-                                rhoE_p, cellidf,normal,mesurf,name):
+
+def _explicitscheme_euler_3d_fvc(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_p: 'float64[:]', P_p: 'float64[:]', rhou_p: 'float64[:]', rhov_p: 'float64[:]', rhow_p: 'float64[:]', rhoE_p: 'float64[:]', cellidf: 'int32[:,:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]'):
 
     nbface = len(cellidf)
     
@@ -1279,7 +1196,7 @@ def explicitscheme_euler_3d_fvc(rez_rho,rez_rhou,rez_rhov,
             norm = normal[i]
             mesu = mesurf[i]
                   
-            flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = compute_flux_euler_3d_fvc(rho_p[i],P_p[i],rhou_p[i],rhov_p[i],rhow_p[i],rhoE_p[i],norm, mesu)
+            flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_fvc(rho_p[i],P_p[i],rhou_p[i],rhov_p[i],rhow_p[i],rhoE_p[i],norm, mesu)
             
             if name[i] == 0:
          
@@ -1313,11 +1230,8 @@ def explicitscheme_euler_3d_fvc(rez_rho,rez_rhou,rez_rhov,
                 rez_rhov[cellidf[i][0]] -= flux_rhov
                 rez_rhow[cellidf[i][0]] -= flux_rhow
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64, float64, float64[:])", fastmath=True,cache=True)               
-def update_euler_3d_fvc(rho_c, P_c,rhou_c, 
-                        rhov_c,rhow_c,rhoE_c,
-                        rez_rho,rez_rhou,rez_rhov,
-                        rez_rhow,rez_rhoE,gamma,dtime,vol):
+
+def _update_euler_3d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', gamma: 'float64', dtime: 'float64', vol: 'float64[:]'):
 
     rho_c[:]    += dtime * ((rez_rho[:]) /vol[:])
     rhou_c[:]   += dtime * ((rez_rhou[:]) /vol[:])
@@ -1325,4 +1239,28 @@ def update_euler_3d_fvc(rho_c, P_c,rhou_c,
     rhow_c[:]   += dtime * ((rez_rhow[:]) /vol[:])
     rhoE_c[:]   += dtime * ((rez_rhoE[:]) /vol[:])
     P_c[:]       = (gamma-1)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:])
-    
+
+############################################################################
+# Public
+node_for_interpolation_3d = compile(_node_for_interpolation_3d)
+node_value_for_interpolation_3d = compile(_node_value_for_interpolation_3d)
+weight_parameters_carac_3d = compile(_weight_parameters_carac_3d)
+set_carac_field_3d = compile(_set_carac_field_3d)
+compute_normale_inverse = compile(_compute_normale_inverse)
+departure_euler_3d = compile(_departure_euler_3d)
+predictor_euler_3d = compile(_predictor_euler_3d)
+initialisation_euler_3d = compile(_initialisation_euler_3d)
+ghost_value_Neumann3D = compile(_ghost_value_Neumann3D)
+ghost_value_TubeSchok3D = compile(_ghost_value_TubeSchok3D)
+ghost_value_gamm = compile(_ghost_value_gamm)
+halghost_value_Neumann3D = compile(_halghost_value_Neumann3D)
+halghost_value_TubeSchok3D = compile(_halghost_value_TubeSchok3D)
+halghost_value_gamm = compile(_halghost_value_gamm)
+time_step_euler_3d = compile(_time_step_euler_3d)
+compute_flux_euler_3d_fvc = compile(_compute_flux_euler_3d_fvc)
+compute_flux_euler_3d_rusanov = compile(_compute_flux_euler_3d_rusanov)
+compute_flux_euler_3d_Roe = compile(_compute_flux_euler_3d_Roe)
+explicitscheme_euler_3d_rusanov = compile(_explicitscheme_euler_3d_rusanov)
+explicitscheme_euler_3d_Roe = compile(_explicitscheme_euler_3d_Roe)
+explicitscheme_euler_3d_fvc = compile(_explicitscheme_euler_3d_fvc)
+update_euler_3d_fvc = compile(_update_euler_3d_fvc)

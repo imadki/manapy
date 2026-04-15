@@ -84,6 +84,10 @@ class Boundary:
     return self._BCfaces
 
   @property
+  def BCtype(self) -> str:
+    return self._BCtype
+
+  @property
   def BCnodes(self):
     return self._BCnodes
 

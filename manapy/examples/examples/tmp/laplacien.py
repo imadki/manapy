@@ -8,41 +8,22 @@ Created on Wed Feb 16 09:13:21 2022
 
 from mpi4py import MPI
 import timeit
+from manapy.domain import Domain, Partitioning
+from manapy.helpers import get_mesh
+import numpy as np
+from manapy.core.Variable import Variable
+from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
+import os
+
 
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
 RANK = COMM.Get_rank()
 
-from manapy.partitions import MeshPartition
-import numpy as np
-from manapy.ast import Variable
-from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
-from manapy.ast.functions2d import Mat_Assembly, Vec_Assembly
-from manapy.domain import Domain, Partitioning
-from manapy.base.base import Struct
-import os
-
 start = timeit.default_timer()
 
-# ... get the mesh directory
-try:
-  MESH_DIR = os.environ['MESH_DIR']
-
-except:
-  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
-  MESH_DIR = os.path.join(BASE_DIR, 'mesh')
-
-dim = 2
-# filename = "rectangle.msh"
-filename = "mid_rectangle.msh"
-# filename = "bigger_rectangle.msh"
-
-# Petsc -> (0.126s, 0.498s, 54.07s)
-# Mumps -> (0.088s, 0.381s, 48.58s)
-
-# File name
-filename = os.path.join(MESH_DIR, filename)
+filename = "big/mid_rectangle.msh"
+dim, mesh_path, mesh_name = get_mesh(filename)
 domain = Domain.create_domain(filename, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells
@@ -76,24 +57,21 @@ values = {"in": 20,
           "bottom": 0.,
           }
 
-P = Variable(domain=domain, BC=boundaries, values=values)
-# conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False)
-conf = Struct(reuse_mtx=True, scheme='diamond', verbose=False,
-              precond='gamg', sub_precond="amg",  # with_mtx=False,
-              eps_a=1e-10, eps_r=1e-10, method="gmres")
+P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
-# L = MUMPSSolver(domain=domain, var=P, conf=conf)
-L = PETScKrylovSolver(domain=domain, var=P, conf=conf)
+
+L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
+
+# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
+#               precond='gamg', sub_precond="amg",  # with_mtx=False,
+#               eps_a=1e-10, eps_r=1e-10, method="gmres")
+
+
+# Solve the system
 ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
 
-
-# P.update_halo_value()
-# P.update_ghost_value()
-# P.interpolate_celltonode()
-#
-# domain.save_on_node_multi(0., 0., niter, miter, variables=["P"],values=[P.node])
 
 
 def save_matrix_petsc(x_sol):

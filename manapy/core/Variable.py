@@ -130,7 +130,7 @@ class Variable:
     neumannNHfaces = []
     BCneumannNH = []
 
-    BCs : dict[str, Boundary | None] = {"in":  None, "out": None, "bottom": None, "upper": None}
+    BCs : dict[str, Boundary] = {"in":  None, "out": None, "bottom": None, "upper": None}
     if self._dim == 3:
       BCs = {"in": None, "out": None, "bottom": None, "upper": None, "front": None, "back": None}
     domain_BCs = self._domain.BCs # See LocalDomainClass._define_BCs
@@ -550,7 +550,7 @@ class Variable:
     return self._name
 
   @property
-  def BCs(self):
+  def BCs(self) -> dict[str, Boundary]:
     return self._BCs
 
   @property
