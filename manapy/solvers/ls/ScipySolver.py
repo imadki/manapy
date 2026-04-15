@@ -34,10 +34,9 @@ class ScipySolver(LinearSolver):
                reuse_mtx: bool = True
                ):
 
+    LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme, reordering=reordering, solver_name=LinearSolver.SolverScipy)
     if self.comm.Get_size() > 1:
       raise ValueError('ScipySolver is not parallel! use MUMPSSolver or PETScKrylovSolver')
-
-    LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme, reordering=reordering, solver_name=LinearSolver.SolverScipy)
     self.sls = sls
     self.reuse_mtx = reuse_mtx
     self.reordering = reordering
@@ -72,7 +71,7 @@ class ScipySolver(LinearSolver):
     self.rhs0 = np.zeros(self.globalsize, dtype=FLOAT_TYPE)
 
 
-  def __call__(self, rhs=None):
+  def __call__(self, rhs: npt.NDArray[Union[np.float32, np.float64]]=None):
     if not self.reuse_mtx:
       self.clear()
 
