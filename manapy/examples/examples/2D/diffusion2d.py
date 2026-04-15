@@ -10,8 +10,8 @@ from mpi4py import MPI
 import timeit
 from manapy.domain import Domain, Partitioning
 from manapy.helpers import get_mesh
-from manapy.sys_solvers.advec.tools_utils_compute import initialisation_gaussian_2d
-from manapy.sys_solvers.diffusion.system import DiffusionSolver
+from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
+from manapy.solvers.diffusion.system import DiffusionSolver
 from manapy.core.Variable import Variable
 
 COMM = MPI.COMM_WORLD
