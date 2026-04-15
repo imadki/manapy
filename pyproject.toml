@@ -24,7 +24,6 @@ dependencies = [
     "numba>=0.64,<1",
     "numpy>=2.0,<3",
     "scipy>=1.16,<1.20",
-    "six>=1.16,<2",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

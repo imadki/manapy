@@ -1,11 +1,7 @@
-from numba import njit
+from manapy.backends.compile_fun import compile
 import numpy as np
 
-@njit("void(float64[:,:], float64[:,:], int32[:,:], int32[:,:], int32[:], float64[:,:],\
-            float64[:,:], float64[:,:], float64[:,:], uint32[:])",  cache=True, fastmath=True)    
-def node_for_interpolation_2d(xCenterForInterp, yCenterForInterp,nodefid, 
-                              cellfid, halofid,cellcenter, vertexcenter,
-                              ghostcenter, halocenter, name):
+def _node_for_interpolation_2d(xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', cellcenter: 'float64[:,:]', vertexcenter: 'float64[:,:]', ghostcenter: 'float64[:,:]', halocenter: 'float64[:,:]', name: 'uint32[:]'):
 
     nbfaces = len(nodefid)
     for i in range(nbfaces):
@@ -33,10 +29,7 @@ def node_for_interpolation_2d(xCenterForInterp, yCenterForInterp,nodefid,
             xCenterForInterp[i][3] = ghostcenter[i][0]
             yCenterForInterp[i][3] = ghostcenter[i][1]
             
-@njit("void(float64[:,:], float64[:], float64[:], float64[:], float64[:], int32[:,:], int32[:,:], int32[:], uint32[:])",  cache=True, fastmath=True)         
-def node_value_for_interpolation_2d(ValForInterp,w_cell, w_node,
-                                    w_ghost, w_halo, nodefid,
-                                    cellfid, halofid, name):
+def _node_value_for_interpolation_2d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]'):
 
 
     nbfaces = len(nodefid)
@@ -51,8 +44,8 @@ def node_value_for_interpolation_2d(ValForInterp,w_cell, w_node,
             ValForInterp[i][3] = w_halo[halofid[i]]
         else:
             ValForInterp[i][3] = w_ghost[i]
-@njit("Tuple((float64, float64, float64, float64))(float64[:], float64[:], float64, float64)",  cache=True, fastmath=True)                 
-def weight_parameters_carac_2d(xCenterForInterp, yCenterForInterp,  X0, Y0):
+
+def _weight_parameters_carac_2d(xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64'):
 
     I_xx = 0.
     I_yy = 0.
@@ -78,15 +71,14 @@ def weight_parameters_carac_2d(xCenterForInterp, yCenterForInterp,  X0, Y0):
 
     return R_x, R_y, lambda_x, lambda_y
         
-@njit("float64(float64[:], float64[:], float64[:], float64, float64)",  cache=True, fastmath=True)                 
-def set_carac_field_2d(ValForInterp, xCenterForInterp, yCenterForInterp, X0, Y0):
+def _set_carac_field_2d(ValForInterp: 'float64[:]', xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64'):
 
     w_carac = 0.
     R_x = 0.
     R_y = 0.
     lambda_x = 0.
     lambda_y = 0.
-    R_x, R_y, lambda_x, lambda_y=weight_parameters_carac_2d(xCenterForInterp, yCenterForInterp, X0, Y0)
+    R_x, R_y, lambda_x, lambda_y=_weight_parameters_carac_2d(xCenterForInterp, yCenterForInterp, X0, Y0)
     
     for i in range(0, 4):
         
@@ -98,10 +90,8 @@ def set_carac_field_2d(ValForInterp, xCenterForInterp, yCenterForInterp, X0, Y0)
         w_carac  += alpha_interp * ValForInterp[i]
    
     return w_carac
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:,:], float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, int32)",  cache=True, fastmath=True)                 
-def initialisation_euler_2d(rho,P,rhou,rhov,rhoE,
-                            center,rho1,rho2,P1,P2,xm,
-                            gamma,u1,u2,v1,v2, choix):
+
+def _initialisation_euler_2d(rho: 'float64[:]', P: 'float64[:]', rhou: 'float64[:]', rhov: 'float64[:]', rhoE: 'float64[:]', center: 'float64[:,:]', rho1: 'float64', rho2: 'float64', P1: 'float64', P2: 'float64', xm: 'float64', gamma: 'float64', u1: 'float64', u2: 'float64', v1: 'float64', v2: 'float64', choix: 'int32'):
     
     nbelements = len(center)
     
@@ -418,10 +408,7 @@ def initialisation_euler_2d(rho,P,rhou,rhov,rhoE,
                 
             rhoE[i]  = 0.5*rho[i]*(u**2 + v**2)  + P[i]/(gamma-1)       
 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:], float64[:,:],float64)",  cache=True, fastmath=True)                        
-def ghost_value_DoubleMach(rhog,Pg,rhoug,rhovg,ug,vg,
-                     rhoEg, rhoc,Pc,rhouc,rhovc,rhoEc,
-                     cellid, name, normal, mesure,center,t):
+def _ghost_value_DoubleMach(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]', center: 'float64[:,:]', t: 'float64'):
     
     nbface = len(cellid)
     s_n = np.zeros(2)
@@ -514,10 +501,8 @@ def ghost_value_DoubleMach(rhog,Pg,rhoug,rhovg,ug,vg,
             rhoEg[i]  = 0.5*(rhoug[i]**2 + rhovg[i]**2)/rhog[i] + Pg[i]/(1.4-1)            
             ug[i]    = rhoug[i]/rhog[i]
             vg[i]    = rhovg[i]/rhog[i] 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:], float64[:,:],float64)",  cache=True, fastmath=True)                            
-def ghost_value_TubeSchok(rhog,Pg,rhoug,rhovg,ug,vg,
-                     rhoEg, rhoc,Pc,rhouc,rhovc,rhoEc,
-                     cellid, name, normal, mesure,center,t):
+
+def _ghost_value_TubeSchok(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]', center: 'float64[:,:]', t: 'float64'):
     
     nbface = len(cellid)
     s_n = np.zeros(2)
@@ -588,10 +573,8 @@ def ghost_value_TubeSchok(rhog,Pg,rhoug,rhovg,ug,vg,
             Pg[i] = Pc[cellid[i][0]]
             ug[i] = rhoug[i]/rhog[i]
             vg[i] = rhovg[i]/rhog[i]
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:], float64[:,:],float64)",  cache=True, fastmath=True)                
-def ghost_value_Neumann(rhog,Pg,rhoug,rhovg,ug,vg,
-                     rhoEg, rhoc,Pc,rhouc,rhovc,rhoEc,
-                     cellid, name, normal, mesure,center,t):
+
+def _ghost_value_Neumann(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]', center: 'float64[:,:]', t: 'float64'):
     
     nbface = len(cellid)
     
@@ -646,10 +629,7 @@ def ghost_value_Neumann(rhog,Pg,rhoug,rhovg,ug,vg,
             ug[i] = rhoug[i]/rhog[i]
             vg[i] = rhovg[i]/rhog[i]
 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], float64[:], float64[:,:],float64)",  cache=True, fastmath=True)                
-def ghost_value_Gamm2D(rhog,Pg,rhoug,rhovg,ug,vg,
-                     rhoEg, rhoc,Pc,rhouc,rhovc,rhoEc,
-                     cellid, name, normal, mesure,center,t):
+def _ghost_value_Gamm2D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhoEc: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]', center: 'float64[:,:]', t: 'float64'):
     
     nbface = len(cellid)
     s_n = np.zeros(2)
@@ -738,11 +718,8 @@ def ghost_value_Gamm2D(rhog,Pg,rhoug,rhovg,ug,vg,
             vg[i] = rhovg[i]/rhog[i]
             
             ### Neumann           
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:],float64)",  cache=True, fastmath=True)                      
-def halghost_value_TubeSchok(rhog,Pg,rhoug,rhovg,ug,
-                          vg,rhoEg, rho_halo,P_halo,rhou_halo,
-                          rhov_halo,rhoE_halo, cellid, name, normal,
-                          halonodes, haloghostcenter,haloghostfaceinfo,t):
+
+def _halghost_value_TubeSchok(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]', t: 'float64'):
     s_n = np.zeros(2)
     
     for i in halonodes:
@@ -819,11 +796,8 @@ def halghost_value_TubeSchok(rhog,Pg,rhoug,rhovg,ug,
                     Pg[cellghost]    = P_halo[cellhalo]
                     ug[cellghost] = rhoug[cellghost]/rhog[cellghost]
                     vg[cellghost] = rhovg[cellghost]/rhog[cellghost]
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:],float64)",  cache=True, fastmath=True)                               
-def halghost_value_Neumann(rhog,Pg,rhoug,rhovg,ug,
-                          vg,rhoEg, rho_halo,P_halo,rhou_halo,
-                          rhov_halo,rhoE_halo, cellid, name, normal,
-                          halonodes, haloghostcenter,haloghostfaceinfo,t):
+
+def _halghost_value_Neumann(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]', t: 'float64'):
     
     for i in halonodes:
         for j in range(len(haloghostcenter[i])):
@@ -881,11 +855,8 @@ def halghost_value_Neumann(rhog,Pg,rhoug,rhovg,ug,
                     Pg[cellghost]    = P_halo[cellhalo]
                     ug[cellghost]    = rhoug[cellghost]/rhog[cellghost]
                     vg[cellghost]    = rhovg[cellghost]/rhog[cellghost] 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:],float64)",  cache=True, fastmath=True)                               
-def halghost_value_Gamm2D(rhog,Pg,rhoug,rhovg,ug,
-                          vg,rhoEg, rho_halo,P_halo,rhou_halo,
-                          rhov_halo,rhoE_halo, cellid, name, normal,
-                          halonodes, haloghostcenter,haloghostfaceinfo,t):
+
+def _halghost_value_Gamm2D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]', t: 'float64'):
     s_n = np.zeros(2)
     
     for i in halonodes:
@@ -978,11 +949,7 @@ def halghost_value_Gamm2D(rhog,Pg,rhoug,rhovg,ug,
                     vg[cellghost] = rhovg[cellghost]/rhog[cellghost]
                      
                                                    
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], uint32[:], float64[:,:], uint32[:], float64[:,:,:], float64[:,:,:],float64)",  cache=True, fastmath=True)                              
-def halghost_value_DoubleMach(rhog,Pg,rhoug,rhovg,ug,
-                          vg,rhoEg, rho_halo,P_halo,rhou_halo,
-                          rhov_halo,rhoE_halo, cellid, name, normal,
-                          halonodes, haloghostcenter,haloghostfaceinfo,t):
+def _halghost_value_DoubleMach(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]', rho_halo: 'float64[:]', P_halo: 'float64[:]', rhou_halo: 'float64[:]', rhov_halo: 'float64[:]', rhoE_halo: 'float64[:]', cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', halonodes: 'uint32[:]', haloghostcenter: 'float64[:,:,:]', haloghostfaceinfo: 'float64[:,:,:]', t: 'float64'):
     s_n = np.zeros(2)
     for i in halonodes:
         for j in range(len(haloghostcenter[i])):
@@ -1077,11 +1044,8 @@ def halghost_value_DoubleMach(rhog,Pg,rhoug,rhovg,ug,
                     vg[cellghost]    = rhovg[cellghost]/rhog[cellghost] 
                             
 #            
-# 
-# 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64, float64[:,:], float64[:], float64[:], int32[:,:], float64, float64[:])",  cache=True, fastmath=True)                 
-def time_step_euler_2d(rho,P,rhou, rhov,  cfl, normal, 
-                        mesure, volume, faceid,gamma, dt_c):
+
+def _time_step_euler_2d(rho: 'float64[:]', P: 'float64[:]', rhou: 'float64[:]', rhov: 'float64[:]', cfl: 'float64', normal: 'float64[:,:]', mesure: 'float64[:]', volume: 'float64[:]', faceid: 'int32[:,:]', gamma: 'float64', dt_c: 'float64[:]'):
     
     nbelement =  len(faceid)
     u_n = 0.
@@ -1105,12 +1069,8 @@ def time_step_euler_2d(rho,P,rhou, rhov,  cfl, normal,
 #            dt_c[i]  = cfl*volume[i]/(lam*np.sqrt(2*alphaf) 
 #        else:
 #            dt_c[i]  = cfl*volume[i]/lam  
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], int32[:,:], float64[:,:], float64[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], uint32[:], float64, float64)", cache= True)                 
-def departure_euler_2d(X0,Y0,rhof,rhouf,rhovf,
-                       rhoValForInterp,uValForInterp,vValForInterp, 
-                       xCenterForInterp, yCenterForInterp, nodeidf, 
-                       normalf, mesuref,centerf,vertexn,
-                       centerc,centerg,centerh,name,dt, alphaf):
+
+def _departure_euler_2d(X0: 'float64[:]', Y0: 'float64[:]', rhof: 'float64[:]', rhouf: 'float64[:]', rhovf: 'float64[:]', rhoValForInterp: 'float64[:,:]', uValForInterp: 'float64[:,:]', vValForInterp: 'float64[:,:]', xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', nodeidf: 'int32[:,:]', normalf: 'float64[:,:]', mesuref: 'float64[:]', centerf: 'float64[:,:]', vertexn: 'float64[:,:]', centerc: 'float64[:,:]', centerg: 'float64[:,:]', centerh: 'float64[:,:]', name: 'uint32[:]', dt: 'float64', alphaf: 'float64'):
 
     nbfaces = len(nodeidf)
 
@@ -1125,9 +1085,9 @@ def departure_euler_2d(X0,Y0,rhof,rhouf,rhovf,
 
     for i in range(nbfaces):
            
-            rho_ed = set_carac_field_2d(rhoValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
-            u_ed   = set_carac_field_2d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])/rho_ed
-            v_ed   = set_carac_field_2d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])/rho_ed
+            rho_ed = _set_carac_field_2d(rhoValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+            u_ed   = _set_carac_field_2d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])/rho_ed
+            v_ed   = _set_carac_field_2d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])/rho_ed
     
             
     #        rhof[i]  = rho_ed 
@@ -1151,8 +1111,8 @@ def departure_euler_2d(X0,Y0,rhof,rhouf,rhovf,
 #        yrk1 =  Y0[i] - alphaf*dt*u_ny
 #        
 #                
-#        u    =  set_carac_field_2d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk1,yrk1)/rho_ed
-#        v    =  set_carac_field_2d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk1,yrk1)/rho_ed
+#        u    =  _set_carac_field_2d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk1,yrk1)/rho_ed
+#        v    =  _set_carac_field_2d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk1,yrk1)/rho_ed
 #       
 #      
 #                    
@@ -1160,33 +1120,25 @@ def departure_euler_2d(X0,Y0,rhof,rhouf,rhovf,
 #        yrk2 = 0.75*Y0[i]+0.25*yrk1-0.25*dt*alphaf*v
 #        
 #        
-#        u    =  set_carac_field_2d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk2,yrk2)/rho_ed
-#        v    =  set_carac_field_2d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk2,yrk2)/rho_ed
+#        u    =  _set_carac_field_2d(uValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk2,yrk2)/rho_ed
+#        v    =  _set_carac_field_2d(vValForInterp[i], xCenterForInterp[i], yCenterForInterp[i],xrk2,yrk2)/rho_ed
 #        
 #        
 #        X0[i] = (X0[i] +2.0*xrk2-2.0*alphaf*dt*u)/3.0
 #        Y0[i] = (Y0[i] +2.0*yrk2-2.0*alphaf*dt*v)/3.0
       
 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:,:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64, float64, float64, int32[:,:], float64[:,:], float64[:])", cache= True)           
-def predictor_euler_2d(rho_p,P_p,rhou_p,rhov_p,rhoE_p,
-                       rhoValForInterp,rhouValForInterp,rhovValForInterp,
-                       rhoEValForInterp, xCenterForInterp, yCenterForInterp,
-                       X0,Y0,
-                       ugradfacex,
-                       ugradfacey,vgradfacex,vgradfacey,
-                       Pgradfacex,Pgradfacey, 
-                       gamma, d_t, alphaf,nodeidf, normal, mesuref):    
+def _predictor_euler_2d(rho_p: 'float64[:]', P_p: 'float64[:]', rhou_p: 'float64[:]', rhov_p: 'float64[:]', rhoE_p: 'float64[:]', rhoValForInterp: 'float64[:,:]', rhouValForInterp: 'float64[:,:]', rhovValForInterp: 'float64[:,:]', rhoEValForInterp: 'float64[:,:]', xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', X0: 'float64[:]', Y0: 'float64[:]', ugradfacex: 'float64[:]', ugradfacey: 'float64[:]', vgradfacex: 'float64[:]', vgradfacey: 'float64[:]', Pgradfacex: 'float64[:]', Pgradfacey: 'float64[:]', gamma: 'float64', d_t: 'float64', alphaf: 'float64', nodeidf: 'int32[:,:]', normal: 'float64[:,:]', mesuref: 'float64[:]'):
  
     nbfaces = len(nodeidf)
 
    
     for i in range(nbfaces):
         
-        rho_ed  = set_carac_field_2d(rhoValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
-        rhou_ed = set_carac_field_2d(rhouValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
-        rhov_ed = set_carac_field_2d(rhovValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
-        rhoE_ed = set_carac_field_2d(rhoEValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i],)
+        rho_ed  = _set_carac_field_2d(rhoValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+        rhou_ed = _set_carac_field_2d(rhouValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+        rhov_ed = _set_carac_field_2d(rhovValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+        rhoE_ed = _set_carac_field_2d(rhoEValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i],)
 
         rhop = rho_ed
         rhoup=rhou_ed
@@ -1234,8 +1186,7 @@ def predictor_euler_2d(rho_p,P_p,rhou_p,rhov_p,rhoE_p,
         P_p[i]    = (gamma-1)*(rhoE_p[i] - 0.5*(rhou_p[i]*rhou_p[i] + rhov_p[i]*rhov_p[i])/rho_p[i])
         
         
-@njit("Tuple((float64,float64,float64,float64))(float64, float64, float64, float64, float64, float64[:], float64)", cache= True)             
-def compute_flux_euler_2d_fvc(rhop,Pp,rhoup,rhovp,rhoEp,normal, mesure):
+def _compute_flux_euler_2d_fvc(rhop: 'float64', Pp: 'float64', rhoup: 'float64', rhovp: 'float64', rhoEp: 'float64', normal: 'float64[:]', mesure: 'float64'):
           
         flux_rho   = (rhoup*normal[0] + rhovp*normal[1])*mesure
         flux_rhou  = ((rhoup*rhoup/rhop + Pp)*normal[0] + (rhoup*rhovp/rhop)*normal[1])*mesure
@@ -1244,8 +1195,7 @@ def compute_flux_euler_2d_fvc(rhop,Pp,rhoup,rhovp,rhoEp,normal, mesure):
         
         
         return flux_rho,flux_rhou,flux_rhov,flux_rhoE     
-@njit("Tuple((float64,float64,float64,float64))(float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64[:], float64, float64)", cache= True)             
-def compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr, normal, mesure, gamma):
+def _compute_flux_euler_2d_rusanov(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gamma: 'float64'):
     
     ql = (rhoul*normal[0] + rhovl*normal[1])
     qr = (rhour*normal[0] + rhovl*normal[1])
@@ -1291,11 +1241,8 @@ def compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,
 
     return flux_rho,flux_rhou,flux_rhov,flux_rhoE     
 #######################
-@njit("Tuple((float64,float64,float64,float64))(float64, float64, float64, float64, float64, float64, float64, float64, float64, float64, float64[:], float64, float64)", cache= True)                         
-def compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,
-                              rhoEl,rhor,Pr,rhour,
-                              rhovr,rhoEr, normal, 
-                              mesure, gamma):
+
+def _compute_flux_euler_2d_Roe(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gamma: 'float64'):
     
     uul =  rhoul/rhol
     uur =  rhour/rhor
@@ -1440,11 +1387,8 @@ def compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,
     
 
     return flux_rho,flux_rhou,flux_rhov,flux_rhoE     
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], float64[:,:], float64[:], uint32[:])", cache= True)                                  
-def explicitscheme_euler_2d_fvc(rez_rho,rez_rhou,rez_rhov,
-                                rez_rhoE,rho_p,P_p,
-                                rhou_p,rhov_p,rhoE_p,
-                                cellidf,normal,mesurf,name):
+
+def _explicitscheme_euler_2d_fvc(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]', rho_p: 'float64[:]', P_p: 'float64[:]', rhou_p: 'float64[:]', rhov_p: 'float64[:]', rhoE_p: 'float64[:]', cellidf: 'int32[:,:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]'):
 
     nbface = len(cellidf)
    
@@ -1459,7 +1403,7 @@ def explicitscheme_euler_2d_fvc(rez_rho,rez_rhou,rez_rhov,
             mesu = mesurf[i]
 
                   
-            flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_fvc(rho_p[i],P_p[i],rhou_p[i],rhov_p[i],rhoE_p[i], norm, mesu)
+            flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_fvc(rho_p[i],P_p[i],rhou_p[i],rhov_p[i],rhoE_p[i], norm, mesu)
             
             if name[i] == 0:
          
@@ -1486,15 +1430,7 @@ def explicitscheme_euler_2d_fvc(rez_rho,rez_rhou,rez_rhov,
                 rez_rhov[cellidf[i][0]] -= flux_rhov
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE
                 
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:],  float64[:], float64[:], float64[:], float64[:], int32[:,:], int32[:], float64[:,:], float64[:], uint32[:], float64)", cache= True)                     
-def explicitscheme_euler_2d_rusanov(rez_rho,rez_rhou,rez_rhov,
-                                    rez_rhoE,rho_c,P_c,
-                                    rhou_c,rhov_c,rhoE_c,
-                                    rho_g,P_g,rhou_g,
-                                    rhov_g,rhoE_g,rho_h,
-                                    P_h,rhou_h,rhov_h,
-                                    rhoE_h, cellidf,halofid,
-                                    normal,mesurf,name,gamma):
+def _explicitscheme_euler_2d_rusanov(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma: 'float64'):
     
     
 
@@ -1567,7 +1503,7 @@ def explicitscheme_euler_2d_rusanov(rez_rho,rez_rhou,rez_rhov,
                 rhovr=rhov_c[cellidf[i][1]]
                 rhoEr=rhoE_c[cellidf[i][1]]
 
-                flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
                 
    
                 rez_rho[cellidf[i][0]] -= flux_rho
@@ -1587,7 +1523,7 @@ def explicitscheme_euler_2d_rusanov(rez_rho,rez_rhou,rez_rhov,
                 rhovr=rhov_h[halofid[i]]
                 rhoEr=rhoE_h[halofid[i]]
 
-                flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
                
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
@@ -1602,22 +1538,15 @@ def explicitscheme_euler_2d_rusanov(rez_rho,rez_rhou,rez_rhov,
                 rhovr=rhov_g[i]
                 rhoEr=rhoE_g[i]
 
-                flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
                
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
                 rez_rhov[cellidf[i][0]] -= flux_rhov
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE             
 ####################
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], int32[:,:], int32[:], float64[:,:], float64[:], uint32[:], float64)", cache= True)                   
-def explicitscheme_euler_2d_Roe(rez_rho,rez_rhou,rez_rhov,
-                                    rez_rhoE,rho_c,P_c,
-                                    rhou_c,rhov_c,rhoE_c,
-                                    rho_g,P_g,rhou_g,
-                                    rhov_g,rhoE_g,rho_h,
-                                    P_h,rhou_h,rhov_h,
-                                    rhoE_h, cellidf,halofid,
-                                    normal,mesurf,name,gamma):
+
+def _explicitscheme_euler_2d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma: 'float64'):
 
     nbface = len(cellidf)
        
@@ -1645,7 +1574,7 @@ def explicitscheme_euler_2d_Roe(rez_rho,rez_rhou,rez_rhov,
                 rhovr=rhov_c[cellidf[i][1]]
                 rhoEr=rhoE_c[cellidf[i][1]]
                              
-                flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
    
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rho[cellidf[i][1]] += flux_rho
@@ -1664,7 +1593,7 @@ def explicitscheme_euler_2d_Roe(rez_rho,rez_rhou,rez_rhov,
                 rhovr=rhov_h[halofid[i]]
                 rhoEr=rhoE_h[halofid[i]]
              
-                flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
                 rez_rhov[cellidf[i][0]] -= flux_rhov
@@ -1678,19 +1607,42 @@ def explicitscheme_euler_2d_Roe(rez_rho,rez_rhou,rez_rhov,
                 rhovr=rhov_g[i]
                 rhoEr=rhoE_g[i]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhoE = compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+                flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_Roe(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
                 rez_rhov[cellidf[i][0]] -= flux_rhov
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE       
-@njit("void(float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64[:], float64, float64, float64[:])", cache= True)                                    
-def update_euler_2d_fvc(rho_c, P_c,rhou_c, rhov_c,rhoE_c,
-                        rez_rho,rez_rhou,rez_rhov,rez_rhoE,
-                        gamma,dtime,vol):
+
+def _update_euler_2d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhoE_c: 'float64[:]', rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]', gamma: 'float64', dtime: 'float64', vol: 'float64[:]'):
 
     rho_c[:]   += dtime*((rez_rho[:])/vol[:])
     rhou_c[:]  += dtime*((rez_rhou[:])/vol[:])
     rhov_c[:]  += dtime*((rez_rhov[:])/vol[:])
     rhoE_c[:]  += dtime*((rez_rhoE[:])/vol[:])
     P_c[:]      = (gamma-1)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:])/rho_c[:])
-    
+
+############################################################################
+# Public
+node_for_interpolation_2d = compile(_node_for_interpolation_2d)
+node_value_for_interpolation_2d = compile(_node_value_for_interpolation_2d)
+weight_parameters_carac_2d = compile(_weight_parameters_carac_2d)
+set_carac_field_2d = compile(_set_carac_field_2d)
+initialisation_euler_2d = compile(_initialisation_euler_2d)
+ghost_value_DoubleMach = compile(_ghost_value_DoubleMach)
+ghost_value_TubeSchok = compile(_ghost_value_TubeSchok)
+ghost_value_Neumann = compile(_ghost_value_Neumann)
+ghost_value_Gamm2D = compile(_ghost_value_Gamm2D)
+halghost_value_TubeSchok = compile(_halghost_value_TubeSchok)
+halghost_value_Neumann = compile(_halghost_value_Neumann)
+halghost_value_Gamm2D = compile(_halghost_value_Gamm2D)
+halghost_value_DoubleMach = compile(_halghost_value_DoubleMach)
+time_step_euler_2d = compile(_time_step_euler_2d)
+departure_euler_2d = compile(_departure_euler_2d)
+predictor_euler_2d = compile(_predictor_euler_2d)
+compute_flux_euler_2d_fvc = compile(_compute_flux_euler_2d_fvc)
+compute_flux_euler_2d_rusanov = compile(_compute_flux_euler_2d_rusanov)
+compute_flux_euler_2d_Roe = compile(_compute_flux_euler_2d_Roe)
+explicitscheme_euler_2d_fvc = compile(_explicitscheme_euler_2d_fvc)
+explicitscheme_euler_2d_rusanov = compile(_explicitscheme_euler_2d_rusanov)
+explicitscheme_euler_2d_Roe = compile(_explicitscheme_euler_2d_Roe)
+update_euler_2d_fvc = compile(_update_euler_2d_fvc)

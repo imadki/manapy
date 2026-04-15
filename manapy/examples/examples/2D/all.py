@@ -10,9 +10,9 @@ from mpi4py import MPI
 import timeit
 from manapy.domain import Domain, Partitioning
 from manapy.helpers import get_mesh
-from manapy.sys_solvers.advec.tools_utils_compute import initialisation_gaussian_2d
-from manapy.sys_solvers.advecdiff.system import AdvectionDiffusionSolver
-from manapy.sys_solvers.advec.system import AdvectionSolver
+from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
+from manapy.solvers.advecdiff.system import AdvectionDiffusionSolver
+from manapy.solvers.advec.system import AdvectionSolver
 from manapy.core.Variable import Variable
 from manapy.backends.debug import log_step
 

@@ -7,8 +7,8 @@ Created on Wed Feb 16 09:13:21 2022
 """
 
 from mpi4py import MPI
-from manapy.sys_solvers.shallowater.system import ShallowWaterSolver
-from manapy.sys_solvers.shallowater.tools_utils_compute import initialisation_SW
+from manapy.solvers.shallowater.system import ShallowWaterSolver
+from manapy.solvers.shallowater.tools_utils_compute import initialisation_SW
 import timeit
 from manapy.domain import Domain, Partitioning
 from manapy.helpers import get_mesh

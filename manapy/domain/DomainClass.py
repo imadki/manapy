@@ -171,6 +171,11 @@ class Domain:
     self.boundarynodes = self._boundarynodes
     self.periodicboundaryfaces = self._periodicboundaryfaces
     self.periodicboundarynodes = self._periodicboundarynodes
+
+    self.periodicinfaces = self._periodicinfaces
+    self.periodicoutfaces = self._periodicoutfaces
+    self.periodicupperfaces = self._periodicupperfaces
+    self.periodicfrontfaces = self._periodicfrontfaces
     self.frontfaces = self._frontfaces
     self.backfaces = self._backfaces
     self.frontnodes = self._frontnodes
