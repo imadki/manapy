@@ -1,4 +1,6 @@
 import numpy as np
+import numpy.typing as npt
+from typing import Union
 from mpi4py import MPI
 from manapy.core.Variable import Variable
 from manapy.domain import Domain

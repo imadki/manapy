@@ -1,34 +1,85 @@
-FROM amd64/python:3.8
+FROM quay.io/pypa/manylinux_2_28_x86_64
 
-RUN apt upgrade -y && apt update
+ENV PYTHON_ROOT=/opt/python/cp314-cp314 \
+    PROJECT_ROOT=/workspace/manapy \
+    PETSC_CONFIGURE_OPTIONS="--with-debugging=0 --download-fblaslapack --with-shared-libraries=1"
 
-RUN apt -y install vim -y && \
-    apt -y install cython3 -y && \
-    apt install openmpi-bin openmpi-common libopenmpi-dev -y && \
-    apt install libopenmpi-dev -y && \
-    apt-get install -y \
-        wget \
+ENV PATH="${PYTHON_ROOT}/bin:/usr/lib64/openmpi/bin:${PATH}" \
+    LD_LIBRARY_PATH="/usr/lib64/openmpi/lib:${LD_LIBRARY_PATH}" \
+    PKG_CONFIG_PATH="/usr/lib64/openmpi/lib/pkgconfig:${PKG_CONFIG_PATH}"
+
+#   find /usr -name "lib*mumps*.so" 2> /dev/null
+#   find /usr -name "dmumps_c*.h" 2> /dev/null
+
+ENV OMPI_MCA_mtl=^ofi \
+    OMPI_MCA_btl=tcp,self \
+    MUMPS_INC=/usr/include/openmpi-x86_64 \
+    MUMPS_LIB=/usr/lib64/openmpi/lib \
+    MUMPS_SOLVERS=dmumps,cmumps,zmumps,smumps
+
+RUN dnf -y update && \
+    dnf -y install \
+        blas-devel \
+        bzip2 \
+        cmake \
         curl \
-        build-essential \
-        lsb-release \
-        python3.8-dev && \
-    python3 -m pip install --upgrade pip && \
-    python3 -m pip install mpi4py && \
-    python3 -m pip install cython && \
-    python3 -m pip install pythran && \
-    python3 -m pip install pytest
+        findutils \
+        gcc \
+        gcc-c++ \
+        gcc-gfortran \
+        git \
+        gmp-devel \
+        lapack-devel \
+        make && \
+    dnf -y install \
+        metis-devel \
+        MUMPS-openmpi \
+        MUMPS-openmpi-devel \
+        openmpi \
+        openmpi-devel \
+        patch \
+        suitesparse-devel \
+        swig && \
+    dnf -y install pkgconf-pkg-config \
+        scalapack-openmpi \
+        scalapack-openmpi-devel \
+        tar \
+        vim \
+        wget \
+        which \
+        xz && \
+        dnf clean all && \
+        rm -rf /var/cache/dnf
 
-COPY manapy /manapy
-COPY ./manapy/Docker/tests.sh /
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install cython mpi4py pythran pytest && \
+    python -m pip install petsc petsc4py
 
-RUN chmod +x /tests.sh
+RUN git clone https://github.com/imadki/mumps4py.git && \
+    cd mumps4py && \
+    python -m pip install .
 
-RUN echo "[mpi]\n\
-mpicc = /usr/bin/mpicc\n\
-mpicxx = /usr/bin/mpicxx" > "`python3 -c "import mpi4py; from os.path import join, dirname;print(dirname(mpi4py.__spec__.origin))"`/mpi.cfg"
+RUN cd /tmp && \
+    curl -LO https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.gz && \
+    tar -xzf mpfr-4.2.1.tar.gz && \
+    cd mpfr-4.2.1 && \
+    ./configure --prefix=/usr/local && \
+    make -j 12 && \
+    make install && \
+    rm -rf /tmp/mpfr-4.2.1 /tmp/mpfr-4.2.1.tar.gz
 
-WORKDIR /manapy
+RUN cd /tmp && \
+    git clone --branch stable https://github.com/DrTimothyAldenDavis/SuiteSparse.git && \
+    cd SuiteSparse && \
+    make -j 12 && \
+    make install && \
+    python -m pip install scipy scikit-umfpack && \
+    rm -rf /tmp/SuiteSparse
 
-RUN python3 -m pip install .
+# COPY . ${PROJECT_ROOT}
 
-CMD ["/bin/bash", "/tests.sh"]
+WORKDIR ${PROJECT_ROOT}
+VOLUME ["/workspace/manapy"]
+
+
+CMD ["/bin/bash"]

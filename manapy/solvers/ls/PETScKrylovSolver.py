@@ -5,6 +5,8 @@ from manapy.domain import Domain
 import manapy.solvers.ls.ls_compute as ls_compute
 from manapy.backends.types import FLOAT_TYPE
 from manapy.solvers.ls.LinearSolver import LinearSolver
+import numpy.typing as npt
+from typing import Union
 
 class PETScKrylovSolver(LinearSolver):
   _parameters = [

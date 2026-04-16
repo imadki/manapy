@@ -11,7 +11,8 @@ from manapy.core.Variable import Variable
 from manapy.domain import Domain
 import manapy.solvers.ls.ls_compute as ls_compute
 from manapy.backends.types import FLOAT_TYPE, np_float_type
-
+from scipy.sparse.csgraph import reverse_cuthill_mckee
+from scipy.sparse import csr_matrix
 
 class LinearSolver:
   _parameters = [('scheme', 'str', 'diamond', 'fv4',
@@ -46,7 +47,7 @@ class LinearSolver:
 
 
     self.scheme = scheme
-    self.verbose = True
+    self.verbose = False
 
     self.var = var
     self.domain = domain
@@ -177,8 +178,6 @@ class LinearSolver:
                              self.var.dirichletfaces, self.domain.periodicboundaryfaces)
 
   def reordering_matrix(self):
-    from scipy.sparse.csgraph import reverse_cuthill_mckee
-    from scipy.sparse import csr_matrix
     matrix = csr_matrix((self._data, (self._row, self._col)))
     # Compute the reverse Cuthill-Mckee ordering
     self.perm = reverse_cuthill_mckee(matrix, symmetric_mode=False)
