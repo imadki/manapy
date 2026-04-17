@@ -41,7 +41,7 @@ def get_type(s: 'str'):
   elif n_dim == 0:
     return base_type
   else:
-    return base_type[n_dim * (slice(None),)]
+    return numba.types.Array(base_type, n_dim, 'C')
 
 def get_arg_types(func):
   arg_types = []
