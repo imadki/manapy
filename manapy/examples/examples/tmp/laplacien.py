@@ -12,8 +12,7 @@ from manapy.domain import Domain, Partitioning
 from manapy.helpers import get_mesh
 import numpy as np
 from manapy.core.Variable import Variable
-from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
-import os
+from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver, ScipySolver
 
 
 COMM = MPI.COMM_WORLD
@@ -22,9 +21,9 @@ RANK = COMM.Get_rank()
 
 start = timeit.default_timer()
 
-filename = "big/mid_rectangle.msh"
+filename = "big/carre.msh"
 dim, mesh_path, mesh_name = get_mesh(filename)
-domain = Domain.create_domain(filename, dim, Partitioning.Par_Nodal, recreate=True)
+domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -60,19 +59,18 @@ values = {"in": 20,
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
 
-L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
+# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
 # L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
 #               precond='gamg', sub_precond="amg",  # with_mtx=False,
 #               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
+L = ScipySolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
 # Solve the system
 ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
-
-
 
 def save_matrix_petsc(x_sol):
   from scipy.sparse import coo_matrix
@@ -94,7 +92,6 @@ def save_matrix_petsc(x_sol):
   mmwrite("x.mtx", x)
   mmwrite("A.mtx", A)
   print("Data saved petsc")
-
 
 def save_matrix_mumps():
   from scipy.sparse import coo_matrix
@@ -142,7 +139,10 @@ if RANK == 0:
 if isinstance(L, PETScKrylovSolver):
   x_sol = vec_to_numpy_root(L.sol)
   if RANK == 0:
-    save_matrix_petsc(x_sol)
+    print("Sum of solution", np.sum(x_sol))
+    # save_matrix_petsc(x_sol)
 else:
+  x_sol = L.sol
   if RANK == 0:
-    save_matrix_mumps()
+    print("Sum of solution", np.sum(x_sol))
+    # save_matrix_mumps()

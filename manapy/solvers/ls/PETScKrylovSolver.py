@@ -43,7 +43,7 @@ class PETScKrylovSolver(LinearSolver):
   def __init__(self,
                domain: Domain,
                var: Variable,
-               comm: MPI.Intracomm = MPI.COMM_WORLD,
+               comm: MPI.Comm = MPI.COMM_WORLD,
                scheme: str = "diamond",
                reordering: bool = False,
                reuse_mtx: bool = True,
@@ -55,7 +55,7 @@ class PETScKrylovSolver(LinearSolver):
                i_max: int = 1000,
                eps_a: float = 1e-6,
                eps_r: float = 1e-12,
-               eps_d: float = 1e-5,
+               eps_d: float = 1e5,
                petsc_options: dict = None
    ):
     if petsc_options is None:
