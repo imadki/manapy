@@ -13,14 +13,14 @@ COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
 RANK = COMM.Get_rank()
 
-def face_gradient_info_2d(cellidf: 'int32[:,:]', nodeidf: 'int32[:,:]', centergf: 'float[:,:]', namef: 'int32[:]',
+def face_gradient_info_2d(cellidf: 'int[:,:]', nodeidf: 'int[:,:]', centergf: 'float[:,:]', namef: 'int[:]',
                           normalf: 'float[:,:]',
-                          centerc: 'float[:,:]', centerh: 'float[:,:]', halofid: 'int32[:]', vertexn: 'float[:,:]',
+                          centerc: 'float[:,:]', centerh: 'float[:,:]', halofid: 'int[:]', vertexn: 'float[:,:]',
                           airDiamond: 'float[:]', param1: 'float[:]', param2: 'float[:]', param3: 'float[:]',
                           param4: 'float[:]',
                           f_1: 'float[:,:]', f_2: 'float[:,:]', f_3: 'float[:,:]', f_4: 'float[:,:]',
                           shift: 'float[:,:]',
-                          dim: 'int32', Kx: 'float[:]', Ky: 'float[:]'):
+                          dim: 'int', Kx: 'float[:]', Ky: 'float[:]'):
   nbface = len(cellidf)
 
   xy_1 = np.zeros(dim)

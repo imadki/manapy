@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-FLOAT_TYPE = "float64"
+FLOAT_TYPE = "float32"
 # Only use int64 for larger domain (to be able to index more than 2 Billion cells)
 INT_TYPE = "int32"
 
