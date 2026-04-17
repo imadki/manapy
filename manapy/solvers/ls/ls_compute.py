@@ -232,7 +232,7 @@ def _get_triplet_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', nodes: 'floa
               ydiff = center[1] - nodes[nod][1]
               alpha = (1. + node_lambda_x[nod] * xdiff + \
                        node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
-              index = node_haloghostcenter[nod][j][0]
+              index = node_ghostcenter_info[nod][j][0]
               value = alpha / cell_volume[c_left] * parameters[cmptparam]
               irn_loc[cmpt] = c_leftglob
               jcn_loc[cmpt] = halo_halosext[index][0]
@@ -699,6 +699,364 @@ def _get_rhs_glob_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldnam
     V_K = Pbordface[i]
     value = -2. * face_param3[i] / cell_volume[c_left] * V_K
     rhs[c_leftglob] += value
+
+def _get_triplet_2d_with_contrib(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', cell_faceid: 'int32[:,:]',
+                                nodes: 'float[:,:]', face_haloid: 'int32[:]',
+                                halo_halosext: 'int32[:,:]', node_oldname: 'uint32[:]', cell_volume: 'float[:]',
+                                node_cellid: 'int32[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]',
+                                node_haloid: 'int32[:,:]',
+                                node_periodicid: 'int32[:,:]',
+                                node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
+                                node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'uint32[:]', node_R_x: 'float[:]',
+                                node_R_y: 'float[:]', param1: 'float[:]',
+                                param2: 'float[:]', param3: 'float[:]', param4: 'float[:]', cell_shift: 'float[:,:]',
+                                nbelements: 'int32', cell_loctoglob: 'int32[:]',
+                                BCdirichlet: 'uint32[:]', a_loc: 'float[:]', irn_loc: 'int32[:]', jcn_loc: 'int32[:]',
+                                matrixinnerfaces: 'uint32[:]', d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]',
+                                Icell: 'float[:]',  # Ihalo:'float[:]', Ihaloghost:'float[:]',
+                                alpha_P: 'float', perm_vec: 'float[:]',
+                                visc_vec: 'float[:]', BCneumannNH: 'uint32[:]', dist: 'float[:]'):
+
+
+  center = np.zeros(2)
+  parameters = np.zeros(2)
+  cmpt = 0
+  one_rank = (node_haloghostcenter_info.shape[0] == 0)
+
+  for i in matrixinnerfaces:
+    nbfL = cell_faceid[face_cellid[i][0]][-1]
+    nbfR = cell_faceid[face_cellid[i][1]][-1]
+    c_left = face_cellid[i][0]
+    c_leftglob = cell_loctoglob[c_left]
+
+    parameters[0] = param4[i];
+    parameters[1] = param2[i]
+
+    c_right = face_cellid[i][1]
+    c_rightglob = cell_loctoglob[c_right]
+
+    # perm_visc = dist[i][0]/(dist[i][1]/(perm_vec[c_rightglob]/visc_vec[c_rightglob]) + dist[i][2]/(perm_vec[c_leftglob]/visc_vec[c_leftglob]))
+
+    # perm = dist[i][0]/(dist[i][1]/perm_vec[c_rightglob] + dist[i][2]/perm_vec[c_leftglob])
+    # visc = dist[i][0]/(dist[i][1]/visc_vec[c_rightglob] + dist[i][2]/visc_vec[c_leftglob])
+
+    perm = 0.5 * (perm_vec[c_rightglob] + perm_vec[c_leftglob])
+    visc = 0.5 * (visc_vec[c_rightglob] + visc_vec[c_leftglob])
+
+    perm_visc = perm / visc
+
+    irn_loc[cmpt] = c_leftglob
+    jcn_loc[cmpt] = c_leftglob
+    value = param1[i] / cell_volume[c_left]
+    a_loc[cmpt] = value * Icell[c_left] * (perm_visc) + (1 / nbfL) * cell_volume[c_left] * alpha_P * (1 - Icell[c_left])
+    cmpt = cmpt + 1
+
+    cmptparam = 0
+    for nod in faces[i][:faces[i][-1]]:
+      if _search_element(BCdirichlet, node_oldname[nod]) == 0:  # and search_element(BCneumannNH, node_oldname[nod]) == 0:
+        for j in range(node_cellid[nod][-1]):
+          center[:] = cell_center[node_cellid[nod][j]][0:2]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = cell_loctoglob[node_cellid[nod][j]]
+          a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+          irn_loc[cmpt] = c_rightglob
+          jcn_loc[cmpt] = cell_loctoglob[node_cellid[nod][j]]
+          a_loc[cmpt] = value * Icell[c_right] * (perm_visc)
+          cmpt = cmpt + 1
+
+        for j in range(len(node_ghostcenter_info[nod])):
+          if node_ghostcenter_info[nod][j][-1] != -1:
+            center[:] = node_ghostcenter[nod][j][0:2]
+            xdiff = center[0] - nodes[nod][0]
+            ydiff = center[1] - nodes[nod][1]
+            alpha = (1. + node_lambda_x[nod] * xdiff + \
+                     node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+            index = node_ghostcenter_info[nod][j][0]
+            value = alpha / cell_volume[c_left] * parameters[cmptparam]
+            irn_loc[cmpt] = c_leftglob
+            jcn_loc[cmpt] = cell_loctoglob[index]
+            a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
+            cmpt = cmpt + 1
+            # right cell-----------------------------------
+            value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+            irn_loc[cmpt] = c_rightglob
+            jcn_loc[cmpt] = cell_loctoglob[index]
+            a_loc[cmpt] = value * Icell[c_right] * (perm_visc)
+            cmpt = cmpt + 1
+
+        if not one_rank:
+          for j in range(len(node_haloghostcenter_info[nod])):
+            if node_haloghostcenter_info[nod][j][-1] != -1:
+              center[:] = node_haloghostcenter[nod][j][0:2]
+              xdiff = center[0] - nodes[nod][0]
+              ydiff = center[1] - nodes[nod][1]
+              alpha = (1. + node_lambda_x[nod] * xdiff + \
+                       node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+              index = int(node_haloghostcenter[nod][j][2])
+              #                        cell  = int(node_haloghostcenter[nod][j][-1])
+              value = alpha / cell_volume[c_left] * parameters[cmptparam]
+              irn_loc[cmpt] = c_leftglob
+              jcn_loc[cmpt] = halo_halosext[index][0]
+              a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
+              cmpt = cmpt + 1
+              # right cell-----------------------------------
+              value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+              irn_loc[cmpt] = c_rightglob
+              jcn_loc[cmpt] = halo_halosext[index][0]
+              # TODO
+              a_loc[cmpt] = value * Icell[c_right] * (
+                perm_visc)  # value*Ihaloghost[int(node_haloghostcenter[nod][j][-1])]*(perm/visc)
+              cmpt = cmpt + 1
+
+          for j in range(node_haloid[nod][-1]):
+            center[:] = halo_centvol[node_haloid[nod][j]][0:2]
+            xdiff = center[0] - nodes[nod][0]
+            ydiff = center[1] - nodes[nod][1]
+            alpha = (1. + node_lambda_x[nod] * xdiff + \
+                     node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+            value = alpha / cell_volume[c_left] * parameters[cmptparam]
+            irn_loc[cmpt] = c_leftglob
+            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+            a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
+            cmpt = cmpt + 1
+            # right cell-----------------------------------
+            value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+            irn_loc[cmpt] = c_rightglob
+            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+            a_loc[cmpt] = value * Icell[c_right] * (perm_visc)  # value*Ihalo[node_haloid[nod][j]]*(perm/visc)
+            cmpt = cmpt + 1
+
+      cmptparam = +1
+
+    irn_loc[cmpt] = c_leftglob
+    jcn_loc[cmpt] = c_rightglob
+    value = param3[i] / cell_volume[c_left]
+    a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
+    cmpt = cmpt + 1
+
+    # right cell------------------------------------------------------
+    irn_loc[cmpt] = c_rightglob
+    jcn_loc[cmpt] = c_leftglob
+    value = -1. * param1[i] / cell_volume[c_right]
+    a_loc[cmpt] = value * Icell[c_right] * (perm_visc)
+    cmpt = cmpt + 1
+
+    irn_loc[cmpt] = c_rightglob
+    jcn_loc[cmpt] = c_rightglob
+    value = -1. * param3[i] / cell_volume[c_right]
+    a_loc[cmpt] = value * Icell[c_right] * (perm_visc) + (1 / nbfR) * cell_volume[c_right] * alpha_P * (1 - Icell[c_right])
+    cmpt = cmpt + 1
+  '''
+  for i in halofaces:
+      nbfL = faceidc[cellfid[i][0]][-1]
+
+      c_left = cellfid[i][0]
+      c_leftglob  = loctoglob[c_left]
+
+      perm = perm_vec[c_leftglob] 
+      visc = visc_vec[c_leftglob]
+
+      parameters[0] = param4[i]; parameters[1] = param2[i]
+
+      c_rightglob = haloext[halofid[i]][0]
+      c_right     = halofid[i]
+
+      irn_loc[cmpt] = c_leftglob
+      jcn_loc[cmpt] = c_leftglob
+      value =  param1[i] / volume[c_left]
+      a_loc[cmpt] = value*Icell[c_left]*(perm/visc) + (1/nbfL)*volume[c_left]*alpha_P*(1 - Icell[c_left])
+      cmpt = cmpt + 1
+
+      irn_loc[cmpt] = c_leftglob
+      jcn_loc[cmpt] = c_rightglob
+      value =  param3[i] / volume[c_left]
+      a_loc[cmpt] = value*Icell[c_left]*(perm/visc)
+      cmpt = cmpt + 1
+
+      cmptparam = 0
+      for nod in nodeidf[i]:
+          if search_element(BCdirichlet, oldnamen[nod]) == 0 and search_element(BCneumannNH, oldnamen[nod]) == 0: 
+              for j in range(cellnid[nod][-1]):
+                  center[:] = centerc[cellnid[nod][j]][0:2]
+                  xdiff = center[0] - vertexn[nod][0]
+                  ydiff = center[1] - vertexn[nod][1]
+                  alpha = (1. + lambda_x[nod]*xdiff + \
+                            lambda_y[nod]*ydiff)/(number[nod] + lambda_x[nod]*R_x[nod] + lambda_y[nod]*R_y[nod])
+                  value =  alpha / volume[c_left] * parameters[cmptparam]
+                  irn_loc[cmpt] = c_leftglob
+                  jcn_loc[cmpt] = loctoglob[cellnid[nod][j]]
+                  a_loc[cmpt] = value*Icell[c_left]*(perm/visc)
+                  cmpt = cmpt + 1
+
+              for j in range(len(centergn[nod])):
+                  if centergn[nod][j][-1] != -1:
+                      center[:] = centergn[nod][j][0:2]
+                      xdiff = center[0] - vertexn[nod][0]
+                      ydiff = center[1] - vertexn[nod][1]
+                      alpha = (1. + lambda_x[nod]*xdiff + \
+                                lambda_y[nod]*ydiff)/(number[nod] + lambda_x[nod]*R_x[nod] + lambda_y[nod]*R_y[nod])
+                      index = int(centergn[nod][j][2])
+                      value = alpha / volume[c_left] * parameters[cmptparam]
+                      irn_loc[cmpt] = c_leftglob
+                      jcn_loc[cmpt] = loctoglob[index]
+                      a_loc[cmpt] = value*Icell[c_left]*(perm/visc)
+                      cmpt = cmpt + 1
+
+              for j in range(len(halocentergn[nod])):
+                  if halocentergn[nod][j][-1] != -1:
+                      center[:] = halocentergn[nod][j][0:2]
+                      xdiff = center[0] - vertexn[nod][0]
+                      ydiff = center[1] - vertexn[nod][1]
+                      alpha = (1. + lambda_x[nod]*xdiff + \
+                                lambda_y[nod]*ydiff)/(number[nod] + lambda_x[nod]*R_x[nod] + lambda_y[nod]*R_y[nod])
+                      index = int(halocentergn[nod][j][2])
+                      value = alpha / volume[c_left] * parameters[cmptparam]
+                      irn_loc[cmpt] = c_leftglob
+                      jcn_loc[cmpt] = haloext[index][0]
+                      a_loc[cmpt] = value*Icell[c_left]*(perm/visc)
+                      cmpt = cmpt + 1
+
+              for j in range(halonid[nod][-1]):
+                  center[:] = centerh[halonid[nod][j]][0:2]
+                  xdiff = center[0] - vertexn[nod][0]
+                  ydiff = center[1] - vertexn[nod][1]
+                  alpha = (1. + lambda_x[nod]*xdiff + \
+                            lambda_y[nod]*ydiff)/(number[nod] + lambda_x[nod]*R_x[nod] + lambda_y[nod]*R_y[nod])
+                  value =  alpha / volume[c_left] * parameters[cmptparam]
+                  irn_loc[cmpt] = c_leftglob
+                  jcn_loc[cmpt] = haloext[halonid[nod][j]][0]
+                  a_loc[cmpt] = value*Icell[c_left]*(perm/visc)
+                  cmpt = cmpt + 1
+          cmptparam +=1
+  '''
+  for i in dirichletfaces:
+    nbfL = cell_faceid[face_cellid[i][0]][-1]
+    c_left = face_cellid[i][0]
+    c_leftglob = cell_loctoglob[c_left]
+
+    perm = perm_vec[c_leftglob]
+    visc = visc_vec[c_leftglob]
+
+    irn_loc[cmpt] = c_leftglob
+    jcn_loc[cmpt] = c_leftglob
+    value = param1[i] / cell_volume[c_left]
+    a_loc[cmpt] = value * Icell[c_left] * (perm / visc) + (1 / nbfL) * cell_volume[c_left] * alpha_P * (1 - Icell[c_left])
+    cmpt = cmpt + 1
+
+    irn_loc[cmpt] = c_leftglob
+    jcn_loc[cmpt] = c_leftglob
+    value = -1. * param3[i] / cell_volume[c_left]
+    a_loc[cmpt] = value * Icell[c_left] * (perm / visc) + (1 / nbfL) * cell_volume[c_left] * alpha_P * (1 - Icell[c_left])
+    cmpt = cmpt + 1
+
+
+def _get_rhs_glob_2d_with_contrib(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
+                                 cell_volume: 'float[:]', node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', cell_loctoglob: 'int32[:]',
+                                 face_param1: 'float[:]', face_param2: 'float[:]',
+                                 face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]',
+                                 Pbordface: 'float[:]', rhs: 'float[:]',
+                                 BCdirichlet: 'uint32[:]', centergf: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
+                                 d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]', neumannNHfaces: 'uint32[:]',
+                                 Icell: 'float[:]', Inode: 'float[:]', perm_vec: 'float[:]', visc_vec: 'float[:]',
+                                 cst: 'float', mesuref: 'float[:]', normalf: 'float[:,:]', dist: 'float[:]'):
+
+  rhs[:] = 0.
+  for i in matrixinnerfaces:
+    c_left = face_cellid[i][0]
+    c_leftglob = cell_loctoglob[c_left]
+
+    i_1 = faces[i][0]
+    i_2 = faces[i][1]
+
+    c_right = face_cellid[i][1]
+    c_rightglob = cell_loctoglob[c_right]
+
+    perm = 0.5 * (perm_vec[c_rightglob] + perm_vec[c_leftglob])
+    visc = 0.5 * (visc_vec[c_rightglob] + visc_vec[c_leftglob])
+
+    perm_visc = perm / visc
+
+    # perm = dist[i][0]/(dist[i][1]/perm_vec[c_rightglob] + dist[i][2]/perm_vec[c_leftglob])
+    # visc = dist[i][0]/(dist[i][1]/visc_vec[c_rightglob] + dist[i][2]/visc_vec[c_leftglob])
+
+    if _search_element(BCdirichlet, node_oldname[i_1]) == 1:
+      VL = Pbordnode[i_1] * Icell[c_left] * (perm_visc)
+      value_left = -1. * VL * face_param4[i] / cell_volume[c_left]
+      rhs[c_leftglob] += value_left
+
+      VR = Pbordnode[i_1] * Icell[c_right] * (perm_visc)
+      value_right = VR * face_param4[i] / cell_volume[c_right]
+      rhs[c_rightglob] += value_right
+
+    if _search_element(BCdirichlet, node_oldname[i_2]) == 1:
+      VL = Pbordnode[i_2] * Icell[c_left] * (perm_visc)
+      value_left = -1. * VL * face_param2[i] / cell_volume[c_left]
+      rhs[c_leftglob] += value_left
+
+      VR = Pbordnode[i_2] * Icell[c_right] * (perm_visc)
+      value_right = VR * face_param2[i] / cell_volume[c_right]
+      rhs[c_rightglob] += value_right
+
+  for i in d_halofaces:
+    c_left = face_cellid[i][0]
+    c_leftglob = cell_loctoglob[c_left]
+
+    perm = perm_vec[c_leftglob]
+    visc = visc_vec[c_leftglob]
+
+    i_1 = faces[i][0]
+    i_2 = faces[i][1]
+
+    if _search_element(BCdirichlet, node_oldname[i_1]) == 1:
+      VL = Pbordnode[i_1] * Icell[c_left] * (perm / visc)
+      value_left = -1. * VL * face_param4[i] / cell_volume[c_left]
+      rhs[c_leftglob] += value_left
+
+    if _search_element(BCdirichlet, node_oldname[i_2]) == 1:
+      VR = Pbordnode[i_2] * Icell[c_left] * (perm / visc)
+      value_left = -1. * VR * face_param2[i] / cell_volume[c_left]
+      rhs[c_leftglob] += value_left
+
+  for i in dirichletfaces:
+    c_left = face_cellid[i][0]
+    c_leftglob = cell_loctoglob[c_left]
+
+    perm = perm_vec[c_leftglob]
+    visc = visc_vec[c_leftglob]
+
+    i_1 = faces[i][0]
+    i_2 = faces[i][1]
+
+    if node_ghostcenter_info[i_1][0][0] != -1:
+      VL = Pbordnode[i_1] * Icell[c_left] * (perm / visc)
+      value_left = -1. * VL * face_param4[i] / cell_volume[c_left]
+      rhs[c_leftglob] += value_left
+
+    if node_ghostcenter_info[i_2][0][0] != -1:
+      VL = Pbordnode[i_2] * Icell[c_left] * (perm / visc)
+      value_left = -1. * VL * face_param2[i] / cell_volume[c_left]
+      rhs[c_leftglob] += value_left
+
+    V_K = Pbordface[i] * Icell[c_left] * (perm / visc)
+    value = -2. * face_param3[i] / cell_volume[c_left] * V_K
+    rhs[c_leftglob] += value
+
+  for i in neumannNHfaces:
+    c_left = face_cellid[i][0]
+    c_leftglob = cell_loctoglob[c_left]
+
+    perm = perm_vec[c_left]
+    visc = visc_vec[c_left]
+    rhs[c_leftglob] -= 1 * Icell[c_left] * (perm / visc) * cst * (np.sqrt(normalf[i][0] ** 2 + normalf[i][1] ** 2)) / \
+                       cell_volume[c_left]
 
 
 
@@ -1559,3 +1917,5 @@ get_rhs_glob_2d = compile(_get_rhs_glob_2d)
 get_rhs_glob_3d = compile(_get_rhs_glob_3d)
 get_rhs_loc_2d = compile(_get_rhs_loc_2d)
 get_rhs_loc_3d = compile(_get_rhs_loc_3d)
+get_triplet_2d_with_contrib = compile(_get_triplet_2d_with_contrib)
+get_rhs_glob_2d_with_contrib = compile(_get_rhs_glob_2d_with_contrib)

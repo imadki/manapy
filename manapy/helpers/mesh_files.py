@@ -16,6 +16,7 @@ meshes_list = [
   (2, 'big/carre.msh'),#6
   (3, 'big/tetra_test_100.msh'),#7
   (3, 'big/tetra_test_200.msh'), #8
+  (2, 'big/carre1.msh'),#6
 ]
 
 test_meshes_list = [
