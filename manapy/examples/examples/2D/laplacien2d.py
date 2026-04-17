@@ -76,4 +76,3 @@ te = MPI.Wtime()
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:
   print("Time to do calculation", tt)
-  print(L.sol)

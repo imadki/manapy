@@ -85,9 +85,9 @@ class ScipySolver(LinearSolver):
       rhs = self.rhs0
 
     if self.reuse_mtx:
-      self.var.cell = self.solve(rhs)
+      self.sol = self.solve(rhs)
     else:
-      self.var.cell = self.sls.spsolve(self.mat, rhs)
+      self.sol = self.sls.spsolve(self.mat, rhs)
 
     if self.reordering and self.comm.Get_size() == 1:
       self.var.cell = self.var.cell[np.argsort(self.perm)]
