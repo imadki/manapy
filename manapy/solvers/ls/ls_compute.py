@@ -2,11 +2,11 @@ from manapy.backends.compile_fun import compile
 import numpy as np
 
 ### UTILS
-def _convert_solution(x1: 'float[:]', x1converted: 'float[:]', cell_tc: 'int32[:]', b0Size: 'int32'):
+def _convert_solution(x1: 'float[:]', x1converted: 'float[:]', cell_tc: 'int[:]', b0Size: 'int'):
   for i in range(b0Size):
     x1converted[i] = x1[cell_tc[i]]
 
-def _search_element(a: 'int32[:]', target_value: 'int32'):
+def _search_element(a: 'int[:]', target_value: 'int'):
   find = 0
   for val in a:
     if val == target_value:
@@ -15,28 +15,28 @@ def _search_element(a: 'int32[:]', target_value: 'int32'):
   return find
 
 
-def _rhs_value_dirichlet_node(Pbordnode: 'float[:]', nodes: 'uint32[:]', value: 'float[:]'):
+def _rhs_value_dirichlet_node(Pbordnode: 'float[:]', nodes: 'int[:]', value: 'float[:]'):
   for i in nodes:
     Pbordnode[i] = value[i]
 
 
-def _rhs_value_dirichlet_face(Pbordface: 'float[:]', faces: 'uint32[:]', value: 'float[:]'):
+def _rhs_value_dirichlet_face(Pbordface: 'float[:]', faces: 'int[:]', value: 'float[:]'):
   for i in faces:
     Pbordface[i] = value[i]
 
 def _compute_P_gradient_2d_diamond(P_c: 'float[:]', P_ghost: 'float[:]', P_halo: 'float[:]', P_node: 'float[:]',
-                                  face_cellid: 'int32[:,:]',
-                                  faces: 'int32[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int32[:]',
+                                  face_cellid: 'int[:,:]',
+                                  faces: 'int[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int[:]',
                                   cell_center: 'float[:,:]',
-                                  halo_centvol: 'float[:,:]', node_oldname: 'uint32[:]', face_air_diamond: 'float[:]',
+                                  halo_centvol: 'float[:,:]', node_oldname: 'int[:]', face_air_diamond: 'float[:]',
                                   face_f1: 'float[:,:]', face_f2: 'float[:,:]',
                                   face_f3: 'float[:,:]', face_f4: 'float[:,:]', face_normal: 'float[:,:]', cell_shift: 'float[:,:]',
                                   Pbordnode: 'float[:]',
                                   Pbordface: 'float[:]',
                                   Px_face: 'float[:]', Py_face: 'float[:]', Pz_face: 'float[:]',
-                                  BCdirichlet: 'uint32[:]', d_innerfaces: 'uint32[:]',
-                                  d_halofaces: 'uint32[:]', neumannfaces: 'uint32[:]', dirichletfaces: 'uint32[:]',
-                                  d_periodicboundaryfaces: 'uint32[:]'):
+                                  BCdirichlet: 'int[:]', d_innerfaces: 'int[:]',
+                                  d_halofaces: 'int[:]', neumannfaces: 'int[:]', dirichletfaces: 'int[:]',
+                                  d_periodicboundaryfaces: 'int[:]'):
 
   for i in d_innerfaces:
 
@@ -149,18 +149,18 @@ def _compute_P_gradient_2d_diamond(P_c: 'float[:]', P_ghost: 'float[:]', P_halo:
     Py_face[i] = 1 / (2 * face_air_diamond[i]) * (
               (vi1 + vv1) * face_f1[i][0] + (vv1 + vi2) * face_f2[i][0] + (vi2 + vv2) * face_f3[i][0] + (vv2 + vi1) * face_f4[i][0])
 
-def _get_triplet_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', nodes: 'float[:,:]', face_haloid: 'int32[:]',
-                   halo_halosext: 'int32[:,:]', node_oldname: 'uint32[:]', cell_volume: 'float[:]',
-                   node_cellid: 'int32[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_haloid: 'int32[:,:]',
-                   node_periodicid: 'int32[:,:]',
+def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,:]', face_haloid: 'int[:]',
+                   halo_halosext: 'int[:,:]', node_oldname: 'int[:]', cell_volume: 'float[:]',
+                   node_cellid: 'int[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_haloid: 'int[:,:]',
+                   node_periodicid: 'int[:,:]',
                    node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
-                   node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'uint32[:]',
+                   node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'int[:]',
                    node_R_x: 'float[:]', node_R_y: 'float[:]',
                    node_R_z: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]', face_param4: 'float[:]',
                    cell_shift: 'float[:,:]',
-                   nbelements: 'int32', cell_loctoglob: 'int32[:]', BCdirichlet: 'uint32[:]', a_loc: 'float[:]',
-                   irn_loc: 'int32[:]', jcn_loc: 'int32[:]',
-                   matrixinnerfaces: 'uint32[:]', d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                   nbelements: 'int', cell_loctoglob: 'int[:]', BCdirichlet: 'int[:]', a_loc: 'float[:]',
+                   irn_loc: 'int[:]', jcn_loc: 'int[:]',
+                   matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   center = np.zeros(2)
   parameters = np.zeros(2)
@@ -404,12 +404,12 @@ def _get_triplet_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', nodes: 'floa
     a_loc[cmpt] = value
     cmpt = cmpt + 1
 
-def _compute_2dmatrix_size(faces: 'int32[:,:]', face_haloid: 'int32[:]', node_cellid: 'int32[:,:]', node_haloid: 'int32[:,:]',
-                          node_periodicid: 'int32[:,:]',
-                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', node_oldname: 'uint32[:]',
-                          BCdirichlet: 'uint32[:]',
-                          matrixinnerfaces: 'uint32[:]', d_halofaces: 'uint32[:]',
-                          dirichletfaces: 'uint32[:]'):
+def _compute_2dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid: 'int[:,:]', node_haloid: 'int[:,:]',
+                          node_periodicid: 'int[:,:]',
+                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', node_oldname: 'int[:]',
+                          BCdirichlet: 'int[:]',
+                          matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]',
+                          dirichletfaces: 'int[:]'):
 
   cmpt = 0
   one_rank = (node_haloghostcenter_info.shape[0] == 0)
@@ -484,13 +484,13 @@ def _compute_2dmatrix_size(faces: 'int32[:,:]', face_haloid: 'int32[:]', node_ce
 
   return cmpt
 
-def _get_rhs_glob_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int32[:]', face_param1: 'float[:]',
+def _get_rhs_glob_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int[:]', face_param1: 'float[:]',
                     face_param2: 'float[:]',
                     face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]', Pbordface: 'float[:]',
                     rhs: 'float[:]',
-                    BCdirichlet: 'uint32[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                    d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                    BCdirichlet: 'int[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                    d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   rhs[:] = 0.
   for i in matrixinnerfaces:
@@ -557,13 +557,13 @@ def _get_rhs_glob_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldnam
     value = -2. * face_param3[i] / cell_volume[c_left] * V_K
     rhs[c_leftglob] += value
 
-def _get_rhs_loc_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                   cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int32[:]', face_param1: 'float[:]',
+def _get_rhs_loc_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                   cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int[:]', face_param1: 'float[:]',
                    face_param2: 'float[:]',
                    face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]', Pbordface: 'float[:]',
                    rhs_loc: 'float[:]',
-                   BCdirichlet: 'uint32[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                   d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                   BCdirichlet: 'int[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                   d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
 
   rhs_loc[:] = 0.
@@ -627,13 +627,13 @@ def _get_rhs_loc_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname
     value = -2. * face_param3[i] / cell_volume[c_left] * V_K
     rhs_loc[c_left] += value
 
-def _get_rhs_glob_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int32[:]', face_param1: 'float[:]',
+def _get_rhs_glob_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int[:]', face_param1: 'float[:]',
                     face_param2: 'float[:]',
                     face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]', Pbordface: 'float[:]',
                     rhs: 'float[:]',
-                    BCdirichlet: 'uint32[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                    d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                    BCdirichlet: 'int[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                    d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   rhs[:] = 0.
   for i in matrixinnerfaces:
@@ -700,22 +700,22 @@ def _get_rhs_glob_2d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldnam
     value = -2. * face_param3[i] / cell_volume[c_left] * V_K
     rhs[c_leftglob] += value
 
-def _get_triplet_2d_with_contrib(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', cell_faceid: 'int32[:,:]',
-                                nodes: 'float[:,:]', face_haloid: 'int32[:]',
-                                halo_halosext: 'int32[:,:]', node_oldname: 'uint32[:]', cell_volume: 'float[:]',
-                                node_cellid: 'int32[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]',
-                                node_haloid: 'int32[:,:]',
-                                node_periodicid: 'int32[:,:]',
+def _get_triplet_2d_with_contrib(face_cellid: 'int[:,:]', faces: 'int[:,:]', cell_faceid: 'int[:,:]',
+                                nodes: 'float[:,:]', face_haloid: 'int[:]',
+                                halo_halosext: 'int[:,:]', node_oldname: 'int[:]', cell_volume: 'float[:]',
+                                node_cellid: 'int[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]',
+                                node_haloid: 'int[:,:]',
+                                node_periodicid: 'int[:,:]',
                                 node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
-                                node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'uint32[:]', node_R_x: 'float[:]',
+                                node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'int[:]', node_R_x: 'float[:]',
                                 node_R_y: 'float[:]', param1: 'float[:]',
                                 param2: 'float[:]', param3: 'float[:]', param4: 'float[:]', cell_shift: 'float[:,:]',
-                                nbelements: 'int32', cell_loctoglob: 'int32[:]',
-                                BCdirichlet: 'uint32[:]', a_loc: 'float[:]', irn_loc: 'int32[:]', jcn_loc: 'int32[:]',
-                                matrixinnerfaces: 'uint32[:]', d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]',
+                                nbelements: 'int', cell_loctoglob: 'int[:]',
+                                BCdirichlet: 'int[:]', a_loc: 'float[:]', irn_loc: 'int[:]', jcn_loc: 'int[:]',
+                                matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]', dirichletfaces: 'int[:]',
                                 Icell: 'float[:]',  # Ihalo:'float[:]', Ihaloghost:'float[:]',
                                 alpha_P: 'float', perm_vec: 'float[:]',
-                                visc_vec: 'float[:]', BCneumannNH: 'uint32[:]', dist: 'float[:]'):
+                                visc_vec: 'float[:]', BCneumannNH: 'int[:]', dist: 'float[:]'):
 
 
   center = np.zeros(2)
@@ -958,13 +958,13 @@ def _get_triplet_2d_with_contrib(face_cellid: 'int32[:,:]', faces: 'int32[:,:]',
     cmpt = cmpt + 1
 
 
-def _get_rhs_glob_2d_with_contrib(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                                 cell_volume: 'float[:]', node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', cell_loctoglob: 'int32[:]',
+def _get_rhs_glob_2d_with_contrib(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                                 cell_volume: 'float[:]', node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', cell_loctoglob: 'int[:]',
                                  face_param1: 'float[:]', face_param2: 'float[:]',
                                  face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]',
                                  Pbordface: 'float[:]', rhs: 'float[:]',
-                                 BCdirichlet: 'uint32[:]', centergf: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                                 d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]', neumannNHfaces: 'uint32[:]',
+                                 BCdirichlet: 'int[:]', centergf: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                                 d_halofaces: 'int[:]', dirichletfaces: 'int[:]', neumannNHfaces: 'int[:]',
                                  Icell: 'float[:]', Inode: 'float[:]', perm_vec: 'float[:]', visc_vec: 'float[:]',
                                  cst: 'float', mesuref: 'float[:]', normalf: 'float[:,:]', dist: 'float[:]'):
 
@@ -1064,16 +1064,16 @@ def _compute_P_gradient_2d_FV4():
   pass
 
 ###########################################################################
-def _get_rhs_glob_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int32[:]', face_param1: 'float[:]',
+def _get_rhs_glob_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int[:]', face_param1: 'float[:]',
                     face_param2: 'float[:]',
                     face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]', Pbordface: 'float[:]',
                     rhs: 'float[:]',
-                    BCdirichlet: 'uint32[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                    d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                    BCdirichlet: 'int[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                    d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   parameters = np.zeros(4)
-  nodes = np.zeros(4, dtype=np.int32)
+  nodes = np.zeros(4, dtype=faces.dtype)
 
   for i in matrixinnerfaces:
 
@@ -1157,17 +1157,17 @@ def _get_rhs_glob_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldnam
 
 
 
-def _get_rhs_loc_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                   cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int32[:]', face_param1: 'float[:]',
+def _get_rhs_loc_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                   cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int[:]', face_param1: 'float[:]',
                    face_param2: 'float[:]',
                    face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]', Pbordface: 'float[:]',
                    rhs_loc: 'float[:]',
-                   BCdirichlet: 'uint32[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                   d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                   BCdirichlet: 'int[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                   d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   rhs_loc[:] = 0.
   parameters = np.zeros(4)
-  nodes = np.zeros(4, dtype=np.int32)
+  nodes = np.zeros(4, dtype=faces.dtype)
 
   for i in matrixinnerfaces:
 
@@ -1246,16 +1246,16 @@ def _get_rhs_loc_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname
 
 
 
-def _get_rhs_glob_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldname: 'uint32[:]',
-                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int32[:]', face_param1: 'float[:]',
+def _get_rhs_glob_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', node_oldname: 'int[:]',
+                    cell_volume: 'float[:]', node_ghostcenter_info: 'int[:,:,:]', cell_loctoglob: 'int[:]', face_param1: 'float[:]',
                     face_param2: 'float[:]',
                     face_param3: 'float[:]', face_param4: 'float[:]', Pbordnode: 'float[:]', Pbordface: 'float[:]',
                     rhs: 'float[:]',
-                    BCdirichlet: 'uint32[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'uint32[:]',
-                    d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                    BCdirichlet: 'int[:]', face_ghostcenter: 'float[:,:]', matrixinnerfaces: 'int[:]',
+                    d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   parameters = np.zeros(4)
-  nodes = np.zeros(4, dtype=np.int32)
+  nodes = np.zeros(4, dtype=faces.dtype)
 
   for i in matrixinnerfaces:
 
@@ -1339,18 +1339,18 @@ def _get_rhs_glob_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', node_oldnam
 
 
 def _compute_P_gradient_3d_diamond(val_c: 'float[:]', v_ghost: 'float[:]', v_halo: 'float[:]', v_node: 'float[:]',
-                                  face_cellid: 'int32[:,:]',
-                                  faces: 'int32[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int32[:]',
+                                  face_cellid: 'int[:,:]',
+                                  faces: 'int[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int[:]',
                                   cell_center: 'float[:,:]',
-                                  halo_centvol: 'float[:,:]', node_oldname: 'uint32[:]', face_air_diamond: 'float[:]',
+                                  halo_centvol: 'float[:,:]', node_oldname: 'int[:]', face_air_diamond: 'float[:]',
                                   face_f1: 'float[:,:]', face_f2: 'float[:,:]',
                                   face_f3: 'float[:,:]', face_f4: 'float[:,:]', face_normal: 'float[:,:]', cell_shift: 'float[:,:]',
                                   Pbordnode: 'float[:]',
                                   Pbordface: 'float[:]',
                                   Px_face: 'float[:]', Py_face: 'float[:]', Pz_face: 'float[:]',
-                                  BCdirichlet: 'uint32[:]', d_innerfaces: 'uint32[:]',
-                                  d_halofaces: 'uint32[:]', neumannfaces: 'uint32[:]', dirichletfaces: 'uint32[:]',
-                                  d_periodicboundaryfaces: 'uint32[:]'):
+                                  BCdirichlet: 'int[:]', d_innerfaces: 'int[:]',
+                                  d_halofaces: 'int[:]', neumannfaces: 'int[:]', dirichletfaces: 'int[:]',
+                                  d_periodicboundaryfaces: 'int[:]'):
 
   for i in d_innerfaces:
 
@@ -1502,21 +1502,21 @@ def _compute_P_gradient_3d_diamond(val_c: 'float[:]', v_ghost: 'float[:]', v_hal
     Py_face[i] = -1. * (face_f1[i][1] * (V_A - V_C) + face_f2[i][1] * (V_B - V_D) + face_normal[i][1] * (V_R - V_L)) / face_air_diamond[i]
     Pz_face[i] = -1. * (face_f1[i][2] * (V_A - V_C) + face_f2[i][2] * (V_B - V_D) + face_normal[i][2] * (V_R - V_L)) / face_air_diamond[i]
 
-def _get_triplet_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', nodes: 'float[:,:]', face_haloid: 'int32[:]',
-                   halo_halosext: 'int32[:,:]', node_oldname: 'uint32[:]', cell_volume: 'float[:]',
-                   node_cellid: 'int32[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_haloid: 'int32[:,:]',
-                   node_periodicid: 'int32[:,:]',
+def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,:]', face_haloid: 'int[:]',
+                   halo_halosext: 'int[:,:]', node_oldname: 'int[:]', cell_volume: 'float[:]',
+                   node_cellid: 'int[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_haloid: 'int[:,:]',
+                   node_periodicid: 'int[:,:]',
                    node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
-                   node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'uint32[:]',
+                   node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'int[:]',
                    node_R_x: 'float[:]', node_R_y: 'float[:]',
                    node_R_z: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]', face_param4: 'float[:]',
                    cell_shift: 'float[:,:]',
-                   nbelements: 'intc', cell_loctoglob: 'int32[:]', BCdirichlet: 'uint32[:]', a_loc: 'float[:]',
-                   irn_loc: 'int32[:]', jcn_loc: 'int32[:]',
-                   matrixinnerfaces: 'uint32[:]', d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+                   nbelements: 'intc', cell_loctoglob: 'int[:]', BCdirichlet: 'int[:]', a_loc: 'float[:]',
+                   irn_loc: 'int[:]', jcn_loc: 'int[:]',
+                   matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   parameters = np.zeros(4)
-  face_nodes = np.zeros(4, dtype=np.int32)
+  face_nodes = np.zeros(4, dtype=faces.dtype)
   one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   cmpt = 0
@@ -1810,14 +1810,14 @@ def _get_triplet_3d(face_cellid: 'int32[:,:]', faces: 'int32[:,:]', nodes: 'floa
     a_loc[cmpt] = value
     cmpt = cmpt + 1
 
-def _compute_3dmatrix_size(faces: 'int32[:,:]', face_haloid: 'int32[:]', node_cellid: 'int32[:,:]', node_haloid: 'int32[:,:]',
-                          node_periodicid: 'int32[:,:]',
-                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter_info: 'float[:,:,:]', node_oldname: 'uint32[:]',
-                          BCdirichlet: 'uint32[:]',
-                          matrixinnerfaces: 'uint32[:]', d_halofaces: 'uint32[:]', dirichletfaces: 'uint32[:]'):
+def _compute_3dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid: 'int[:,:]', node_haloid: 'int[:,:]',
+                          node_periodicid: 'int[:,:]',
+                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter_info: 'float[:,:,:]', node_oldname: 'int[:]',
+                          BCdirichlet: 'int[:]',
+                          matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   cmpt = 0
-  nodes = np.zeros(4, dtype=np.int32)
+  nodes = np.zeros(4, dtype=faces.dtype)
   one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   for i in matrixinnerfaces:
