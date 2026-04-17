@@ -363,7 +363,7 @@ class Variable:
           BCs[loc].BCvaluehalo = valuehalo
 
         else:
-          raise ValueError("Invalid BCtype")
+          raise ValueError(f"Invalid BCtype {bct}")
 
 
     neumannfaces.sort()

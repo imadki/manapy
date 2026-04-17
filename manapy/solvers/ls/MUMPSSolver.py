@@ -9,6 +9,7 @@ import numpy.typing as npt
 from typing import Union
 
 # TODO make the solver work also with float32
+# TODO fix reuse_mtx and verbose
 
 class MUMPSSolver(LinearSolver):
   _parameters = [
@@ -35,7 +36,7 @@ class MUMPSSolver(LinearSolver):
                comm: MPI.Intracomm = MPI.COMM_WORLD,
                scheme: str = "diamond",
                reordering: bool = False,
-               reuse_mtx: bool = True,
+               reuse_mtx: bool = False,
                with_mtx: bool = True,
                system: str = "double",
                memory_relaxation: int = 20,
@@ -93,7 +94,7 @@ class MUMPSSolver(LinearSolver):
                        root=0)
 
   def presolve(self, reuse_mtx=False, with_mtx=False):
-    if not reuse_mtx or (self.mumps_ls is None):
+    if not reuse_mtx or self.mumps_ls is None:
       self.update_ghost_values()
 
       # assembly row, col , data, rhs(bc)
