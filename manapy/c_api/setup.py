@@ -59,7 +59,7 @@ for lib_name in libs:
 
 setup(
     name="manapy_part",
-    version="1.0.0",
+    version="1.0.1",
     description="Manapy C API",
     ext_modules=ext_modules,
     python_requires=">=3.8",
