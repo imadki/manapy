@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "manapy_part"
-version = "1.0.0"
+version = "1.0.1"
 description = "Manapy C API with vendored METIS/GKlib"
 requires-python = ">=3.8"
 dependencies = ["numpy"]
