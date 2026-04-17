@@ -1218,14 +1218,17 @@ def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghos
     face_f2[i][:] = (0.5 * np.cross(s4, s5)) + (0.5 * np.cross(s5, s6))
 
     s7 = v_2 - v_1
-    face_air_diamond[i] = np.dot(face_normal[i], s7)
+    n0 = face_normal[i, 0]
+    n1 = face_normal[i, 1]
+    n2 = face_normal[i, 2]
+    face_air_diamond[i] = (n0 * s7[0]) + (n1 * s7[1]) + (n2 * s7[2])
 
     if face_air_diamond[i] == 0:
       raise RuntimeError("div 0")
 
-    face_param1[i] = np.dot(face_f1[i], face_normal[i]) / face_air_diamond[i]
-    face_param2[i] = np.dot(face_f2[i], face_normal[i]) / face_air_diamond[i]
-    face_param3[i] = np.dot(face_normal[i], face_normal[i]) / face_air_diamond[i]
+    face_param1[i] = ((face_f1[i, 0] * n0) + (face_f1[i, 1] * n1) + (face_f1[i, 2] * n2)) / face_air_diamond[i]
+    face_param2[i] = ((face_f2[i, 0] * n0) + (face_f2[i, 1] * n1) + (face_f2[i, 2] * n2)) / face_air_diamond[i]
+    face_param3[i] = ((n0 * n0) + (n1 * n1) + (n2 * n2)) / face_air_diamond[i]
 
 
 def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloid: 'int[:,:]',
