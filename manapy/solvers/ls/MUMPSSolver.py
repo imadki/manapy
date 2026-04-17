@@ -8,6 +8,7 @@ from manapy.solvers.ls.LinearSolver import LinearSolver
 import numpy.typing as npt
 from typing import Union
 
+# TODO make the solver work also with float32
 
 class MUMPSSolver(LinearSolver):
   _parameters = [
@@ -96,9 +97,11 @@ class MUMPSSolver(LinearSolver):
       self.update_ghost_values()
 
       # assembly row, col , data, rhs(bc)
-      if not with_mtx:
-        self.assembly()
+      # if not with_mtx:
+      #   print("Assembly")
+      self.assembly()
       if self.reordering and self.comm.Get_size() == 1:
+        print("=>Reordering the matrix ...")
         self.reordering_matrix()
 
       rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
@@ -107,13 +110,9 @@ class MUMPSSolver(LinearSolver):
         mem_relax = self.memory_relaxation
         self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
                                                mem_relax=mem_relax)
-
-
-
       # Fortran indexing
       self._row += 1
       self._col += 1
-
 
       self.mumps_ls.set_rcd_distributed(self._row, self._col,
                                         self._data,
@@ -121,6 +120,7 @@ class MUMPSSolver(LinearSolver):
 
       self.mumps_ls.set_icntl(18, 3)
       self.mumps_ls.set_icntl(16, 1)
+      # self.mumps_ls.set_icntl(14, 40)
 
       if self.comm.Get_rank() == 0:
         self.sol = rhs00.copy()
