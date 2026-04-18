@@ -14,7 +14,6 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
   nbnode = len(nodes)
   center = np.zeros(3)
-  one_rank = (node_haloghostid.shape[0] == 0)
 
   for i in range(nbnode):
     for j in range(node_cellid[i][-1]):
@@ -39,29 +38,28 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
       w_n[i] += alpha * w_ghost[cell]
 
-    if not one_rank:
-      for j in range(node_haloghostid[i][-1]):
-        cell = node_haloghostid[i][j]
-        center[:] = cell_haloghostcenter[cell][0:3]
+    for j in range(node_haloghostid[i, -1]):
+      cell = node_haloghostid[i][j]
+      center[:] = cell_haloghostcenter[cell][0:3]
 
-        xdiff = center[0] - nodes[i][0]
-        ydiff = center[1] - nodes[i][1]
+      xdiff = center[0] - nodes[i][0]
+      ydiff = center[1] - nodes[i][1]
 
-        alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
-                  node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
+      alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
+                node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
 
-        w_n[i] += alpha * w_haloghost[cell]
+      w_n[i] += alpha * w_haloghost[cell]
 
-      for j in range(node_halonid[i][-1]):
-        cell = node_halonid[i][j]
-        center[:] = halo_centvol[cell][0:3]
+    for j in range(node_halonid[i, -1]):
+      cell = node_halonid[i][j]
+      center[:] = halo_centvol[cell][0:3]
 
-        xdiff = center[0] - nodes[i][0]
-        ydiff = center[1] - nodes[i][1]
-        alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
-                  node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
+      xdiff = center[0] - nodes[i][0]
+      ydiff = center[1] - nodes[i][1]
+      alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
+                node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
 
-        w_n[i] += alpha * w_halo[cell]
+      w_n[i] += alpha * w_halo[cell]
 
     # TODO Must be keeped like that checked ok ;)
     if node_oldname[i] == 11 or node_oldname[i] == 22:
@@ -190,7 +188,6 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
                      w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
   center = np.zeros(3)
   nbelement = len(w_c)
-  one_rank = cell_halonid.shape[0] == 0
 
   for i in range(nbelement):
     i_xx = 0.;
@@ -251,18 +248,17 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
           j_xw += (j_x * (w_c[cell] - w_c[i]))
           j_yw += (j_y * (w_c[cell] - w_c[i]))
 
-    if not one_rank:
-      for j in range(cell_halonid[i][-1]):
-        cell = cell_halonid[i][j]
-        j_x = halo_centvol[cell][0] - cell_center[i][0]
-        j_y = halo_centvol[cell][1] - cell_center[i][1]
+    for j in range(cell_halonid[i, -1]):
+      cell = cell_halonid[i][j]
+      j_x = halo_centvol[cell][0] - cell_center[i][0]
+      j_y = halo_centvol[cell][1] - cell_center[i][1]
 
-        i_xx += j_x * j_x
-        i_yy += j_y * j_y
-        i_xy += (j_x * j_y)
+      i_xx += j_x * j_x
+      i_yy += j_y * j_y
+      i_xy += (j_x * j_y)
 
-        j_xw += (j_x * (w_halo[cell] - w_c[i]))
-        j_yw += (j_y * (w_halo[cell] - w_c[i]))
+      j_xw += (j_x * (w_halo[cell] - w_c[i]))
+      j_yw += (j_y * (w_halo[cell] - w_c[i]))
 
       for j in range(cell_haloghostnid[i][-1]):
         cell = cell_haloghostnid[i][j]

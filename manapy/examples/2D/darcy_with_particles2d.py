@@ -380,7 +380,7 @@ while time < tfinal:
                               domain.faces.halofid, domain.halos.halosext, domain.nodes.oldname,
                               domain.cells.volume, domain.nodes.cellid,
                               domain.cells.center, domain.halos.centvol, domain.nodes.halonid, domain.nodes.periodicid,
-                              domain.nodes.ghostcenter, domain.nodes.ghostcenter_info, domain.nodes.haloghostcenter, domain.nodes.haloghostcenter_info, domain.faces.airDiamond,
+                              domain.nodes.ghostcenter, domain.nodes.ghostcenter_info, domain.nodes.haloghostcenter, domain.nodes.haloghostid, domain.faces.airDiamond,
                               domain.nodes.lambda_x, domain.nodes.lambda_y, domain.nodes.number, domain.nodes.R_x,
                               domain.nodes.R_y,
                               faces.param1, faces.param2, faces.param3, faces.param4, domain.cells.shift,
