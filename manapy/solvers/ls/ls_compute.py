@@ -153,7 +153,7 @@ def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
                    halo_halosext: 'int[:,:]', node_oldname: 'int[:]', cell_volume: 'float[:]',
                    node_cellid: 'int[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_haloid: 'int[:,:]',
                    node_periodicid: 'int[:,:]',
-                   node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
+                   node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
                    node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'int[:]',
                    node_R_x: 'float[:]', node_R_y: 'float[:]',
                    node_R_z: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]', face_param4: 'float[:]',
@@ -165,7 +165,6 @@ def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
   center = np.zeros(2)
   parameters = np.zeros(2)
   cmpt = 0
-  one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   for i in matrixinnerfaces:
     c_left = face_cellid[i][0]
@@ -224,26 +223,24 @@ def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
             a_loc[cmpt] = value
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              center[:] = node_haloghostcenter[nod][j][0:2]
-              xdiff = center[0] - nodes[nod][0]
-              ydiff = center[1] - nodes[nod][1]
-              alpha = (1. + node_lambda_x[nod] * xdiff + \
-                       node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
-              index = node_ghostcenter_info[nod][j][0]
-              value = alpha / cell_volume[c_left] * parameters[cmptparam]
-              irn_loc[cmpt] = c_leftglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value
-              cmpt = cmpt + 1
-              # right cell-----------------------------------
-              value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
-              irn_loc[cmpt] = c_rightglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          center[:] = node_haloghostcenter[nod][j][0:2]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+          index = node_ghostcenter_info[nod][j][0]
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+          irn_loc[cmpt] = c_rightglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
 
         for j in range(node_periodicid[nod][-1]):
           if nodes[nod][3] == 11 or nodes[nod][3] == 22:
@@ -269,24 +266,23 @@ def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
           a_loc[cmpt] = value
           cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(node_haloid[nod][-1]):
-            center[:] = halo_centvol[node_haloid[nod][j]][0:2]
-            xdiff = center[0] - nodes[nod][0]
-            ydiff = center[1] - nodes[nod][1]
-            alpha = (1. + node_lambda_x[nod] * xdiff + \
-                     node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
-            value = alpha / cell_volume[c_left] * parameters[cmptparam]
-            irn_loc[cmpt] = c_leftglob
-            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
-            a_loc[cmpt] = value
-            cmpt = cmpt + 1
-            # right cell-----------------------------------
-            value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
-            irn_loc[cmpt] = c_rightglob
-            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
-            a_loc[cmpt] = value
-            cmpt = cmpt + 1
+        for j in range(node_haloid[nod][-1]):
+          center[:] = halo_centvol[node_haloid[nod][j]][0:2]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+          irn_loc[cmpt] = c_rightglob
+          jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
       cmptparam += 1
 
     irn_loc[cmpt] = c_leftglob
@@ -360,20 +356,18 @@ def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
             a_loc[cmpt] = value
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              center[:] = node_haloghostcenter[nod][j][0:2]
-              xdiff = center[0] - nodes[nod][0]
-              ydiff = center[1] - nodes[nod][1]
-              alpha = (1. + node_lambda_x[nod] * xdiff + \
-                       node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
-              index = node_haloghostcenter_info[nod][j][0]
-              value = alpha / cell_volume[c_left] * parameters[cmptparam]
-              irn_loc[cmpt] = c_leftglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          center[:] = node_haloghostcenter[nod][j][0:2]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+          index = node_haloghostcenter_info[nod][j][0]
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
 
         for j in range(node_haloid[nod][-1]):
           center[:] = halo_centvol[node_haloid[nod][j]][0:2]
@@ -404,15 +398,15 @@ def _get_triplet_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
     a_loc[cmpt] = value
     cmpt = cmpt + 1
 
+
 def _compute_2dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid: 'int[:,:]', node_haloid: 'int[:,:]',
                           node_periodicid: 'int[:,:]',
-                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', node_oldname: 'int[:]',
+                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostid: 'int[:, :]', node_oldname: 'int[:]',
                           BCdirichlet: 'int[:]',
                           matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]',
                           dirichletfaces: 'int[:]'):
 
   cmpt = 0
-  one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   for i in matrixinnerfaces:
     cmpt = cmpt + 1
@@ -431,23 +425,20 @@ def _compute_2dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid
             # right cell-----------------------------------
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              cmpt = cmpt + 1
-              # right cell-----------------------------------
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          cmpt = cmpt + 1
 
         for j in range(node_periodicid[nod][-1]):
           cmpt = cmpt + 1
           # right cell-----------------------------------
           cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(node_haloid[nod][-1]):
-            cmpt = cmpt + 1
-            # right cell-----------------------------------
-            cmpt = cmpt + 1
+        for j in range(node_haloid[nod][-1]):
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          cmpt = cmpt + 1
 
     cmpt = cmpt + 1
     # right cell------------------------------------------------------
@@ -470,10 +461,8 @@ def _compute_2dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid
           if node_ghostcenter_info[nod][j][-1] != -1:
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          cmpt = cmpt + 1
 
         for j in range(node_haloid[nod][-1]):
           cmpt = cmpt + 1
@@ -706,7 +695,7 @@ def _get_triplet_2d_with_contrib(face_cellid: 'int[:,:]', faces: 'int[:,:]', cel
                                 node_cellid: 'int[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]',
                                 node_haloid: 'int[:,:]',
                                 node_periodicid: 'int[:,:]',
-                                node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
+                                node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:, :, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostid: 'int[:, :]', face_air_diamond: 'float[:]',
                                 node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'int[:]', node_R_x: 'float[:]',
                                 node_R_y: 'float[:]', param1: 'float[:]',
                                 param2: 'float[:]', param3: 'float[:]', param4: 'float[:]', cell_shift: 'float[:,:]',
@@ -721,7 +710,6 @@ def _get_triplet_2d_with_contrib(face_cellid: 'int[:,:]', faces: 'int[:,:]', cel
   center = np.zeros(2)
   parameters = np.zeros(2)
   cmpt = 0
-  one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   for i in matrixinnerfaces:
     nbfL = cell_faceid[face_cellid[i][0]][-1]
@@ -792,29 +780,27 @@ def _get_triplet_2d_with_contrib(face_cellid: 'int[:,:]', faces: 'int[:,:]', cel
             a_loc[cmpt] = value * Icell[c_right] * (perm_visc)
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              center[:] = node_haloghostcenter[nod][j][0:2]
-              xdiff = center[0] - nodes[nod][0]
-              ydiff = center[1] - nodes[nod][1]
-              alpha = (1. + node_lambda_x[nod] * xdiff + \
-                       node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
-              index = int(node_haloghostcenter[nod][j][2])
-              #                        cell  = int(node_haloghostcenter[nod][j][-1])
-              value = alpha / cell_volume[c_left] * parameters[cmptparam]
-              irn_loc[cmpt] = c_leftglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
-              cmpt = cmpt + 1
-              # right cell-----------------------------------
-              value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
-              irn_loc[cmpt] = c_rightglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              # TODO
-              a_loc[cmpt] = value * Icell[c_right] * (
-                perm_visc)  # value*Ihaloghost[int(node_haloghostcenter[nod][j][-1])]*(perm/visc)
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          center[:] = node_haloghostcenter[nod][j][0:2]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + node_lambda_y[nod] * node_R_y[nod])
+          index = int(node_haloghostcenter[nod][j][2])
+          #                        cell  = int(node_haloghostcenter[nod][j][-1])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value * Icell[c_left] * (perm_visc)
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+          irn_loc[cmpt] = c_rightglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          # TODO
+          a_loc[cmpt] = value * Icell[c_right] * (
+            perm_visc)  # value*Ihaloghost[int(node_haloghostcenter[nod][j][-1])]*(perm/visc)
+          cmpt = cmpt + 1
 
           for j in range(node_haloid[nod][-1]):
             center[:] = halo_centvol[node_haloid[nod][j]][0:2]
@@ -1506,7 +1492,7 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
                    halo_halosext: 'int[:,:]', node_oldname: 'int[:]', cell_volume: 'float[:]',
                    node_cellid: 'int[:,:]', cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_haloid: 'int[:,:]',
                    node_periodicid: 'int[:,:]',
-                   node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
+                   node_ghostcenter: 'float[:,:,:]', node_ghostcenter_info: 'int[:,:,:]', node_haloghostid: 'int[:, :]', node_haloghostcenter: 'float[:,:,:]', node_haloghostcenter_info: 'int[:, :, :]', face_air_diamond: 'float[:]',
                    node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_lambda_z: 'float[:]', node_number: 'int[:]',
                    node_R_x: 'float[:]', node_R_y: 'float[:]',
                    node_R_z: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]', face_param4: 'float[:]',
@@ -1517,7 +1503,6 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
 
   parameters = np.zeros(4)
   face_nodes = np.zeros(4, dtype=faces.dtype)
-  one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   cmpt = 0
 
@@ -1568,27 +1553,26 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
           a_loc[cmpt] = value
           cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(node_haloid[nod][-1]):
-            center = halo_centvol[node_haloid[nod][j]]
-            xdiff = center[0] - nodes[nod][0]
-            ydiff = center[1] - nodes[nod][1]
-            zdiff = center[2] - nodes[nod][2]
-            alpha = (1. + node_lambda_x[nod] * xdiff + \
-                     node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
-                                                                       node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
-                                                                         nod])
-            value = alpha / cell_volume[c_left] * parameters[cmptparam]
-            irn_loc[cmpt] = c_leftglob
-            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
-            a_loc[cmpt] = value
-            cmpt = cmpt + 1
-            # right cell-----------------------------------
-            value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
-            irn_loc[cmpt] = c_rightglob
-            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
-            a_loc[cmpt] = value
-            cmpt = cmpt + 1
+        for j in range(node_haloid[nod][-1]):
+          center = halo_centvol[node_haloid[nod][j]]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          zdiff = center[2] - nodes[nod][2]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
+                                                                     node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
+                                                                       nod])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+          irn_loc[cmpt] = c_rightglob
+          jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
 
         for j in range(node_periodicid[nod][-1]):
           if nodes[nod][3] == 11 or nodes[nod][3] == 22:
@@ -1647,29 +1631,27 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
             a_loc[cmpt] = value
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              center = node_haloghostcenter[nod][j][0:3]
-              xdiff = center[0] - nodes[nod][0]
-              ydiff = center[1] - nodes[nod][1]
-              zdiff = center[2] - nodes[nod][2]
-              alpha = (1. + node_lambda_x[nod] * xdiff + \
-                       node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
-                                                                         node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
-                                                                           nod])
-              value = alpha / cell_volume[c_left] * parameters[cmptparam]
-              index = node_haloghostcenter_info[nod][j][0]
-              irn_loc[cmpt] = c_leftglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value
-              cmpt = cmpt + 1
-              # right cell-----------------------------------
-              value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
-              irn_loc[cmpt] = c_rightglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          center = node_haloghostcenter[nod][j][0:3]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          zdiff = center[2] - nodes[nod][2]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
+                                                                     node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
+                                                                       nod])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          index = node_haloghostcenter_info[nod][j][0]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          value = -1. * alpha / cell_volume[c_right] * parameters[cmptparam]
+          irn_loc[cmpt] = c_rightglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
       cmptparam = cmptparam + 1
 
     irn_loc[cmpt] = c_leftglob
@@ -1726,21 +1708,20 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
           a_loc[cmpt] = value
           cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(node_haloid[nod][-1]):
-            center = halo_centvol[node_haloid[nod][j]]
-            xdiff = center[0] - nodes[nod][0]
-            ydiff = center[1] - nodes[nod][1]
-            zdiff = center[2] - nodes[nod][2]
-            alpha = (1. + node_lambda_x[nod] * xdiff + \
-                     node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
-                                                                       node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
-                                                                         nod])
-            value = alpha / cell_volume[c_left] * parameters[cmptparam]
-            irn_loc[cmpt] = c_leftglob
-            jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
-            a_loc[cmpt] = value
-            cmpt = cmpt + 1
+        for j in range(node_haloid[nod][-1]):
+          center = halo_centvol[node_haloid[nod][j]]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          zdiff = center[2] - nodes[nod][2]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
+                                                                     node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
+                                                                       nod])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[node_haloid[nod][j]][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
 
         for j in range(len(node_ghostcenter_info[nod])):
           if node_ghostcenter_info[nod][j][-1] != -1:
@@ -1760,23 +1741,21 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
             a_loc[cmpt] = value
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              center = node_haloghostcenter[nod][j][0:3]
-              xdiff = center[0] - nodes[nod][0]
-              ydiff = center[1] - nodes[nod][1]
-              zdiff = center[2] - nodes[nod][2]
-              alpha = (1. + node_lambda_x[nod] * xdiff + \
-                       node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
-                                                                         node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
-                                                                           nod])
-              value = alpha / cell_volume[c_left] * parameters[cmptparam]
-              index = node_haloghostcenter_info[nod][j][0]
-              irn_loc[cmpt] = c_leftglob
-              jcn_loc[cmpt] = halo_halosext[index][0]
-              a_loc[cmpt] = value
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          center = node_haloghostcenter[nod][j][0:3]
+          xdiff = center[0] - nodes[nod][0]
+          ydiff = center[1] - nodes[nod][1]
+          zdiff = center[2] - nodes[nod][2]
+          alpha = (1. + node_lambda_x[nod] * xdiff + \
+                   node_lambda_y[nod] * ydiff + node_lambda_z[nod] * zdiff) / (node_number[nod] + node_lambda_x[nod] * node_R_x[nod] + \
+                                                                     node_lambda_y[nod] * node_R_y[nod] + node_lambda_z[nod] * node_R_z[
+                                                                       nod])
+          value = alpha / cell_volume[c_left] * parameters[cmptparam]
+          index = node_haloghostcenter_info[nod][j][0]
+          irn_loc[cmpt] = c_leftglob
+          jcn_loc[cmpt] = halo_halosext[index][0]
+          a_loc[cmpt] = value
+          cmpt = cmpt + 1
       cmptparam = cmptparam + 1
 
     irn_loc[cmpt] = c_leftglob
@@ -1814,13 +1793,12 @@ def _get_triplet_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', nodes: 'float[:,
 
 def _compute_3dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid: 'int[:,:]', node_haloid: 'int[:,:]',
                           node_periodicid: 'int[:,:]',
-                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostcenter_info: 'float[:,:,:]', node_oldname: 'int[:]',
+                          node_ghostcenter_info: 'int[:,:,:]', node_haloghostid: 'int[:,:]', node_oldname: 'int[:]',
                           BCdirichlet: 'int[:]',
                           matrixinnerfaces: 'int[:]', d_halofaces: 'int[:]', dirichletfaces: 'int[:]'):
 
   cmpt = 0
   nodes = np.zeros(4, dtype=faces.dtype)
-  one_rank = (node_haloghostcenter_info.shape[0] == 0)
 
   for i in matrixinnerfaces:
 
@@ -1844,23 +1822,20 @@ def _compute_3dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid
             # right cell-----------------------------------
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              cmpt = cmpt + 1
-              # right cell-----------------------------------
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          cmpt = cmpt + 1
 
         for j in range(node_periodicid[nod][-1]):
           cmpt = cmpt + 1
           # right cell-----------------------------------
           cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(node_haloid[nod][-1]):
-            cmpt = cmpt + 1
-            # right cell-----------------------------------
-            cmpt = cmpt + 1
+        for j in range(node_haloid[nod, -1]):
+          cmpt = cmpt + 1
+          # right cell-----------------------------------
+          cmpt = cmpt + 1
 
     cmpt = cmpt + 1
     # right cell------------------------------------------------------
@@ -1886,10 +1861,8 @@ def _compute_3dmatrix_size(faces: 'int[:,:]', face_haloid: 'int[:]', node_cellid
           if node_ghostcenter_info[nod][j][-1] != -1:
             cmpt = cmpt + 1
 
-        if not one_rank:
-          for j in range(len(node_haloghostcenter_info[nod])):
-            if node_haloghostcenter_info[nod][j][-1] != -1:
-              cmpt = cmpt + 1
+        for j in range(node_haloghostid[nod, -1]):
+          cmpt = cmpt + 1
 
         for j in range(node_haloid[nod][-1]):
           cmpt = cmpt + 1
