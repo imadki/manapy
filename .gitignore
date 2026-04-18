@@ -50,3 +50,4 @@ meshes/big/**
 manapy/c_api/manapy_domain.egg-info
 manapy/c_api/GKlib
 manapy/c_api/METIS
+TODO.md
