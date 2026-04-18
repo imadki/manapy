@@ -21,7 +21,7 @@ RANK = COMM.Get_rank()
 start = timeit.default_timer()
 
 
-dim, mesh_path, mesh_name = get_mesh("big/carre1.msh")
+dim, mesh_path, mesh_name = get_mesh("big/carre.msh")
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells

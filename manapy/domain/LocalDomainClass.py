@@ -347,9 +347,10 @@ class LocalDomain:
     nb_halos = len(halo_halosext)
 
     if self.size == 1:
-      cell_halonid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
-      face_haloid = np.zeros(shape=0, dtype=types.np_int_type)
-      node_haloid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
+      # give size to cell_halonid, face_haloid and node_haloid to keep the multiprocessing code as it is
+      cell_halonid = np.zeros(shape=(nb_cells, 1), dtype=types.np_int_type)
+      face_haloid = np.ones(shape=nb_faces, dtype=types.np_int_type) * -1
+      node_haloid = np.zeros(shape=(nb_nodes, 1), dtype=types.np_int_type)
     else:
       cell_halonid = np.zeros(shape=(nb_cells, self.max_cell_halonid + 1), dtype=types.np_int_type)
       face_haloid = np.zeros(shape=nb_faces, dtype=types.np_int_type)
@@ -547,9 +548,10 @@ class LocalDomain:
     max_cell_halophyid = self.max_cell_halophyid
 
     if self.size == 1:
-      cell_haloghostnid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
+      # give size to cell_haloghostnid and node_haloghostid to keep the multiprocessing code as it is
+      cell_haloghostnid = np.zeros(shape=(nb_cells, 1), dtype=types.np_int_type)
       cell_haloghostcenter = np.zeros(shape=(0, 0), dtype=types.np_float_type)
-      node_haloghostid = np.zeros(shape=(0, 0), dtype=types.np_int_type)
+      node_haloghostid = np.zeros(shape=(nb_nodes, 1), dtype=types.np_int_type)
       node_haloghostcenter = np.zeros(shape=(0, 0, 0), dtype=types.np_float_type)
       node_haloghostcenter_info = np.zeros(shape=(0, 0, 0), dtype=types.np_int_type)
       node_haloghostfaceinfo = np.zeros(shape=(0, 0, 0), dtype=types.np_float_type)
