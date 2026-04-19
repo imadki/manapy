@@ -1,5 +1,5 @@
 
-class Cell():
+class Cell:
     """ """
     __slots__=['_nbcells', '_nodeid', '_faceid', '_cellfid', '_cellnid', '_halonid', '_ghostnid', '_haloghostnid', 
                '_haloghostcenter', '_center', '_volume', '_nf', '_loctoglob', '_tc', '_periodicnid', '_periodicfid',
@@ -75,7 +75,7 @@ class Cell():
     def shift(self):
         return self._shift
             
-class Node():
+class Node:
     """ """
     __slots__= ['_nbnodes', '_vertex', '_name', '_oldname', '_cellid', '_ghostid', '_haloghostid', '_ghostcenter', '_ghostcenter_info', '_haloghostcenter', '_haloghostcenter_info', '_ghostfaceinfo',
                 '_haloghostfaceinfo', '_loctoglob', '_halonid', '_nparts', '_periodicid', '_R_x', '_R_y', '_R_z', '_number', 
@@ -179,11 +179,11 @@ class Node():
     def lambda_z(self):
         return self._lambda_z
 
-class Face():
+class Face:
     """ """
     __slots__= ['_nbfaces', '_nodeid', '_cellid', '_name', '_oldname', '_normal', '_mesure', '_center', '_ghostcenter', '_oppnodeid', '_halofid',
                 '_halofid', '_param1', '_param2', '_param3', '_param4', '_f_1', '_f_2', '_f_3', '_f_4', '_airDiamond', 
-                '_dist_ortho', '_tangent', '_binormal']
+                '_dist_ortho', '_tangent', '_binormal', '_ghost_id']
                 
     def __init__(self):
         pass
@@ -279,15 +279,19 @@ class Face():
     @property
     def binormal(self):
         return self._binormal
+
+    @property
+    def ghost_id(self):
+        return self._ghost_id
     
     
     # @property
     # def K(self):
     #     return self._K
         
-class Halo():
+class Halo:
     """ """
-    __slots__= ['_halosint', '_halosext', '_neigh', '_centvol', '_faces', '_nodes', '_sizehaloghost', '_scount', '_rcount', '_sdepl', 
+    __slots__= ['_halosint', '_halosext', '_neigh', '_centvol', '_faces', '_nodes', '_ghost_int', '_ghost_flt', '_sizehaloghost', '_scount', '_rcount', '_sdepl',
                 '_rdepl','_indsend', '_comm_ptr', '_requests']
     
     def __init__(self):
@@ -316,7 +320,15 @@ class Halo():
     @property
     def nodes(self):
         return self._nodes
-    
+
+    @property
+    def ghost_int(self):
+        return self._ghost_int
+
+    @property
+    def ghost_flt(self):
+        return self._ghost_flt
+
     @property
     def sizehaloghost(self):
         return self._sizehaloghost
@@ -341,3 +353,19 @@ class Halo():
     @property
     def requests(self):
         return self._requests
+
+
+class Ghost:
+    """ """
+    __slots__ = ['_info_int', '_info_flt']
+
+    def __init__(self):
+        pass
+
+    @property
+    def info_int(self):
+        return self._info_int
+
+    @property
+    def info_flt(self):
+        return self._info_flt
