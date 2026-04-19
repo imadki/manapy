@@ -13,7 +13,6 @@ local_domains = partitioning.create_sub_domains() # intermediate step
 ld = LocalDomain1Cpu.create_local_domains(local_domains) # list of local domains
 
 
-print(ld[0].node_haloghostcenter)
 print(ld[0].node_haloghostid)
 # print(ld[0].cell_center)
 # print(ld[0].cell_volume)

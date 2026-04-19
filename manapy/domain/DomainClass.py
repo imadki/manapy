@@ -2,7 +2,7 @@ import os
 from manapy.domain.LocalDomainClass import LocalDomain
 from manapy.domain.MeshClass import Mesh
 from manapy.domain.PartitioningClass import Partitioning
-from manapy.domain.geometry import Cell, Node, Halo, Face
+from manapy.domain.geometry import Cell, Node, Halo, Face, Ghost
 import shutil
 from mpi4py import MPI
 import numpy as np
@@ -35,6 +35,7 @@ class Domain:
     self.nodes = Node()
     self.faces = Face()
     self.halos = Halo()
+    self.ghost = Ghost()
 
     # Cells
     self.cells._nbcells = local_domain.nb_cells
@@ -43,9 +44,7 @@ class Domain:
     self.cells._cellfid = local_domain.cell_cellfid
     self.cells._cellnid = local_domain.cell_cellnid
     self.cells._halonid = local_domain.cell_halonid
-    self.cells._ghostnid = local_domain.cell_ghostnid
-    self.cells._haloghostnid = local_domain.cell_haloghostnid
-    self.cells._haloghostcenter = local_domain.cell_haloghostcenter # dimension always 3D
+    self.cells._ghostnid = local_domain.cell_ghostid
     self.cells._center = local_domain.cell_center # dimension always 3D
     self.cells._volume = local_domain.cell_volume
     self.cells._nf = local_domain.cell_nf # dimension always 3D
@@ -63,12 +62,6 @@ class Domain:
     self.nodes._cellid = local_domain.node_cellid
     self.nodes._ghostid = local_domain.node_ghostid
     self.nodes._haloghostid = local_domain.node_haloghostid
-    self.nodes._ghostcenter = local_domain.node_ghostcenter
-    self.nodes._ghostcenter_info = local_domain.node_ghostcenter_info
-    self.nodes._haloghostcenter = local_domain.node_haloghostcenter
-    self.nodes._haloghostcenter_info = local_domain.node_haloghostcenter_info
-    self.nodes._ghostfaceinfo = local_domain.node_ghostfaceinfo
-    self.nodes._haloghostfaceinfo = local_domain.node_haloghostfaceinfo
     self.nodes._loctoglob = local_domain.node_loctoglob
     self.nodes._halonid = local_domain.node_haloid
     self.nodes._nparts = None
@@ -91,7 +84,6 @@ class Domain:
     self.faces._mesure = local_domain.face_measure
     self.faces._center = local_domain.face_center # always 3D
     self.faces._dist_ortho = local_domain.face_dist_ortho # ?? in old domain in 3D it is useless to define dist_ortho with shape nbfaces TODO
-    self.faces._ghostcenter = local_domain.face_ghostcenter # always 3D
     self.faces._oppnodeid = None
     self.faces._halofid = local_domain.face_haloid
     self.faces._param1 = local_domain.face_param1
@@ -105,18 +97,25 @@ class Domain:
     self.faces._airDiamond = local_domain.face_air_diamond
     self.faces._tangent = local_domain.face_tangent
     self.faces._binormal = local_domain.face_binormal
+    self.faces._ghost_id = local_domain.face_to_phyid
 
     # Halos
-    self.halos._halosext = local_domain.halo_halosext # ?? TODO in old_domain this has a shape of (nb_halos, 7) in 2D
+    self.halos._halosext = local_domain.halo_halosext
     self.halos._neigh = local_domain.halo_neighsub
     self.halos._halosint = local_domain.halo_halosint
-    self.halos._centvol = local_domain.halo_centvol # always 3D
+    self.halos._centvol = local_domain.halo_centvol
+    self.halos._ghost_int = local_domain.ext_ghost_info_int
+    self.halos._ghost_flt = local_domain.ext_ghost_info_flt
     self.halos._sizehaloghost = local_domain.halo_sizehaloghost
     self.halos._faces = None
     self.halos._nodes = None
     self.halos._requests = None
     self.halo_comm =  local_domain.halo_comm
     self.phy_faces_comm = local_domain.phy_faces_comm
+
+    #Ghost
+    self.ghost._info_int = local_domain.ghost_info_int
+    self.ghost._info_flt = local_domain.ghost_info_flt
 
     # Domain
     self._bounds = local_domain.bounds
