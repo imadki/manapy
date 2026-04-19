@@ -45,6 +45,7 @@ class Domain:
     self.cells._cellnid = local_domain.cell_cellnid
     self.cells._halonid = local_domain.cell_halonid
     self.cells._ghostnid = local_domain.cell_ghostid
+    self.cells._haloghostnid = local_domain.cell_haloghostid
     self.cells._center = local_domain.cell_center # dimension always 3D
     self.cells._volume = local_domain.cell_volume
     self.cells._nf = local_domain.cell_nf # dimension always 3D
@@ -104,8 +105,6 @@ class Domain:
     self.halos._neigh = local_domain.halo_neighsub
     self.halos._halosint = local_domain.halo_halosint
     self.halos._centvol = local_domain.halo_centvol
-    self.halos._ghost_int = local_domain.ext_ghost_info_int
-    self.halos._ghost_flt = local_domain.ext_ghost_info_flt
     self.halos._sizehaloghost = local_domain.halo_sizehaloghost
     self.halos._faces = None
     self.halos._nodes = None
@@ -116,6 +115,8 @@ class Domain:
     #Ghost
     self.ghost._info_int = local_domain.ghost_info_int
     self.ghost._info_flt = local_domain.ghost_info_flt
+    self.ghost._ext_info_int = local_domain.ext_ghost_info_int
+    self.ghost._ext_info_flt = local_domain.ext_ghost_info_flt
 
     # Domain
     self._bounds = local_domain.bounds
