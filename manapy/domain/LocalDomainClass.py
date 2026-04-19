@@ -402,7 +402,7 @@ class LocalDomain:
 
     # ---- ghost_info_flt, ghost_info_int
     ghost_info_data_size_flt = 10 # (ghostcenter_x&y&z, gamma, face_center_x&y&z, face_normal_x&y&z)
-    ghost_info_data_size_int = 4 # (cell_id, face index inside the cell, face_oldname, cell global id)
+    ghost_info_data_size_int = 5 # (cell_id, face index inside the cell, face_oldname, cell global id, face_id)
     ghost_info_flt = np.zeros(shape=(ghost_info_size, ghost_info_data_size_flt), dtype=types.np_float_type)
     ghost_info_int = np.zeros(shape=(ghost_info_size, ghost_info_data_size_int), dtype=types.np_int_type)
 
@@ -428,9 +428,11 @@ class LocalDomain:
     )
 
   def phy_faces_exchange(self, phy_faces_comm, ghost_info_int: 'int[:, :]', ghost_info_flt: 'float[:, :]'):
-    ext_ghost_info_flt = None
-    ext_ghost_info_int = None
+    ext_ghost_info_flt = np.zeros(shape=(0, 0), dtype=types.np_float_type)
+    ext_ghost_info_int = np.zeros(shape=(0, 0), dtype=types.np_int_type)
     if self.size != 1:
+      ghost_info_int = ghost_info_int[:, [0, 2, 3]] # only (local_cellid, face_oldname, cell_global_id)
+      # local_cellid it will be replaced with haloext after exchange later in _create_halo_ghost_tables
       ext_ghost_info_flt = phy_faces_comm.exchange(ghost_info_flt)
       ext_ghost_info_int = phy_faces_comm.exchange(ghost_info_int)
     return (
@@ -441,8 +443,8 @@ class LocalDomain:
   @staticmethod
   def _local_share_ghost_info(local_domains: 'LocalDomain[:]'):
     if len(local_domains) == 1:
-      local_domains[0].ext_ghost_info_flt = None
-      local_domains[0].ext_ghost_info_int = None
+      local_domains[0].ext_ghost_info_flt = np.zeros(shape=(0, 0), dtype=types.np_float_type)
+      local_domains[0].ext_ghost_info_int = np.zeros(shape=(0, 0), dtype=types.np_int_type)
       return
 
     size = len(local_domains)
@@ -467,6 +469,7 @@ class LocalDomain:
         data_indices = phyid_send[a:b]
         data_flt = ghost_info_flt[data_indices]
         data_int = ghost_info_int[data_indices]
+        data_int = data_int[:, [0, 2, 3]]
         recv_data[rank][dest_part] = (data_indices, data_int, data_flt)
 
     # ------------------------------------------------------------------

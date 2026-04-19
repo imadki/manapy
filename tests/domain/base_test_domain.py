@@ -1,6 +1,7 @@
 from manapy.domain import Domain
 import numpy as np
 from manapy.testing.test_domain_helper import sort_float_arr
+from manapy.testing.ReferenceTables import ReferenceTables
 
 """
 local_domains and reference_domains fixture are defined on conftest.py thery are loaded automatically from the subclasses using pytest.
@@ -10,7 +11,7 @@ class BaseTestDomain:
   def setup_method(self):
     self.decimal = 5
 
-  def test_cell_vertices(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_vertices(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -26,7 +27,7 @@ class BaseTestDomain:
 
         np.testing.assert_almost_equal(d_vertices, r_vertices, decimal=5)
 
-  def test_cell_center(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_center(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -38,7 +39,7 @@ class BaseTestDomain:
 
         np.testing.assert_almost_equal(d_cell_center, r_cell_center, decimal=self.decimal)
 
-  def test_cell_area(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_area(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -50,7 +51,7 @@ class BaseTestDomain:
 
         np.testing.assert_almost_equal(d_cell_area, r_cell_area, decimal=self.decimal)
 
-  def test_cell_neighbor_by_face(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_neighbor_by_face(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -68,7 +69,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_cell_cellfid, r_cell_cellfid)
 
-  def test_cell_neighbor_by_node(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_neighbor_by_node(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -86,7 +87,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_cell_cellnid, r_cell_cellnid)
 
-  def test_cell_halo_by_face(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_halo_by_face(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -108,7 +109,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_cell_halofid, r_cell_halofid)
 
-  def test_cell_halo_by_node(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_halo_by_node(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -128,7 +129,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_cell_halonid, r_cell_halonid)
 
-  def test_cell_ghostnid(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_ghostid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
       dim = ld.dim
@@ -136,7 +137,7 @@ class BaseTestDomain:
       for i in range(ld.cells.nodeid.shape[0]):
         cell_ghostnid = ld.cells.ghostnid[i]
         cell_ghostnid = cell_ghostnid[0:cell_ghostnid[-1]]
-        cell_ghost_center = ld.faces.ghostcenter[cell_ghostnid]
+        cell_ghost_center = ld.ghost.info_flt[cell_ghostnid]
         cell_ghost_center = cell_ghost_center[:, 0:dim]
         d_cell_ghost_center = sort_float_arr(dim, cell_ghost_center)[0]
 
@@ -152,7 +153,7 @@ class BaseTestDomain:
           np.testing.assert_almost_equal(d_cell_ghost_center[j], r_cell_ghost_center[j], decimal=self.decimal)
         np.testing.assert_equal(len(d_cell_ghost_center), len(r_cell_ghost_center))
 
-  def test_cell_haloghost(self, local_domains: 'list[Domain]', reference_domain):
+  def test_cell_halo_ghostid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -162,7 +163,7 @@ class BaseTestDomain:
       for i in range(ld.cells.nodeid.shape[0]):
         cell_haloghostnid = ld.cells.haloghostnid[i]
         cell_haloghostnid = cell_haloghostnid[0:cell_haloghostnid[-1]]
-        cell_haloghost_center = ld.cells.haloghostcenter[cell_haloghostnid]
+        cell_haloghost_center = ld.ghost.ext_info_flt[cell_haloghostnid]
         cell_haloghost_center = cell_haloghost_center[:, 0:dim]
         d_cell_haloghost_center = sort_float_arr(dim, cell_haloghost_center)[0]
 
@@ -178,7 +179,7 @@ class BaseTestDomain:
           np.testing.assert_almost_equal(d_cell_haloghost_center[j], r_cell_haloghost_center[j], decimal=self.decimal)
         np.testing.assert_equal(len(d_cell_haloghost_center), len(r_cell_haloghost_center))
 
-  def test_nb_cells(self, local_domains: 'list[Domain]', reference_domain):
+  def test_nb_cells(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     nb_cells = 0
     for part in range(len(local_domains)):
       ld = local_domains[part]
@@ -188,7 +189,7 @@ class BaseTestDomain:
 
   # #################################################
 
-  def test_node_cellid(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_cellid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -217,7 +218,7 @@ class BaseTestDomain:
 
           np.testing.assert_equal(d_node_cellid, r_node_cellid)
 
-  def test_node_loctoglob(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_loctoglob(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -235,7 +236,7 @@ class BaseTestDomain:
         print(g_id, c_node_loctoglob)
         np.testing.assert_equal(c_node_loctoglob, r_cell_nodes)
 
-  def test_node_halonid(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_halonid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -266,7 +267,7 @@ class BaseTestDomain:
 
           np.testing.assert_equal(d_node_halonid, r_node_halonid)
 
-  def test_node_oldname(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_oldname(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -282,7 +283,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_node_oldname, r_node_oldname)
 
-  def test_node_name(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_name(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -299,7 +300,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_node_name, r_node_name)
 
-  def test_node_ghostnid(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_ghostnid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
       dim = ld.dim
@@ -319,7 +320,7 @@ class BaseTestDomain:
           node_id = cell_nodes[k]
           node_ghostnid = ld.nodes.ghostid[node_id]
           node_ghostnid = node_ghostnid[0:node_ghostnid[-1]]
-          d_node_ghost_center = ld.faces.ghostcenter[node_ghostnid]
+          d_node_ghost_center = ld.ghost.info_flt[node_ghostnid]
           d_node_ghost_center = d_node_ghost_center[:, 0:dim]
           d_node_ghost_center = sort_float_arr(dim, d_node_ghost_center)[0]
 
@@ -334,7 +335,7 @@ class BaseTestDomain:
             np.testing.assert_almost_equal(d_node_ghost_center[j], r_node_ghost_center[j], decimal=self.decimal)
           np.testing.assert_equal(len(d_node_ghost_center), len(r_node_ghost_center))
 
-  def test_node_haloghostnid(self, local_domains: 'list[Domain]', reference_domain):
+  def test_node_haloghostnid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -356,7 +357,7 @@ class BaseTestDomain:
           node_id = cell_nodes[k]
           node_haloghostnid = ld.nodes.haloghostid[node_id]
           node_haloghostnid = node_haloghostnid[0:node_haloghostnid[-1]]
-          d_node_haloghost_center = ld.cells.haloghostcenter[node_haloghostnid]
+          d_node_haloghost_center = ld.ghost.ext_info_flt[node_haloghostnid]
           d_node_haloghost_center = d_node_haloghost_center[:, 0:dim]
           d_node_haloghost_center = sort_float_arr(dim, d_node_haloghost_center)[0]
 
@@ -371,152 +372,7 @@ class BaseTestDomain:
             np.testing.assert_almost_equal(d_node_haloghost_center[j], r_node_haloghost_center[j], decimal=self.decimal)
           np.testing.assert_equal(len(d_node_haloghost_center), len(r_node_haloghost_center))
 
-  def test_node_ghostcenter(self, local_domains: 'list[Domain]', reference_domain):
-    for part in range(len(local_domains)):
-      ld = local_domains[part]
-      dim = ld.dim
-
-      for i in range(ld.cells.nodeid.shape[0]):
-        cell_nodes = ld.cells.nodeid[i]
-        cell_nodes = cell_nodes[0:cell_nodes[-1]]
-
-        for k in range(len(cell_nodes)):
-          node_id = cell_nodes[k]
-          node_ghostid = ld.nodes.ghostid[node_id]
-          node_ghostid = node_ghostid[0:node_ghostid[-1]]
-          nb_ghost = len(node_ghostid)
-          if nb_ghost == 0: continue
-          c_node_ghostcenter = ld.nodes.ghostcenter[node_id][0:nb_ghost, 0:dim] # x, y, z
-          c_node_ghostcenter_info = ld.nodes.ghostcenter_info[node_id][0:nb_ghost] # cell_id, face_oldname, face_id
-          c_node_ghostfaceinfo = ld.nodes.ghostfaceinfo[node_id][0:nb_ghost] # fc_x, fc_y, fc_z, fn_x, fn_y, fn_z
-          c_node_ghostface_center = c_node_ghostfaceinfo[:, 0:dim]
-          c_node_ghostface_normal = np.abs(c_node_ghostfaceinfo[:, dim:])
-
-          # Sort
-          _, order = sort_float_arr(dim, c_node_ghostcenter)
-          c_node_ghostcenter = c_node_ghostcenter[order]
-          c_node_ghostcenter_info = c_node_ghostcenter_info[order]
-          c_node_ghostface_center = c_node_ghostface_center[order]
-          c_node_ghostface_normal = c_node_ghostface_normal[order]
-
-          # --------------------------------------------------------
-
-          g_id = ld.cells.loctoglob[i]
-          node_gid = reference_domain.cells[g_id, k]
-          r_node_id = reference_domain.locals[part].map_nodes[node_gid]
-          r_node_ghostnid = reference_domain.locals[part].node_ghostnid[r_node_id]
-          r_node_ghostnid = r_node_ghostnid[0:r_node_ghostnid[-1]]
-
-          r_ghost_info_flt = reference_domain.ghost_info_flt[r_node_ghostnid]
-          r_node_ghostcenter = r_ghost_info_flt[:, 0:dim]
-          r_node_ghostface_center = r_ghost_info_flt[:, 4:4+dim]
-          r_node_ghostface_normal = np.abs(r_ghost_info_flt[:, 7:7+dim])
-          r_ghost_info_int = reference_domain.ghost_info_int[r_node_ghostnid] # cell_id, face index inside the cell, face_oldname
-
-          # Sort
-          _, order = sort_float_arr(dim, r_node_ghostcenter)
-          r_node_ghostcenter = r_node_ghostcenter[order]
-          r_node_ghostface_center = r_node_ghostface_center[order]
-          r_node_ghostface_normal = r_node_ghostface_normal[order]
-          r_ghost_info_int = r_ghost_info_int[order]
-
-          assert len(c_node_ghostcenter) == len(r_ghost_info_int)
-
-          for j in range(len(c_node_ghostcenter)):
-            # cell_id
-            cell_gid = ld.cells.loctoglob[c_node_ghostcenter_info[j][0]]
-            np.testing.assert_equal(cell_gid, r_ghost_info_int[j][0])
-
-            # face_oldname
-            np.testing.assert_equal(c_node_ghostcenter_info[j][1], r_ghost_info_int[j][2])
-
-            # face_id
-            d_face_center = ld.faces.center[c_node_ghostcenter_info[j, 2]]
-            face_id = reference_domain.cell_faceid[r_ghost_info_int[j, 0]][r_ghost_info_int[j, 1]] # find face_id using cell_id and face index inside the cell
-            r_face_center = reference_domain.face_center[face_id]
-            np.testing.assert_almost_equal(d_face_center, r_face_center, decimal=self.decimal)
-
-            # ghost_center
-            np.testing.assert_almost_equal(c_node_ghostcenter[j], r_node_ghostcenter[j], decimal=self.decimal)
-
-            # face_center
-            np.testing.assert_almost_equal(c_node_ghostface_center[j], r_node_ghostface_center[j], decimal=self.decimal)
-
-            # face_normal (only abs)
-            np.testing.assert_almost_equal(c_node_ghostface_normal[j], r_node_ghostface_normal[j], decimal=self.decimal)
-
-  def test_node_haloghostcenter(self, local_domains: 'list[Domain]', reference_domain):
-    if len(local_domains) <= 1:
-      return
-    for part in range(len(local_domains)):
-      ld = local_domains[part]
-      dim = ld.dim
-
-      for i in range(ld.cells.nodeid.shape[0]):
-        cell_nodes = ld.cells.nodeid[i]
-        cell_nodes = cell_nodes[0:cell_nodes[-1]]
-
-        for k in range(len(cell_nodes)):
-          node_id = cell_nodes[k]
-          node_haloghostid = ld.nodes.haloghostid[node_id]
-          node_haloghostid = node_haloghostid[0:node_haloghostid[-1]]
-          nb_ghost = len(node_haloghostid)
-          if nb_ghost == 0: continue
-          c_node_haloghostcenter = ld.nodes.haloghostcenter[node_id][0:nb_ghost]
-          # index point to halo_halosext of cell_global_id, # face_old_name, # index point to cell_haloghostcenter
-          c_node_haloghostcenterinfo = ld.nodes.haloghostcenter_info[node_id][0:nb_ghost]
-          c_node_haloghostfaceinfo = ld.nodes.haloghostfaceinfo[node_id][0:nb_ghost]
-
-          # Sort
-          _, order = sort_float_arr(dim, c_node_haloghostcenter)
-          c_node_haloghostcenter = c_node_haloghostcenter[order]
-          c_node_haloghostcenterinfo = c_node_haloghostcenterinfo[order]
-          c_node_haloghostfaceinfo = c_node_haloghostfaceinfo[order]
-          c_node_haloghostface_center = c_node_haloghostfaceinfo[:, 0:dim]
-          c_node_haloghostface_normal = np.abs(c_node_haloghostfaceinfo[:, dim:])
-
-
-          g_id = ld.cells.loctoglob[i]
-          node_gid = reference_domain.cells[g_id, k]
-          r_node_id = reference_domain.locals[part].map_nodes[node_gid]
-          r_node_haloghostnid = reference_domain.locals[part].node_haloghostnid[r_node_id]
-          r_node_haloghostnid = r_node_haloghostnid[0:r_node_haloghostnid[-1]]
-
-          r_haloghost_info_flt = reference_domain.ghost_info_flt[r_node_haloghostnid]
-          r_haloghost_info_int = reference_domain.ghost_info_int[r_node_haloghostnid] # cell_id, face index inside the cell, face_oldname
-
-          # Sort
-          _, order = sort_float_arr(dim, r_haloghost_info_flt)
-          r_haloghost_info_flt = r_haloghost_info_flt[order]
-          r_haloghost_info_int = r_haloghost_info_int[order]
-          r_node_haloghostcenter = r_haloghost_info_flt[:, 0:dim]
-          r_node_haloghostface_center = r_haloghost_info_flt[:, 4:4+dim]
-          r_node_haloghostface_normal = np.abs(r_haloghost_info_flt[:, 7:7+dim])
-
-          assert  len(c_node_haloghostcenter) == len(r_haloghost_info_int)
-
-          for j in range(len(c_node_haloghostcenter)):
-            # cell_id
-            cell_gid = ld.halos.halosext[c_node_haloghostcenterinfo[j][0], 0]
-            np.testing.assert_equal(cell_gid, r_haloghost_info_int[j][0])
-
-            # face_oldname
-            np.testing.assert_equal(c_node_haloghostcenterinfo[j][1], r_haloghost_info_int[j][2])
-
-            # index point to cell_haloghostcenter
-            halo_ghost_center = ld.cells.haloghostcenter[c_node_haloghostcenterinfo[j][2], 0:dim]
-            np.testing.assert_almost_equal(halo_ghost_center, r_node_haloghostcenter[j], decimal=self.decimal)
-
-            # ghost_center
-            np.testing.assert_almost_equal(c_node_haloghostcenter[j], r_node_haloghostcenter[j], decimal=self.decimal)
-
-            # face_center
-            np.testing.assert_almost_equal(c_node_haloghostface_center[j], r_node_haloghostface_center[j], decimal=self.decimal)
-
-            # face_normal (only abs)
-            np.testing.assert_almost_equal(c_node_haloghostface_normal[j], r_node_haloghostface_normal[j], decimal=self.decimal)
-
-  def test_nb_nodes(self, local_domains: 'list[Domain]', reference_domain):
+  def test_nb_nodes(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     all_nodes = []
     for part in range(len(local_domains)):
       ld = local_domains[part]
@@ -530,7 +386,7 @@ class BaseTestDomain:
 
   # #################################################
 
-  def test_face_vertices(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_vertices(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
       dim = ld.dim
@@ -565,7 +421,7 @@ class BaseTestDomain:
 
           np.testing.assert_almost_equal(d_face_vertices, r_face_vertices, decimal=self.decimal)
 
-  def test_face_measure(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_measure(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -585,7 +441,7 @@ class BaseTestDomain:
 
         np.testing.assert_almost_equal(d_face_measure[d_order], r_face_measure[r_order], decimal=self.decimal)
 
-  def test_face_center(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_center(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -605,7 +461,7 @@ class BaseTestDomain:
 
         np.testing.assert_almost_equal(d_face_center[d_order], r_face_center[r_order], decimal=self.decimal)
 
-  def test_face_name(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_name(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -625,7 +481,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_face_name[d_order], r_face_name[r_order])
 
-  def test_face_oldname(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_oldname(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -647,7 +503,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_face_oldname[d_order], r_face_oldname[r_order])
 
-  def test_face_normal(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_normal(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -667,7 +523,7 @@ class BaseTestDomain:
 
         np.testing.assert_almost_equal(d_face_normal[d_order], r_face_normal[r_order], decimal=self.decimal)
 
-  def test_face_cellid(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_cellid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
@@ -702,7 +558,7 @@ class BaseTestDomain:
         r_face_cellid = np.sort(r_face_cellid)
         np.testing.assert_equal(d_face_cellid, r_face_cellid)
 
-  def test_face_ghostcenter(self, local_domains: 'list[Domain]', reference_domain):
+  def test_face_ghostcenter(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
       ld = local_domains[part]
       dim = ld.dim
@@ -724,19 +580,24 @@ class BaseTestDomain:
         cell_faces = cell_faces[d_order]
         r_cell_faces = r_cell_faces[r_order]
 
-        d_face_ghostcenter = ld.faces.ghostcenter[cell_faces][:, 0:dim]
-        faces_ghostid = reference_domain.locals[part].face_ghostid[r_cell_faces]
+        for k in range(len(cell_faces)):
+          d_ghost_id = ld.faces.ghost_id[cell_faces[k]]
+          r_ghost_id = reference_domain.locals[part].face_ghostid[r_cell_faces[k]]
+          if d_ghost_id != -1:
+            assert r_ghost_id != -1
+            d_ghost_center = ld.ghost.info_flt[d_ghost_id, [0, 1, 2]]
+            d_ghost_center = d_ghost_center[0:dim]
 
-        g_face_ghostcenter = np.ones(shape=(len(r_cell_faces), dim), dtype=np.float64) * -1
-        for k in range(len(faces_ghostid)):
-          ghost_id = faces_ghostid[k]
-          if ghost_id != -1:
-            ghost_center = reference_domain.ghost_info_flt[ghost_id, [0, 1, 2]]
-            g_face_ghostcenter[k] = ghost_center[0:dim]
+            r_ghost_center = reference_domain.ghost_info_flt[r_ghost_id, [0, 1, 2]]
+            r_ghost_center = r_ghost_center[0:dim]
 
-        np.testing.assert_almost_equal(d_face_ghostcenter, g_face_ghostcenter, decimal=self.decimal)
+            np.testing.assert_almost_equal(d_ghost_center, r_ghost_center, decimal=self.decimal)
+          else:
+            assert r_ghost_id == -1
 
-  def test_nb_faces(self, local_domains: 'list[Domain]', reference_domain):
+
+
+  def test_nb_faces(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     all_faces = []
     for part in range(len(local_domains)):
       ld = local_domains[part]
@@ -748,9 +609,123 @@ class BaseTestDomain:
 
     np.testing.assert_equal(a.shape[0], reference_domain.nb_faces)
 
+
   # #################################################
 
-  def test_halos_halosext(self, local_domains: 'list[Domain]', reference_domain):
+  def test_ghost_info(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
+    for part in range(len(local_domains)):
+      ld = local_domains[part]
+      dim = ld.dim
+
+      for i in range(ld.cells.nodeid.shape[0]):
+        d_cell_ghostnid = ld.cells.ghostnid[i]
+        d_cell_ghostnid = d_cell_ghostnid[0:d_cell_ghostnid[-1]]
+
+        g_id = ld.cells.loctoglob[i]
+        l_id = reference_domain.locals[part].map_cells[g_id]
+        r_cell_ghostnid = reference_domain.locals[part].cell_ghostnid[l_id]
+        r_cell_ghostnid = r_cell_ghostnid[0:r_cell_ghostnid[-1]]
+
+        d_ghost_info_flt = ld.ghost.info_flt[d_cell_ghostnid]
+        d_ghost_info_int = ld.ghost.info_int[d_cell_ghostnid]
+        r_ghost_info_flt = reference_domain.ghost_info_flt[r_cell_ghostnid]
+        r_ghost_info_int = reference_domain.ghost_info_int[r_cell_ghostnid]
+
+        _, order = sort_float_arr(dim, d_ghost_info_flt)
+        d_ghost_info_flt = d_ghost_info_flt[order]
+        d_ghost_info_int = d_ghost_info_int[order]
+
+        _, order = sort_float_arr(dim, r_ghost_info_flt)
+        r_ghost_info_flt = r_ghost_info_flt[order]
+        r_ghost_info_int = r_ghost_info_int[order]
+
+        assert d_ghost_info_flt.shape[0] == r_ghost_info_flt.shape[0]
+        assert d_ghost_info_flt.shape[0] == d_ghost_info_int.shape[0]
+        for k in range(d_ghost_info_flt.shape[0]):
+          # ghost_center
+          np.testing.assert_almost_equal(d_ghost_info_flt[k][0:dim], r_ghost_info_flt[k][0:dim], decimal=self.decimal)
+
+          # gamma not tested here
+
+          # face_center
+          np.testing.assert_almost_equal(d_ghost_info_flt[k][4:4+dim], r_ghost_info_flt[k][4:4+dim], decimal=self.decimal)
+
+          # face_normal (only abs)
+          np.testing.assert_almost_equal(np.abs(d_ghost_info_flt[k][7:7+dim]), np.abs(r_ghost_info_flt[k][7:7+dim]), decimal=self.decimal)
+
+          # cell_id and cell_global_id
+          cell_gid = ld.cells.loctoglob[d_ghost_info_int[k][0]]
+          np.testing.assert_equal(cell_gid, r_ghost_info_int[k][0])
+          np.testing.assert_equal(cell_gid, d_ghost_info_int[k][3])
+
+          # face_id
+          d_face_id = ld.cells.faceid[d_ghost_info_int[k, 0], d_ghost_info_int[k, 1]]
+          d_face_center = ld.faces.center[d_face_id]
+          r_face_id = reference_domain.cell_faceid[r_ghost_info_int[k, 0]][
+            r_ghost_info_int[k, 1]]  # find face_id using cell_id and face index inside the cell
+          r_face_center = reference_domain.face_center[r_face_id]
+          np.testing.assert_almost_equal(d_face_center, r_face_center, decimal=self.decimal)
+          assert d_face_id == d_ghost_info_int[k, 4]
+
+          # face_oldname
+          np.testing.assert_equal(d_ghost_info_int[k][2], r_ghost_info_int[k][2])
+
+
+  def test_halo_ghost_info(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
+    if len(local_domains) <= 1:
+      return
+    for part in range(len(local_domains)):
+      ld = local_domains[part]
+      dim = ld.dim
+
+      for i in range(len(ld.cells.nodeid)):
+        d_cell_haloghostnid = ld.cells.haloghostnid[i]
+        d_cell_haloghostnid = d_cell_haloghostnid[0:d_cell_haloghostnid[-1]]
+
+        g_id = ld.cells.loctoglob[i]
+        l_id = reference_domain.locals[part].map_cells[g_id]
+        r_cell_haloghostnid = reference_domain.locals[part].cell_haloghostnid[l_id]
+        r_cell_haloghostnid = r_cell_haloghostnid[0:r_cell_haloghostnid[-1]]
+
+        d_haloghost_info_flt = ld.ghost.ext_info_flt[d_cell_haloghostnid]
+        d_haloghost_info_int = ld.ghost.ext_info_int[d_cell_haloghostnid]
+        r_haloghost_info_flt = reference_domain.ghost_info_flt[r_cell_haloghostnid]
+        r_haloghost_info_int = reference_domain.ghost_info_int[r_cell_haloghostnid]
+
+        _, order = sort_float_arr(dim, d_haloghost_info_flt)
+        d_haloghost_info_flt = d_haloghost_info_flt[order]
+        d_haloghost_info_int = d_haloghost_info_int[order]
+
+        _, order = sort_float_arr(dim, r_haloghost_info_flt)
+        r_haloghost_info_flt = r_haloghost_info_flt[order]
+        r_haloghost_info_int = r_haloghost_info_int[order]
+
+        assert d_haloghost_info_flt.shape[0] == r_haloghost_info_flt.shape[0]
+        assert d_haloghost_info_flt.shape[0] == d_haloghost_info_int.shape[0]
+        for k in range(d_haloghost_info_flt.shape[0]):
+          # ghost_center
+          np.testing.assert_almost_equal(d_haloghost_info_flt[k][0:dim], r_haloghost_info_flt[k][0:dim], decimal=self.decimal)
+
+          # gamma not tested here
+
+          # face_center
+          np.testing.assert_almost_equal(d_haloghost_info_flt[k][4:4+dim], r_haloghost_info_flt[k][4:4+dim], decimal=self.decimal)
+
+          # face_normal (only abs)
+          np.testing.assert_almost_equal(np.abs(d_haloghost_info_flt[k][7:7+dim]), np.abs(r_haloghost_info_flt[k][7:7+dim]), decimal=self.decimal)
+
+          # haloext and cell_global_id
+          ghost_gid = r_haloghost_info_int[k, 3]
+          haloext_gid = ld.halos.halosext[d_haloghost_info_int[k][0]][0]
+          np.testing.assert_equal(ghost_gid, haloext_gid)
+          np.testing.assert_equal(ghost_gid, d_haloghost_info_int[k][2])
+
+          # face_oldname
+          np.testing.assert_equal(d_haloghost_info_int[k][1], r_haloghost_info_int[k][2])
+
+  # #################################################
+
+  def test_halos_halosext(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -766,7 +741,7 @@ class BaseTestDomain:
 
         np.testing.assert_equal(d_halo_nodes, r_halo_nodes)
 
-  def test_halos_halosint(self, local_domains: 'list[Domain]', reference_domain):
+  def test_halos_halosint(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     # Halo_neigh, Halosint
@@ -786,7 +761,7 @@ class BaseTestDomain:
         start += nb_haloint
         np.testing.assert_equal(d_haloint, r_haloint)
 
-  def test_halo_centvol(self, local_domains: 'list[Domain]', reference_domain):
+  def test_halo_centvol(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -802,7 +777,7 @@ class BaseTestDomain:
       np.testing.assert_almost_equal(d_halo_centvol_center, r_halosext_center, decimal=self.decimal)
       np.testing.assert_almost_equal(d_halo_centvol_vol, r_halosext_vol, decimal=self.decimal)
 
-  def test_halo_sizehaloghost(self, local_domains: 'list[Domain]', reference_domain):
+  def test_halo_sizehaloghost(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
@@ -813,7 +788,7 @@ class BaseTestDomain:
 
       np.testing.assert_equal(d_sizehaloghost, r_sizehaloghost)
 
-  def test_halos_communication(self, local_domains: 'list[Domain]', reference_domain):
+  def test_halos_communication(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     if len(local_domains) <= 1:
       return
     comm = {}
