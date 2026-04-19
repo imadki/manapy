@@ -303,33 +303,28 @@ class LocalDomain1Cpu(LocalDomain):
         self.face_oldname,
         self.face_name,
         self.node_name,
-        self.phyid_to_faceid
+        self.phyid_to_faceid,
+        self.face_to_phyid,
       ) = self._define_face_and_node_name(self.phy_faces, self.phy_faces_name, self.faces, self.face_haloid,
                                           self.node_haloid, self.node_oldname)
       log_step.out()
 
 
       log_step.log("_create_shared_ghost_info")
-      (self.ghost_info_int, self.ghost_info_flt) = self._create_shared_ghost_info(self.cell_center, self.cell_faceid,
+      (self.ghost_info_int, self.ghost_info_flt) = self._create_ghost_info(self.cell_center, self.cell_faceid,
                                                                                   self.cell_loctoglob,
                                                                                   self.face_oldname, self.face_normal,
-                                                                                  self.face_center, self.face_measure,
-                                                                                  self.phyid_send, self.faces,
+                                                                                  self.face_center, self.face_measure, self.faces,
                                                                                   self.nodes, self.phy_faces,
                                                                                   self.node_cellid,
                                                                                   self.phyid_to_faceid)
       log_step.out()
 
-
       log_step.log("_create_ghost_tables")
       (
         self.node_ghostid,
-        self.cell_ghostnid,
-        self.node_ghostcenter,
-        self.node_ghostcenter_info,
-        self.face_ghostcenter,
-        self.node_ghostfaceinfo
-      ) = self._create_ghost_tables(self.ghost_info_int, self.ghost_info_flt, self.cells, self.faces, self.cell_faceid)
+        self.cell_ghostid
+      ) = self._create_ghost_tables(self.ghost_info_int, self.node_cellid, self.faces, self.cell_faceid)
       log_step.out()
 
     # ------------------------------------------------------------------
@@ -344,15 +339,11 @@ class LocalDomain1Cpu(LocalDomain):
 
       log_step.log("_create_halo_ghost_tables")
       (
-        self.cell_haloghostnid,
-        self.cell_haloghostcenter,
+        self.cell_haloghostid,
         self.node_haloghostid,
-        self.node_haloghostcenter,
-        self.node_haloghostcenter_info,
-        self.node_haloghostfaceinfo,
         self.halo_sizehaloghost
-      ) = self._create_halo_ghost_tables(self.ext_ghost_info_flt, self.ext_ghost_info_int, self.node_halophyid,
-                                         self.cell_halophyid, self.node_haloid, self.halo_halosext)
+      ) = self._create_halo_ghost_tables(self.ext_ghost_info_int, self.node_halophyid, self.cell_halophyid,
+                                         self.node_haloid, self.halo_halosext)
       log_step.out()
 
     # Check if mesh is will constructed
@@ -384,7 +375,7 @@ class LocalDomain1Cpu(LocalDomain):
         self.face_f2,
         self.face_f3,
         self.face_f4  # Only on 2D
-      ) = self._face_gradient_info(self.face_cellid, self.faces, self.face_ghostcenter, self.face_name,
+      ) = self._face_gradient_info(self.face_cellid, self.faces, self.face_to_phyid, self.ghost_info_flt, self.face_name,
                                    self.face_normal, self.cell_center, self.halo_centvol, self.face_haloid, self.nodes,
                                    self.cell_shift)
       log_step.out()
@@ -400,7 +391,7 @@ class LocalDomain1Cpu(LocalDomain):
         self.node_number,
       ) = self._variables(self.cell_center, self.node_cellid, self.node_haloid, self.node_ghostid,
                           self.node_haloghostid, self.node_periodicid, self.nodes, self.node_oldname,
-                          self.face_ghostcenter, self.cell_haloghostcenter, self.halo_centvol, self.cell_shift)
+                          self.ghost_info_flt, self.ext_ghost_info_flt, self.halo_centvol, self.cell_shift)
       log_step.out()
 
       log_step.log("_update_boundaries")
