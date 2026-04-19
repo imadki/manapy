@@ -1,8 +1,8 @@
 
 class Cell:
     """ """
-    __slots__=['_nbcells', '_nodeid', '_faceid', '_cellfid', '_cellnid', '_halonid', '_ghostnid', '_haloghostnid', 
-               '_haloghostcenter', '_center', '_volume', '_nf', '_loctoglob', '_tc', '_periodicnid', '_periodicfid',
+    __slots__=['_nbcells', '_nodeid', '_faceid', '_cellfid', '_cellnid', '_halonid', '_ghostnid', '_haloghostnid',
+               '_center', '_volume', '_nf', '_loctoglob', '_tc', '_periodicnid', '_periodicfid',
                '_shift', '_orthocenter']
     def __init__(self):
         pass
@@ -77,8 +77,8 @@ class Cell:
             
 class Node:
     """ """
-    __slots__= ['_nbnodes', '_vertex', '_name', '_oldname', '_cellid', '_ghostid', '_haloghostid', '_ghostcenter', '_ghostcenter_info', '_haloghostcenter', '_haloghostcenter_info', '_ghostfaceinfo',
-                '_haloghostfaceinfo', '_loctoglob', '_halonid', '_nparts', '_periodicid', '_R_x', '_R_y', '_R_z', '_number', 
+    __slots__= ['_nbnodes', '_vertex', '_name', '_oldname', '_cellid', '_ghostid', '_haloghostid', '_loctoglob',
+                '_halonid', '_nparts', '_periodicid', '_R_x', '_R_y', '_R_z', '_number',
                 '_lambda_x', '_lambda_y', '_lambda_z']
      
     def __init__(self, nbnodes=None):
@@ -110,30 +110,6 @@ class Node:
     @property
     def haloghostid(self):
         return self._haloghostid
-    
-    @property
-    def ghostcenter(self):
-        return self._ghostcenter
-
-    @property
-    def ghostcenter_info(self):
-        return self._ghostcenter_info
-    
-    @property
-    def haloghostcenter(self):
-        return self._haloghostcenter
-
-    @property
-    def haloghostcenter_info(self):
-        return self._haloghostcenter_info
-    
-    @property
-    def ghostfaceinfo(self):
-        return self._ghostfaceinfo
-    
-    @property
-    def haloghostfaceinfo(self):
-        return self._haloghostfaceinfo
     
     @property
     def loctoglob(self):
@@ -181,7 +157,7 @@ class Node:
 
 class Face:
     """ """
-    __slots__= ['_nbfaces', '_nodeid', '_cellid', '_name', '_oldname', '_normal', '_mesure', '_center', '_ghostcenter', '_oppnodeid', '_halofid',
+    __slots__= ['_nbfaces', '_nodeid', '_cellid', '_name', '_oldname', '_normal', '_mesure', '_center', '_oppnodeid',
                 '_halofid', '_param1', '_param2', '_param3', '_param4', '_f_1', '_f_2', '_f_3', '_f_4', '_airDiamond', 
                 '_dist_ortho', '_tangent', '_binormal', '_ghost_id']
                 
@@ -223,13 +199,7 @@ class Face:
     @property
     def dist_ortho(self):
         return self._dist_ortho
-    
-    
-    @property
-    def ghostcenter(self):
-        return self._ghostcenter
-    
-    
+
     @property
     def oppnodeid(self):
         return self._oppnodeid
@@ -291,7 +261,7 @@ class Face:
         
 class Halo:
     """ """
-    __slots__= ['_halosint', '_halosext', '_neigh', '_centvol', '_faces', '_nodes', '_ghost_int', '_ghost_flt', '_sizehaloghost', '_scount', '_rcount', '_sdepl',
+    __slots__= ['_halosint', '_halosext', '_neigh', '_centvol', '_faces', '_nodes', '_sizehaloghost', '_scount', '_rcount', '_sdepl',
                 '_rdepl','_indsend', '_comm_ptr', '_requests']
     
     def __init__(self):
@@ -322,14 +292,6 @@ class Halo:
         return self._nodes
 
     @property
-    def ghost_int(self):
-        return self._ghost_int
-
-    @property
-    def ghost_flt(self):
-        return self._ghost_flt
-
-    @property
     def sizehaloghost(self):
         return self._sizehaloghost
     
@@ -357,7 +319,7 @@ class Halo:
 
 class Ghost:
     """ """
-    __slots__ = ['_info_int', '_info_flt']
+    __slots__ = ['_info_int', '_info_flt', '_ext_info_int', '_ext_info_flt']
 
     def __init__(self):
         pass
@@ -369,3 +331,11 @@ class Ghost:
     @property
     def info_flt(self):
         return self._info_flt
+
+    @property
+    def ext_info_int(self):
+        return self._ext_info_int
+
+    @property
+    def ext_info_flt(self):
+        return self._ext_info_flt

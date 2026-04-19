@@ -608,6 +608,7 @@ def _create_ghost_info(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_
     ghost_info_int[i, 2] = face_oldname[fid]
     if cell_loctoglob.shape[0] != 0:
       ghost_info_int[i, 3] = cell_loctoglob[cid]  # global_id of local cell
+    ghost_info_int[i, 4] = fid
     i += 1
 
 
@@ -767,7 +768,7 @@ def _create_halo_ghost_tables(ext_ghost_info_int: 'int[:, :]',
       node_haloghostid[node_id, k] = phy_id
 
       # get haloext of the cell
-      cell_global_id = ext_ghost_info_int[phy_id, 3]
+      cell_global_id = ext_ghost_info_int[phy_id, 2]
       ext_ghost_info_int[phy_id, 0] = _search_halo_cell(node_haloid[node_id], halo_halosext, cell_global_id)
       j += 1
     node_haloghostid[node_id, -1] = size
@@ -918,7 +919,7 @@ def _create_halo_cells(cells: 'int[:, :]', faces: 'int[:, :]', node_halos: 'int[
 
 
 # The same as the original
-def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_phyid: 'int[:,:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]',
+def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_phyid: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]',
                            halo_centvol: 'float[:,:]', face_haloid: 'int[:]', nodes: 'float[:,:]',
                            face_air_diamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]',
                            face_param3: 'float[:]', face_param4: 'float[:]', face_f1: 'float[:,:]',
@@ -982,7 +983,7 @@ def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_p
 
 
 # The same as the original
-def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_phyid: 'int[:,:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]',
+def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_phyid: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]',
                            halo_centvol: 'float[:,:]', face_haloid: 'int[:]', nodes: 'float[:,:]',
                            face_air_diamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]',
                            face_param3: 'float[:]', face_f1: 'float[:,:]', face_f2: 'float[:,:]',
