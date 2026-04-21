@@ -43,7 +43,7 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                  face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
                                  face_name: 'int[:]', d_innerfaces: 'int[:]', d_halofaces: 'int[:]',
                                  d_boundaryfaces: 'int[:]',
-                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int', face_ghost_id: 'int[:]'):
+                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int',):
   center_left = np.zeros(2)
   center_right = np.zeros(2)
   r_l = np.zeros(2)
@@ -152,7 +152,7 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_c[face_cellid[i][0]]
     normal[:] = face_normal[i][:]
 
-    w_r = w_ghost[face_ghost_id[i]]
+    w_r = w_ghost[i]
     center_left[:] = cell_center[face_cellid[i][0]][0:2]
 
     w_x_left = w_x[face_cellid[i][0]];
@@ -180,7 +180,7 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                   face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
                                   face_name: 'int[:]',
                                   d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
-                                  d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int', face_ghost_id: 'int[:]'):
+                                  d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
 
   center_left = np.zeros(3)
   center_right = np.zeros(3)
@@ -312,14 +312,14 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_c[face_cellid[i][0]]
     normal[:] = face_normal[i][:]
 
-    w_r = w_ghost[face_ghost_id[i]]
+    w_r = w_ghost[i]
     center_left[:] = cell_center[face_cellid[i][0]][:]
 
     w_x_left = w_x[face_cellid[i][0]]
     w_y_left = w_y[face_cellid[i][0]]
     w_z_left = w_z[face_cellid[i][0]]
 
-    psi_left = psi[face_cellid[i][0]];
+    psi_left = psi[face_cellid[i][0]]
 
     r_l[0] = face_center[i][0] - center_left[0]
     r_l[1] = face_center[i][1] - center_left[1]

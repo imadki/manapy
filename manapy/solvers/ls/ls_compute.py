@@ -34,7 +34,7 @@ def _compute_P_gradient_2d_diamond(P_c: 'float[:]', P_ghost: 'float[:]', P_halo:
                                   Px_face: 'float[:]', Py_face: 'float[:]', Pz_face: 'float[:]',
                                   BCdirichlet: 'int[:]', d_innerfaces: 'int[:]',
                                   d_halofaces: 'int[:]', neumannfaces: 'int[:]', dirichletfaces: 'int[:]',
-                                  d_periodicboundaryfaces: 'int[:]', face_ghost_id: 'int[:]'):
+                                  d_periodicboundaryfaces: 'int[:]'):
 
   for i in d_innerfaces:
 
@@ -98,7 +98,7 @@ def _compute_P_gradient_2d_diamond(P_c: 'float[:]', P_ghost: 'float[:]', P_halo:
       vi2 = Pbordnode[i_2]
 
     vv1 = P_c[c_left]
-    vv2 = P_ghost[face_ghost_id[c_right]]
+    vv2 = P_ghost[c_right]
 
     Px_face[i] = -1 / (2 * face_air_diamond[i]) * (
               (vi1 + vv1) * face_f1[i][1] + (vv1 + vi2) * face_f2[i][1] + (vi2 + vv2) * face_f3[i][1] + (vv2 + vi1) * face_f4[i][1])
@@ -1166,7 +1166,7 @@ def _compute_P_gradient_3d_diamond(val_c: 'float[:]', v_ghost: 'float[:]', v_hal
                                   Px_face: 'float[:]', Py_face: 'float[:]', Pz_face: 'float[:]',
                                   BCdirichlet: 'int[:]', d_innerfaces: 'int[:]',
                                   d_halofaces: 'int[:]', neumannfaces: 'int[:]', dirichletfaces: 'int[:]',
-                                  d_periodicboundaryfaces: 'int[:]', face_ghost_id: 'int[:]'):
+                                  d_periodicboundaryfaces: 'int[:]'):
 
   for i in d_innerfaces:
 
@@ -1257,7 +1257,7 @@ def _compute_P_gradient_3d_diamond(val_c: 'float[:]', v_ghost: 'float[:]', v_hal
       V_D = Pbordnode[i_4]
 
     V_L = val_c[c_left]
-    V_R = v_ghost[face_ghost_id[c_right]]
+    V_R = v_ghost[c_right]
 
     Px_face[i] = -1. * (face_f1[i][0] * (V_A - V_C) + face_f2[i][0] * (V_B - V_D) + face_normal[i][0] * (V_R - V_L)) / face_air_diamond[i]
     Py_face[i] = -1. * (face_f1[i][1] * (V_A - V_C) + face_f2[i][1] * (V_B - V_D) + face_normal[i][1] * (V_R - V_L)) / face_air_diamond[i]

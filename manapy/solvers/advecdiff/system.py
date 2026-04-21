@@ -81,7 +81,7 @@ class AdvectionDiffusionSolver:
                                     self.domain.faces.cellid, self.domain.faces.normal,
                                     self.domain.faces.halofid, self.domain.faces.name,
                                     self.domain.innerfaces, self.domain.halofaces, self.domain.boundaryfaces,
-                                    self.domain.periodicboundaryfaces, self.domain.cells.shift, self.order, self.domain.faces.ghost_id)
+                                    self.domain.periodicboundaryfaces, self.domain.cells.shift, self.order)
 
   def explicit_dissipative(self):
     self.var.compute_face_gradient()

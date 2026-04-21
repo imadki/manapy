@@ -319,7 +319,7 @@ class Halo:
 
 class Ghost:
     """ """
-    __slots__ = ['_info_int', '_info_flt', '_ext_info_int', '_ext_info_flt']
+    __slots__ = ['_info_int', '_info_flt', '_ext_info_int', '_ext_info_flt', '_faceid']
 
     def __init__(self):
         pass
@@ -339,3 +339,7 @@ class Ghost:
     @property
     def ext_info_flt(self):
         return self._ext_info_flt
+
+    @property
+    def faceid(self):
+        return self._faceid
