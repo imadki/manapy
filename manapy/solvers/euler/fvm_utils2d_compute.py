@@ -29,7 +29,7 @@ def _node_for_interpolation_2d(xCenterForInterp: 'float64[:,:]', yCenterForInter
             xCenterForInterp[i][3] = ghostcenter[i][0]
             yCenterForInterp[i][3] = ghostcenter[i][1]
             
-def _node_value_for_interpolation_2d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]'):
+def _node_value_for_interpolation_2d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]', face_ghost_id: 'int[:]'):
 
 
     nbfaces = len(nodefid)
@@ -43,7 +43,7 @@ def _node_value_for_interpolation_2d(ValForInterp: 'float64[:,:]', w_cell: 'floa
         elif name[i] == 10: 
             ValForInterp[i][3] = w_halo[halofid[i]]
         else:
-            ValForInterp[i][3] = w_ghost[i]
+            ValForInterp[i][3] = w_ghost[face_ghost_id[i]]
 
 def _weight_parameters_carac_2d(xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64'):
 

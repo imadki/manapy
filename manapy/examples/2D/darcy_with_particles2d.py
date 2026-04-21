@@ -13,15 +13,16 @@ COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
 RANK = COMM.Get_rank()
 
-def face_gradient_info_2d(cellidf: 'int[:,:]', nodeidf: 'int[:,:]', centergf: 'float[:,:]', namef: 'int[:]',
-                          normalf: 'float[:,:]',
-                          centerc: 'float[:,:]', centerh: 'float[:,:]', halofid: 'int[:]', vertexn: 'float[:,:]',
-                          airDiamond: 'float[:]', param1: 'float[:]', param2: 'float[:]', param3: 'float[:]',
-                          param4: 'float[:]',
-                          f_1: 'float[:,:]', f_2: 'float[:,:]', f_3: 'float[:,:]', f_4: 'float[:,:]',
-                          shift: 'float[:,:]',
+
+def face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghostid: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]',
+                          face_normal: 'float[:,:]',
+                          cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', face_halofid: 'int[:]', nodes: 'float[:,:]',
+                          face_airDiamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]',
+                          face_param4: 'float[:]',
+                          face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]',
+                          cell_shift: 'float[:,:]',
                           dim: 'int', Kx: 'float[:]', Ky: 'float[:]'):
-  nbface = len(cellidf)
+  nbface = len(face_cellid)
 
   xy_1 = np.zeros(dim)
   xy_2 = np.zeros(dim)
@@ -30,44 +31,45 @@ def face_gradient_info_2d(cellidf: 'int[:,:]', nodeidf: 'int[:,:]', centergf: 'f
 
   for i in range(nbface):
 
-    c_left = cellidf[i][0]
-    c_right = cellidf[i][1]
+    c_left = face_cellid[i][0]
+    c_right = face_cellid[i][1]
 
-    i_1 = nodeidf[i][0]
-    i_2 = nodeidf[i][1]
+    i_1 = faces[i][0]
+    i_2 = faces[i][1]
 
-    xy_1[:] = vertexn[i_1][0:dim]
-    xy_2[:] = vertexn[i_2][0:dim]
+    xy_1[:] = nodes[i_1][0:dim]
+    xy_2[:] = nodes[i_2][0:dim]
 
-    v_1[:] = centerc[c_left][0:dim]
+    v_1[:] = cell_center[c_left][0:dim]
 
-    if namef[i] == 0:
-      v_2[:] = centerc[c_right][0:dim]
-    elif namef[i] == 11 or namef[i] == 22:
-      v_2[0] = centerc[c_right][0] + shift[c_right][0]
-      v_2[1] = centerc[c_right][1]
-    elif namef[i] == 33 or namef[i] == 44:
-      v_2[0] = centerc[c_right][0]
-      v_2[1] = centerc[c_right][1] + shift[c_right][1]
-    elif namef[i] == 10:
-      v_2[:] = centerh[halofid[i]][0:dim]
+    if face_name[i] == 0:
+      v_2[:] = cell_center[c_right][0:dim]
+    elif face_name[i] == 11 or face_name[i] == 22:
+      v_2[0] = cell_center[c_right][0] + cell_shift[c_right][0]
+      v_2[1] = cell_center[c_right][1]
+    elif face_name[i] == 33 or face_name[i] == 44:
+      v_2[0] = cell_center[c_right][0]
+      v_2[1] = cell_center[c_right][1] + cell_shift[c_right][1]
+    elif face_name[i] == 10:
+      v_2[:] = halo_centvol[face_halofid[i]][0:dim]
     else:
-      v_2[:] = centergf[i][0:dim]
+      ghost_id = face_ghostid[i]
+      v_2[:] = ghost_info_flt[ghost_id][0:dim]
 
-    f_1[i][:] = v_1[:] - xy_1[:]
-    f_2[i][:] = xy_2[:] - v_1[:]
-    f_3[i][:] = v_2[:] - xy_2[:]
-    f_4[i][:] = xy_1[:] - v_2[:]
+    face_f1[i][:] = v_1[:] - xy_1[:]
+    face_f2[i][:] = xy_2[:] - v_1[:]
+    face_f3[i][:] = v_2[:] - xy_2[:]
+    face_f4[i][:] = xy_1[:] - v_2[:]
 
-    n1 = normalf[i][0] * Kx[i]
-    n2 = normalf[i][1] * Ky[i]
+    n1 = face_normal[i][0] * Kx[i]
+    n2 = face_normal[i][1] * Ky[i]
 
-    airDiamond[i] = 0.5 * ((xy_2[0] - xy_1[0]) * (v_2[1] - v_1[1]) + (v_1[0] - v_2[0]) * (xy_2[1] - xy_1[1]))
+    face_airDiamond[i] = 0.5 * ((xy_2[0] - xy_1[0]) * (v_2[1] - v_1[1]) + (v_1[0] - v_2[0]) * (xy_2[1] - xy_1[1]))
 
-    param1[i] = 1. / (2. * airDiamond[i]) * ((f_1[i][1] + f_2[i][1]) * n1 - (f_1[i][0] + f_2[i][0]) * n2)
-    param2[i] = 1. / (2. * airDiamond[i]) * ((f_2[i][1] + f_3[i][1]) * n1 - (f_2[i][0] + f_3[i][0]) * n2)
-    param3[i] = 1. / (2. * airDiamond[i]) * ((f_3[i][1] + f_4[i][1]) * n1 - (f_3[i][0] + f_4[i][0]) * n2)
-    param4[i] = 1. / (2. * airDiamond[i]) * ((f_4[i][1] + f_1[i][1]) * n1 - (f_4[i][0] + f_1[i][0]) * n2)
+    face_param1[i] = 1. / (2. * face_airDiamond[i]) * ((face_f1[i][1] + face_f2[i][1]) * n1 - (face_f1[i][0] + face_f2[i][0]) * n2)
+    face_param2[i] = 1. / (2. * face_airDiamond[i]) * ((face_f2[i][1] + face_f3[i][1]) * n1 - (face_f2[i][0] + face_f3[i][0]) * n2)
+    face_param3[i] = 1. / (2. * face_airDiamond[i]) * ((face_f3[i][1] + face_f4[i][1]) * n1 - (face_f3[i][0] + face_f4[i][0]) * n2)
+    face_param4[i] = 1. / (2. * face_airDiamond[i]) * ((face_f4[i][1] + face_f1[i][1]) * n1 - (face_f4[i][0] + face_f1[i][0]) * n2)
 
 
 def compute_Pexact_Uimp(Pexact, Iexact, perm, visc, fi, Uin, t, x0, x):
@@ -360,10 +362,10 @@ while time < tfinal:
   explicitscheme_convective_2d(I.Flux, I.cell, I.ghost, I.halo, u.face[:] / fi0, v.face / fi0, w.face,
                                I.gradcellx, I.gradcelly, I.gradcellz, I.gradhalocellx,
                                I.gradhalocelly, I.gradhalocellz, I.psi, I.psihalo,
-                               cells.center, faces.center, halos.centvol, faces.ghostcenter,
+                               cells.center, faces.center, halos.centvol,
                                faces.cellid, faces.normal, faces.halofid, faces.name,
                                domain.innerfaces, domain.halofaces, domain.boundaryfaces,
-                               domain.periodicboundaryfaces, cells.shift, order=order)
+                               domain.periodicboundaryfaces, cells.shift, order, domain.faces.ghost_id)
 
   update_new_value(I.cell, I.Flux, dissip_I, src_I, d_t, cells.volume)
 
@@ -371,32 +373,32 @@ while time < tfinal:
   L.update_ghost_values()
   perm_x.interpolate_celltoface()
   perm_y.interpolate_celltoface()
-  face_gradient_info_2d(faces.cellid, faces.nodeid, faces.ghostcenter, faces.name, faces.normal,
+
+  face_gradient_info_2d(faces.cellid, faces.nodeid, faces.ghost_id, domain.ghost.info_flt, faces.name, faces.normal,
                         cells.center, halos.centvol, faces.halofid, nodes.vertex, faces.airDiamond,
                         faces.param1, faces.param2, faces.param3, faces.param4, faces.f_1,
                         faces.f_2, faces.f_3, faces.f_4, cells.shift, dim, perm_x.face, perm_y.face)
 
   get_triplet_2d_with_contrib(domain.faces.cellid, domain.faces.nodeid, domain.cells.faceid, domain.nodes.vertex,
-                              domain.faces.halofid, domain.halos.halosext, domain.nodes.oldname,
+                              domain.halos.halosext, domain.nodes.oldname,
                               domain.cells.volume, domain.nodes.cellid,
-                              domain.cells.center, domain.halos.centvol, domain.nodes.halonid, domain.nodes.periodicid,
-                              domain.nodes.ghostcenter, domain.nodes.ghostcenter_info, domain.nodes.haloghostcenter, domain.nodes.haloghostid, domain.faces.airDiamond,
+                              domain.cells.center, domain.halos.centvol, domain.nodes.halonid, domain.ghost.info_flt, domain.ghost.info_int,
+                              domain.ghost.ext_info_flt, domain.ghost.ext_info_int, domain.nodes.ghostid, domain.nodes.haloghostid,
                               domain.nodes.lambda_x, domain.nodes.lambda_y, domain.nodes.number, domain.nodes.R_x,
                               domain.nodes.R_y,
-                              faces.param1, faces.param2, faces.param3, faces.param4, domain.cells.shift,
-                              L.localsize, domain.cells.loctoglob, P.BCdirichlet, L._data, L._row, L._col,
-                              L.matrixinnerfaces, domain.halofaces, P.dirichletfaces,
-                              I.cell, alpha_para, np.ones(nbcells), visc.cell, P.BCneumannNH, faces.dist_ortho)
+                              faces.param1, faces.param2, faces.param3, faces.param4, domain.cells.loctoglob, P.BCdirichlet, L._data, L._row, L._col,
+                              L.matrixinnerfaces, P.dirichletfaces,
+                              I.cell, alpha_para, np.ones(nbcells), visc.cell)
 
   L.rhs0_glob = np.zeros(L.globalsize)
+
   get_rhs_glob_2d_with_contrib(domain.faces.cellid, domain.faces.nodeid, domain.nodes.oldname,
-                               domain.cells.volume, domain.nodes.ghostcenter, domain.nodes.ghostcenter_info, domain.cells.loctoglob,
+                               domain.cells.volume, domain.nodes.ghostid, domain.cells.loctoglob,
                                domain.faces.param1, domain.faces.param2, domain.faces.param3, domain.faces.param4,
                                domain.Pbordnode, domain.Pbordface,
-                               L.rhs0, P.BCdirichlet, domain.faces.ghostcenter,
+                               L.rhs0, P.BCdirichlet,
                                L.matrixinnerfaces, domain.halofaces, P.dirichletfaces, P.neumannNHfaces,
-                               I.cell, I.node, np.ones(nbcells), visc.cell, cst, faces.mesure, faces.normal,
-                               faces.dist_ortho)
+                               I.cell, np.ones(nbcells), visc.cell, cst, faces.normal)
   #
   L()
   P.update_halo_value()

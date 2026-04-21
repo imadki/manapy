@@ -89,11 +89,10 @@ class LinearSolver:
         self._compute_P_gradient = ls_compute.compute_P_gradient_2d_diamond
         self._get_triplet = ls_compute.get_triplet_2d
         self.dataSize = ls_compute.compute_2dmatrix_size(self.domain.faces.nodeid,
-                                                          self.domain.faces.halofid,
                                                           self.domain.nodes.cellid,
                                                           self.domain.nodes.halonid,
                                                           self.domain.nodes.periodicid,
-                                                          self.domain.nodes.ghostcenter_info,
+                                                          self.domain.nodes.ghostid,
                                                           self.domain.nodes.haloghostid,
                                                           self.domain.nodes.oldname,
                                                           self.var.BCdirichlet,
@@ -104,11 +103,10 @@ class LinearSolver:
         self._compute_P_gradient = ls_compute.compute_P_gradient_3d_diamond
         self._get_triplet = ls_compute.get_triplet_3d
         self.dataSize = ls_compute.compute_3dmatrix_size(self.domain.faces.nodeid,
-                                                          self.domain.faces.halofid,
                                                           self.domain.nodes.cellid,
                                                           self.domain.nodes.halonid,
                                                           self.domain.nodes.periodicid,
-                                                          self.domain.nodes.ghostcenter_info,
+                                                          self.domain.nodes.ghostid,
                                                           self.domain.nodes.haloghostid,
                                                           self.domain.nodes.oldname,
                                                           self.var.BCdirichlet,
@@ -137,7 +135,9 @@ class LinearSolver:
                       self.domain.halos.halosext, self.domain.nodes.oldname, self.domain.cells.volume,
                       self.domain.nodes.cellid, self.domain.cells.center, self.domain.halos.centvol,
                       self.domain.nodes.halonid, self.domain.nodes.periodicid,
-                      self.domain.nodes.ghostcenter, self.domain.nodes.ghostcenter_info, self.domain.nodes.haloghostid, self.domain.nodes.haloghostcenter, self.domain.nodes.haloghostcenter_info, self.domain.faces.airDiamond,
+                      self.domain.ghost.info_flt, self.domain.ghost.ext_info_flt, self.domain.ghost.info_int, self.domain.ghost.ext_info_int,
+                      self.domain.nodes.ghostid, self.domain.nodes.haloghostid,
+                      self.domain.faces.airDiamond,
                       self.domain.nodes.lambda_x, self.domain.nodes.lambda_y, self.domain.nodes.lambda_z,
                       self.domain.nodes.number, self.domain.nodes.R_x,
                       self.domain.nodes.R_y, self.domain.nodes.R_z, self.domain.faces.param1, self.domain.faces.param2,
@@ -147,10 +147,10 @@ class LinearSolver:
                       self._row, self._col, self.matrixinnerfaces, self.domain.halofaces, self.var.dirichletfaces)
 
     self._get_rhs(self.domain.faces.cellid, self.domain.faces.nodeid, self.domain.nodes.oldname,
-                  self.domain.cells.volume, self.domain.nodes.ghostcenter_info, self.domain.cells.loctoglob,
+                  self.domain.cells.volume, self.domain.nodes.ghostid, self.domain.cells.loctoglob,
                   self.domain.faces.param1, self.domain.faces.param2, self.domain.faces.param3,
                   self.domain.faces.param4, self.domain.Pbordnode, self.domain.Pbordface,
-                  self.rhs0, self.var.BCdirichlet, self.domain.faces.ghostcenter,
+                  self.rhs0, self.var.BCdirichlet,
                   self.matrixinnerfaces, self.domain.halofaces, self.var.dirichletfaces)
 
   def update_ghost_values(self):
@@ -167,15 +167,14 @@ class LinearSolver:
 
   def compute_Sol_gradient(self):
     self._compute_P_gradient(self.var.cell, self.var.ghost, self.var.halo, self.var.node, self.domain.faces.cellid,
-                             self.domain.faces.nodeid, self.domain.faces.ghostcenter,
-                             self.domain.faces.halofid, self.domain.cells.center,
-                             self.domain.halos.centvol, self.domain.nodes.oldname, self.domain.faces.airDiamond,
+                             self.domain.faces.nodeid,
+                             self.domain.faces.halofid, self.domain.nodes.oldname, self.domain.faces.airDiamond,
                              self.domain.faces.f_1, self.domain.faces.f_2, self.domain.faces.f_3, self.domain.faces.f_4,
                              self.domain.faces.normal, self.domain.cells.shift, self.domain.Pbordnode,
                              self.domain.Pbordface,
                              self.var.gradfacex, self.var.gradfacey, self.var.gradfacez, self.var.BCdirichlet,
                              self.domain.innerfaces, self.domain.halofaces, self.var.neumannfaces,
-                             self.var.dirichletfaces, self.domain.periodicboundaryfaces)
+                             self.var.dirichletfaces, self.domain.periodicboundaryfaces, self.domain.faces.ghost_id)
 
   def reordering_matrix(self):
     matrix = csr_matrix((self._data, (self._row, self._col)))

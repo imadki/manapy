@@ -7,7 +7,7 @@ import os
 import numpy as np
 helpers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.append(helpers_path)
-from helpers.DomainTables import DomainTables
+from manapy.testing.test_domain_helper import get_local_domains
 
 mpi_exec = "/usr/bin/mpirun"
 python_exec = "/home/aben-ham/anaconda3/envs/work/bin/python3"
@@ -27,8 +27,9 @@ def create_partitions(nb_partitions, mesh_name, float_precision, dim):
     print(result.__str__(), os.getcwd())
     raise SystemExit(result.returncode)
 
-domain_tables = DomainTables(nb_partitions=4, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
-unified_domain = DomainTables(nb_partitions=1, mesh_name=mesh_name, float_precision=float_precision, dim=dim, create_par_fun=create_partitions)
+mesh_path = mesh_name
+domain_tables = get_local_domains(4, mesh_path, dim, "Partitioning.Par_Nodal")
+unified_domain = get_local_domains(4, mesh_path, dim, "Partitioning.Par_Nodal")
 domain = domain_tables
 size = domain.nb_partitions
 

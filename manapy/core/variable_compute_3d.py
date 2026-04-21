@@ -2,10 +2,10 @@ from manapy.backends.compile_fun import compile
 import numpy as np
 
 def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
-                      cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]', node_ghostid: 'int[:,:]',
-                      node_haloghostid: 'int[:,:]',
+                      cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]',
+                      ghost_info_flt: 'float[:, :]', ghost_ext_info_flt: 'float[:, :]', node_ghostid: 'int[:,:]', node_haloghostid: 'int[:,:]',
                       node_periodicid: 'int[:,:]',
-                      node_halonid: 'int[:,:]', nodes: 'float[:,:]', node_oldname: 'int[:]', face_ghostcenter: 'float[:,:]', cell_haloghostcenter: 'float[:,:]',
+                      node_halonid: 'int[:,:]', nodes: 'float[:,:]', node_oldname: 'int[:]',
                       node_R_x: 'float[:]', node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]',
                       node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]', w_n: 'float[:]'):
 
@@ -23,38 +23,38 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
       ydiff = center[1] - nodes[i][1]
       zdiff = center[2] - nodes[i][2]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + \
+      alpha = (1. + node_lambda_x[i] * xdiff +
                node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                              node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
       w_n[i] += alpha * w_c[cell]
 
     for j in range(node_ghostid[i][-1]):
-      cell = node_ghostid[i][j]
-      center[:] = face_ghostcenter[cell][0:3]
+      ghost_id = node_ghostid[i][j]
+      center[:] = ghost_info_flt[ghost_id][0:3]
 
       xdiff = center[0] - nodes[i][0]
       ydiff = center[1] - nodes[i][1]
       zdiff = center[2] - nodes[i][2]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + \
+      alpha = (1. + node_lambda_x[i] * xdiff +
                node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                              node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
 
-      w_n[i] += alpha * w_ghost[cell]
+      w_n[i] += alpha * w_ghost[ghost_id]
 
     for j in range(node_haloghostid[i, -1]):
-      cell = node_haloghostid[i][j]
-      center[:] = cell_haloghostcenter[cell]
+      ghost_id = node_haloghostid[i][j]
+      center[:] = ghost_ext_info_flt[ghost_id][0:3]
 
       xdiff = center[0] - nodes[i][0]
       ydiff = center[1] - nodes[i][1]
       zdiff = center[2] - nodes[i][2]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + \
+      alpha = (1. + node_lambda_x[i] * xdiff +
                node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                              node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
 
-      w_n[i] += alpha * w_haloghost[cell]
+      w_n[i] += alpha * w_haloghost[ghost_id]
 
     for j in range(node_halonid[i, -1]):
       cell = node_halonid[i][j]
@@ -64,7 +64,7 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
       ydiff = center[1] - nodes[i][1]
       zdiff = center[2] - nodes[i][2]
 
-      alpha = (1. + node_lambda_x[i] * xdiff + \
+      alpha = (1. + node_lambda_x[i] * xdiff +
                node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                              node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
 
@@ -80,7 +80,7 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
         ydiff = center[1] - nodes[i][1]
         zdiff = center[2] - nodes[i][2]
 
-        alpha = (1. + node_lambda_x[i] * xdiff + \
+        alpha = (1. + node_lambda_x[i] * xdiff +
                  node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                                node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
 
@@ -95,7 +95,7 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
         ydiff = center[1] + cell_shift[cell][1] - nodes[i][1]
         zdiff = center[2] - nodes[i][2]
 
-        alpha = (1. + node_lambda_x[i] * xdiff + \
+        alpha = (1. + node_lambda_x[i] * xdiff +
                  node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                                node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
         w_n[i] += alpha * w_c[cell]
@@ -109,7 +109,7 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
         ydiff = center[1] - nodes[i][1]
         zdiff = center[2] + cell_shift[cell][2] - nodes[i][2]
 
-        alpha = (1. + node_lambda_x[i] * xdiff + \
+        alpha = (1. + node_lambda_x[i] * xdiff +
                  node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / (node_number[i] + node_lambda_x[i] * node_R_x[i] + \
                                                                node_lambda_y[i] * node_R_y[i] + node_lambda_z[i] * node_R_z[i])
         w_n[i] += alpha * w_c[cell]
@@ -117,12 +117,12 @@ def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
 
 def _face_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_node: 'float[:]',
                      face_cellid: 'int[:,:]',
-                     faces: 'int[:,:]', face_ghostcenter: 'float[:,:]', face_haloid: 'int[:]', cell_center: 'float[:,:]',
-                     halo_centvol: 'float[:,:]', nodes: 'float[:,:]', face_air_diamond: 'float[:]', face_normal: 'float[:,:]',
-                     face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]', cell_shift: 'float[:,:]',
+                     faces: 'int[:,:]', face_haloid: 'int[:]',
+                     face_air_diamond: 'float[:]', face_normal: 'float[:,:]',
+                     face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]',
                      wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', d_innerfaces: 'int[:]',
                      d_halofaces: 'int[:]',
-                     dirichletfaces: 'int[:]', neumann: 'int[:]', d_periodicboundaryfaces: 'int[:]'):
+                     dirichletfaces: 'int[:]', neumann: 'int[:]', d_periodicboundaryfaces: 'int[:]', face_ghost_id: 'int[:]'):
 
   for i in d_innerfaces:
 
@@ -214,7 +214,7 @@ def _face_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     V_D = w_node[i_4]
 
     V_L = w_c[c_left]
-    V_R = w_ghost[c_right]
+    V_R = w_ghost[face_ghost_id[c_right]]
 
     wx_face[i] = (face_f1[i][0] * (V_A - V_C) + face_f2[i][0] * (V_B - V_D) + face_normal[i][0] * (V_R - V_L)) / face_air_diamond[i]
     wy_face[i] = (face_f1[i][1] * (V_A - V_C) + face_f2[i][1] * (V_B - V_D) + face_normal[i][1] * (V_R - V_L)) / face_air_diamond[i]
@@ -238,17 +238,17 @@ def _face_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     V_D = w_node[i_4]
 
     V_L = w_c[c_left]
-    V_R = w_ghost[c_right]
+    V_R = w_ghost[face_ghost_id[c_right]]
 
     wx_face[i] = (face_f1[i][0] * (V_A - V_C) + face_f2[i][0] * (V_B - V_D) + face_normal[i][0] * (V_R - V_L)) / face_air_diamond[i]
     wy_face[i] = (face_f1[i][1] * (V_A - V_C) + face_f2[i][1] * (V_B - V_D) + face_normal[i][1] * (V_R - V_L)) / face_air_diamond[i]
     wz_face[i] = (face_f1[i][2] * (V_A - V_C) + face_f2[i][2] * (V_B - V_D) + face_normal[i][2] * (V_R - V_L)) / face_air_diamond[i]
 
 def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
-                     cell_center: 'float[:,:]', cell_cellnid: 'int[:,:]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
+                     cell_center: 'float[:,:]', cell_cellnid: 'int[:,:]',
+                     ghost_info_flt: 'float[:, :]', ghost_ext_info_flt: 'float[:, :]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
                      cell_halonid: 'int[:,:]',
-                     cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', face_ghostcenter: 'float[:,:]',
-                     cell_haloghostcenter: 'float[:,:]', node_oldname: 'int[:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
+                     cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', node_oldname: 'int[:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
                      w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
 
   nbelement = len(w_c)
@@ -284,10 +284,10 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       j_z += (jz * (w_c[cell] - w_c[i]))
 
     for j in range(cell_ghostnid[i][-1]):
-      cell = cell_ghostnid[i][j]
-      jx = face_ghostcenter[cell][0] - cell_center[i][0]
-      jy = face_ghostcenter[cell][1] - cell_center[i][1]
-      jz = face_ghostcenter[cell][2] - cell_center[i][2]
+      ghost_id = cell_ghostnid[i][j]
+      jx = ghost_info_flt[ghost_id][0] - cell_center[i][0]
+      jy = ghost_info_flt[ghost_id][1] - cell_center[i][1]
+      jz = ghost_info_flt[ghost_id][2] - cell_center[i][2]
 
       i_xx += jx * jx
       i_yy += jy * jy
@@ -296,9 +296,9 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       i_xz += (jx * jz)
       i_yz += (jy * jz)
 
-      j_x += (jx * (w_ghost[cell] - w_c[i]))
-      j_y += (jy * (w_ghost[cell] - w_c[i]))
-      j_z += (jz * (w_ghost[cell] - w_c[i]))
+      j_x += (jx * (w_ghost[ghost_id] - w_c[i]))
+      j_y += (jy * (w_ghost[ghost_id] - w_c[i]))
+      j_z += (jz * (w_ghost[ghost_id] - w_c[i]))
 
     for j in range(cell_periodicfid[i][-1]):
       cell = cell_periodicfid[i][j]
@@ -337,9 +337,8 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       j_z += (jz * (w_halo[cell] - w_c[i]))
 
     for j in range(cell_haloghostnid[i][-1]):
-      # -3 the index of global face
-      cell = cell_haloghostnid[i][j]
-      center[:] = cell_haloghostcenter[cell]
+      ghost_id = cell_haloghostnid[i][j]
+      center[:] = ghost_ext_info_flt[ghost_id][0:3]
 
       jx = center[0] - cell_center[i][0]
       jy = center[1] - cell_center[i][1]
@@ -352,9 +351,9 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       i_xz += (jx * jz)
       i_yz += (jy * jz)
 
-      j_x += (jx * (w_haloghost[cell] - w_c[i]))
-      j_y += (jy * (w_haloghost[cell] - w_c[i]))
-      j_z += (jz * (w_haloghost[cell] - w_c[i]))
+      j_x += (jx * (w_haloghost[ghost_id] - w_c[i]))
+      j_y += (jy * (w_haloghost[ghost_id] - w_c[i]))
+      j_z += (jz * (w_haloghost[ghost_id] - w_c[i]))
 
     dia = i_xx * i_yy * i_zz + 2. * i_xy * i_xz * i_yz - i_xx * i_yz ** 2 - i_yy * i_xz ** 2 - i_zz * i_xy ** 2
 
@@ -369,7 +368,7 @@ def _cell_gradient_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 def _barthlimiter_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                     w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', psi: 'float[:]',
                     face_cellid: 'int[:,:]', cell_faceid: 'int[:,:]', face_name: 'int[:]',
-                    face_haloid: 'int[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]'):
+                    face_haloid: 'int[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_ghost_id: 'int[:]'):
 
   nbelement = len(w_c)
   psi[:] = 1.
@@ -387,8 +386,8 @@ def _barthlimiter_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
         w_max = max(w_max, w_c[face_cellid[face][0]], w_halo[face_haloid[face]])
         w_min = min(w_min, w_c[face_cellid[face][0]], w_halo[face_haloid[face]])
       else:
-        w_max = max(w_max, w_c[face_cellid[face][0]], w_ghost[face])
-        w_min = min(w_min, w_c[face_cellid[face][0]], w_ghost[face])
+        w_max = max(w_max, w_c[face_cellid[face][0]], w_ghost[face_ghost_id[face]])
+        w_min = min(w_min, w_c[face_cellid[face][0]], w_ghost[face_ghost_id[face]])
 
     for j in range(cell_faceid[i][-1]):
       face = cell_faceid[i][j]
