@@ -110,7 +110,7 @@ while time < tfinal:
 
 te = MPI.Wtime()
 
-
+tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:
-  # End measuring energy after the function execution
-  tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
+  print("Time to do calculation", tt)
+
