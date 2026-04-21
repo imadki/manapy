@@ -1,1 +1,1 @@
-from manapy.testing.Helper.partitioning_1cpu import LocalDomain1Cpu, SingleCoreDomainTables, DomainTables
+from manapy.testing.Helper.partitioning_1cpu import LocalDomain1Cpu

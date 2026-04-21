@@ -55,7 +55,7 @@ def _term_source_srnh_SW(src_h: 'float[:]', src_hu: 'float[:]', src_hv: 'float[:
                         cell_nodeid: 'int[:,:]', cell_faceid: 'int[:,:]', cell_cellfid: 'int[:,:]', face_cellid: 'int[:,:]',
                         cell_center: 'float[:,:]', cell_nf: 'float[:,:,:]',
                         face_name: 'int[:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
-                        nodes: 'float[:,:]', face_haloid: 'int[:]', grav: 'float', order: 'intc'):
+                        nodes: 'float[:,:]', face_haloid: 'int[:]', grav: 'float', order: 'intc', face_ghost_id: 'int[:]'):
   nbelement = len(h_c)
   hi_p = np.zeros(3)
   zi_p = np.zeros(3)
@@ -81,6 +81,7 @@ def _term_source_srnh_SW(src_h: 'float[:]', src_hu: 'float[:]', src_hv: 'float[:
 
     for j in range(3):
       f = cell_faceid[i][j]
+      ghost_id = face_ghost_id[f]
       ss[j] = cell_nf[i][j]
 
       if face_name[f] == 10:
@@ -103,8 +104,8 @@ def _term_source_srnh_SW(src_h: 'float[:]', src_hu: 'float[:]', src_hv: 'float[:
         h_1p = h_c[i]
         z_1p = Z_c[i]
 
-        h_p1 = h_ghost[f]
-        z_p1 = Z_ghost[f]
+        h_p1 = h_ghost[ghost_id]
+        z_p1 = Z_ghost[ghost_id]
 
       zv[j] = z_p1
       mata[j] = h_p1 * ss[j][0]
@@ -382,7 +383,7 @@ def _explicitscheme_convective_SW(rez_h: 'float[:]', rez_hu: 'float[:]', rez_hv:
                                  hc_x: 'float[:]', hc_y: 'float[:]', hcx_halo: 'float[:]', hcy_halo: 'float[:]',
                                  psi: 'float[:]', psi_halo: 'float[:]',
                                  cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
-                                 face_ghostcenter: 'float[:,:]',
+                                 face_ghost_id: 'int[:]', ghost_info_flt: 'float[:,:]',
                                  face_cellid: 'int[:,:]', face_measure: 'float[:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
                                  d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
                                  grav: 'float', order: 'int'):
@@ -510,16 +511,18 @@ def _explicitscheme_convective_SW(rez_h: 'float[:]', rez_hu: 'float[:]', rez_hv:
     hc_l = hc_c[face_cellid[i][0]]
     Z_l = Z_c[face_cellid[i][0]]
 
+    ghost_id = face_ghost_id[i]
+
     normal = face_normal[i]
     mesure = face_measure[i]
-    h_r = h_ghost[i]
-    hu_r = hu_ghost[i]
-    hv_r = hv_ghost[i]
-    hc_r = hc_ghost[i]
-    Z_r = Z_ghost[i]
+    h_r = h_ghost[ghost_id]
+    hu_r = hu_ghost[ghost_id]
+    hv_r = hv_ghost[ghost_id]
+    hc_r = hc_ghost[ghost_id]
+    Z_r = Z_ghost[ghost_id]
 
     center_left = cell_center[face_cellid[i][0]]
-    center_right = face_ghostcenter[i]
+    center_right = ghost_info_flt[ghost_id]
 
     h_x_left = h_x[face_cellid[i][0]];
     h_y_left = h_y[face_cellid[i][0]];

@@ -431,6 +431,7 @@ class LocalDomain:
     ext_ghost_info_flt = np.zeros(shape=(0, 0), dtype=types.np_float_type)
     ext_ghost_info_int = np.zeros(shape=(0, 0), dtype=types.np_int_type)
     if self.size != 1:
+      # Return ghost_ext_info_int # (0=haloext, 1=face_oldname, 2=cell global id)
       ghost_info_int = ghost_info_int[:, [0, 2, 3]] # only (local_cellid, face_oldname, cell_global_id)
       # local_cellid it will be replaced with haloext after exchange later in _create_halo_ghost_tables
       ext_ghost_info_flt = phy_faces_comm.exchange(ghost_info_flt)
