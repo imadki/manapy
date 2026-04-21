@@ -3,7 +3,7 @@ from manapy.testing import LocalDomain1Cpu
 from manapy.helpers import get_mesh
 
 # To change float type go to manapy/backends/types.py
-dim, mesh_path, mesh_name = get_mesh(1)
+dim, mesh_path, mesh_name = get_mesh("rectangles.msh")
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh)
 nb_parts = 1

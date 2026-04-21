@@ -137,7 +137,7 @@ if rank == 0:
 
   shutil.rmtree(mesh_dir)
   shutil.rmtree(local_mesh_dir)
-  shutil.rmtree("results")
+  shutil.rmtree("vtk_results")
   return local_domains
 
 def get_reference_domain(reference_domain: str, dim: int):
@@ -152,7 +152,7 @@ def get_reference_domain(reference_domain: str, dim: int):
 if __name__ == "__main__":
   from manapy.helpers import get_mesh
 
-  dim, mesh_path, mesh_name = get_mesh(0)
+  dim, mesh_path, mesh_name = get_mesh("rectangles.msh")
   lds = get_local_domains(4, mesh_path, dim, "Partitioning.Par_Nodal")
 
   reference_domain = get_reference_domain("rectangles.hd5", dim)
