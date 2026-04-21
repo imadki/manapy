@@ -263,10 +263,11 @@ class Domain:
 
   @staticmethod
   def get_vtk_path(rank):
-    vtkpath = "results"
+    vtkpath = "vtk_results"
     if rank == 0:
-      if not os.path.exists(vtkpath):
-        os.mkdir(vtkpath)
+      if os.path.exists(vtkpath):
+        shutil.rmtree(vtkpath)
+      os.mkdir(vtkpath)
     return vtkpath
 
 
@@ -347,7 +348,7 @@ class Domain:
       print("Iteration = ", niter, "time = ", time, "time step = ", dt)
       print("max w =", integral_maxw[0])
 
-    meshio.write_points_cells("results/visu" + str(self.comm.rank) + "-" + str(miter) + ".vtu",
+    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + ".vtu",
                               points, elements, cell_data=data, file_format="vtu")
 
     if self.comm.rank == 0:
@@ -402,7 +403,7 @@ class Domain:
       print("Iteration = ", niter, "time = ", time, "time step = ", dt)
       print("max w =", integral_maxw[0])
 
-    meshio.write_points_cells("results/visu" + str(self.comm.rank) + "-" + str(miter) + ".vtu",
+    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + ".vtu",
                               points, elements, point_data=data, file_format="vtu")
 
     if self.comm.rank == 0:
@@ -460,7 +461,7 @@ class Domain:
       print("Iteration = ", niter, "time = ", time, "time step = ", dt)
       print("max" + variables[0] + " =", integral_maxw[0])
 
-    meshio.write_points_cells("results/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
+    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
                               points, elements, point_data=data, file_format=file_format)
 
     if self.comm.rank == 0:
@@ -520,7 +521,7 @@ class Domain:
       print("Iteration = ", niter, "time = ", time, "time step = ", dt)
       print("max" + variables[0] + " =", integral_maxw[0])
 
-    meshio.write_points_cells("results/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
+    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
                               points, elements, cell_data=data, file_format=file_format)
 
     if self.comm.rank == 0:
