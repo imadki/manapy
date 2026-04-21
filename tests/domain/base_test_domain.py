@@ -783,7 +783,12 @@ class BaseTestDomain:
     for part in range(len(local_domains)):
       ld = local_domains[part]
 
-      r_sizehaloghost = np.sum(reference_domain.locals[part].node_haloghostnid[:, -1])
+      arr = []
+      r_node_haloghostnid = reference_domain.locals[part].node_haloghostnid
+      for i in range(r_node_haloghostnid.shape[0]):
+        arr.extend(r_node_haloghostnid[i, 0:r_node_haloghostnid[i, -1]])
+
+      r_sizehaloghost = len(np.unique(arr))
       d_sizehaloghost = ld.halos.sizehaloghost
 
       np.testing.assert_equal(d_sizehaloghost, r_sizehaloghost)

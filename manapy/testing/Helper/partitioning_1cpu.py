@@ -161,8 +161,7 @@ class LocalDomain1Cpu(LocalDomain):
       log_step.log("_create_halo_ghost_tables")
       (
         self.cell_haloghostid,
-        self.node_haloghostid,
-        self.halo_sizehaloghost
+        self.node_haloghostid
       ) = self._create_halo_ghost_tables(self.ext_ghost_info_int, self.node_halophyid, self.cell_halophyid,
                                          self.node_haloid, self.halo_halosext)
       log_step.out()

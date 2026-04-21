@@ -137,8 +137,7 @@ class LocalDomain:
     log_step.log("_create_halo_ghost_tables")
     (
       self.cell_haloghostid,
-      self.node_haloghostid,
-      self.halo_sizehaloghost
+      self.node_haloghostid
     ) = self._create_halo_ghost_tables(self.ext_ghost_info_int, self.node_halophyid, self.cell_halophyid, self.node_haloid, self.halo_halosext)
     log_step.out()
 
@@ -512,13 +511,9 @@ class LocalDomain:
       # It will also update ext_ghost_info_int[0] from cell_id to haloext of the cell
       compute.create_halo_ghost_tables(ext_ghost_info_int, node_halophyid, cell_halophyid, node_haloid, halo_halosext, cell_haloghostid, node_haloghostid)
 
-    halo_sizehaloghost = 0
-    if node_haloghostid.shape[0] != 0:
-      halo_sizehaloghost = np.sum(node_haloghostid[:, -1]) # Two nodes in the same partition can't have the same haloghostId
     return (
       cell_haloghostid,
-      node_haloghostid,
-      halo_sizehaloghost
+      node_haloghostid
     )
 
   def _check_phy_faces(self, face_cellid, face_haloid):

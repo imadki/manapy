@@ -106,7 +106,7 @@ class Domain:
     self.halos._neigh = local_domain.halo_neighsub
     self.halos._halosint = local_domain.halo_halosint
     self.halos._centvol = local_domain.halo_centvol
-    self.halos._sizehaloghost = local_domain.halo_sizehaloghost
+    self.halos._sizehaloghost = len(local_domain.ext_ghost_info_flt)
     self.halos._faces = None
     self.halos._nodes = None
     self.halos._requests = None
