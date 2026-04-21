@@ -160,7 +160,7 @@ class ShallowWaterSolver:
                            self.domain.faces.cellid,
                            self.domain.cells.center, self.domain.cells.nf,
                            self.domain.faces.name, self.domain.faces.center, self.domain.halos.centvol,
-                           self.domain.nodes.vertex, self.domain.faces.halofid, self.grav, self.order, self.domain.faces.ghost_id)
+                           self.domain.nodes.vertex, self.domain.faces.halofid, self.grav, self.order)
 
   def update_term_friction(self):
     self._term_friction_SW(self.h.cell, self.hu.cell, self.hv.cell, self.grav, self.Mann, self.dt)
