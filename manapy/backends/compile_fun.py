@@ -108,3 +108,22 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=Fa
   # Attach source hash to compiled function
   compiled_func._source_hash = current_hash
   return compiled_func
+
+"""
+Compile a function once it called the first time (not immediately).
+"""
+class FunObj:
+  def __init__(self, func, *a, **kw):
+    self.target_func = func
+    self.args = a
+    self.kw = kw
+
+    def com(*args):
+      print("Compiling...", self.target_func.__name__)
+      self.func = compile(self.target_func, *self.args, **self.kw)
+      return func(*args)
+
+    self.func = com
+
+  def __call__(self, *args):
+    return self.func(*args)
