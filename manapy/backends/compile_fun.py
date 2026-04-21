@@ -2,6 +2,7 @@ import numba
 import inspect
 from numba import cuda
 import hashlib
+from mpi4py import MPI
 from manapy.backends.types import FLOAT_TYPE, INT_TYPE
 
 
@@ -57,6 +58,15 @@ def get_arg_types(func):
   return tuple(arg_types)
 
 
+def _compile_numba(backend: str, func, signature, parallel=False, nogil=False):
+  if backend == "numba":
+    return numba.jit(signature, nopython=True, fastmath=False, cache=True, parallel=parallel, nogil=nogil)(func)
+  elif backend == "cuda":
+    return cuda.jit(signature, fastmath=True, device=True)(func)
+  else:
+    raise ValueError(f"Unsupported backend: {backend}")
+
+
 def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=False):
   # return func
   if backend == "python":
@@ -82,13 +92,18 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=Fa
     signature = get_arg_types(func)
 
   # Compile and store hash
-  if backend == "numba":
-    # print("=>", func.__name__, "->", signature)
-    compiled_func = numba.jit(signature, nopython=True, fastmath=False, cache=True, parallel=parallel, nogil=nogil)(func)
-  elif backend == "cuda":
-    compiled_func = cuda.jit(signature, fastmath=True, device=True)(func)
+  comm = MPI.COMM_WORLD
+  if comm.Get_size() > 1:
+    if comm.Get_rank() == 0:
+      # print(f"compile function {func.__name__} with backend:", backend, "using rank ", MPI.COMM_WORLD.Get_rank())
+      compiled_func = _compile_numba(backend, func, signature, parallel=parallel, nogil=nogil)
+      comm.Barrier()
+    else:
+      comm.Barrier()
+      compiled_func = _compile_numba(backend, func, signature, parallel=parallel, nogil=nogil)
+    comm.Barrier()
   else:
-    raise ValueError(f"Unsupported backend: {backend}")
+    compiled_func = _compile_numba(backend, func, signature, parallel=parallel, nogil=nogil)
 
   # Attach source hash to compiled function
   compiled_func._source_hash = current_hash
