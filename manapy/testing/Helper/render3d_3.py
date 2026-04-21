@@ -8,7 +8,8 @@ import numpy as np
 
 helpers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'domain')
 sys.path.append(helpers_path)
-from create_domain import Domain, Mesh, GlobalDomain, LocalDomain, SingleCoreDomainTables
+from create_domain import Domain, Mesh, GlobalDomain, LocalDomain
+from manapy.testing.test_domain_helper import get_local_domains
 
 mesh_list = [
   (2, 'triangles.msh'),
@@ -30,7 +31,7 @@ def create_domain(nb_parts):
   local_domains = LocalDomain.create_local_domains(local_domain_data)
   domains = [Domain(local_domains[i]) for i in range(len(local_domains))]
 
-  return domains, SingleCoreDomainTables(domains, float_precision)
+  return domains, get_local_domains(nb_parts, mesh_path, dim, "Partitioning.Par_Nodal")
 
 l_domains, domain_tables = create_domain(4)
 #g_domains, unified_domain = create_domain(1)

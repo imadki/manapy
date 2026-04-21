@@ -33,7 +33,7 @@ def _node_for_interpolation_3d(xCenterForInterp: 'float64[:,:]', yCenterForInter
             yCenterForInterp[i][4] = ghostcenter[i][1]
             zCenterForInterp[i][4] = ghostcenter[i][2]
             
-def _node_value_for_interpolation_3d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]'):
+def _node_value_for_interpolation_3d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]', face_ghost_id: 'int[:]'):
 
 
     nbfaces = len(nodefid)
@@ -49,7 +49,7 @@ def _node_value_for_interpolation_3d(ValForInterp: 'float64[:,:]', w_cell: 'floa
             ValForInterp[i][4] = w_halo[halofid[i]]
            
         else:
-            ValForInterp[i][4] = w_ghost[i]
+            ValForInterp[i][4] = w_ghost[face_ghost_id[i]]
 
 def _weight_parameters_carac_3d(xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', zCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64', Z0: 'float64'):
 

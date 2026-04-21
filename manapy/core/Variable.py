@@ -54,12 +54,12 @@ class Variable:
     self._nbcells = domain.nbcells
     self._nbnodes = domain.nbnodes
     self._nbhalos = domain.nbhalos
-    self._nbghost = domain.nbfaces
+    self._nbghost = domain.nbghost
 
     self.cell = np.zeros(self._nbcells, dtype=types.np_float_type)
     self.node = np.zeros(self._nbnodes, dtype=types.np_float_type)
     self.face = np.zeros(self._nbfaces, dtype=types.np_float_type)
-    self.ghost = np.zeros(self._nbfaces, dtype=types.np_float_type)
+    self.ghost = np.zeros(self._nbghost, dtype=types.np_float_type)
     self.halo = np.zeros(self._nbhalos, dtype=types.np_float_type)
 
     self.gradcellx = np.zeros(self._nbcells, dtype=types.np_float_type)
@@ -206,12 +206,11 @@ class Variable:
               valuenode[i] = values_dict[loc](self._domain.nodes.vertex[i][0], self._domain.nodes.vertex[i][1],
                                                self._domain.nodes.vertex[i][2])
 
-              if self._domain.nodes.haloghostcenter.shape[0] > 0:
-                for j in range(len(self._domain.nodes.haloghostcenter[i])):
-                  cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                  if cell != -1:
-                    center = self._domain.nodes.haloghostfaceinfo[i][j][0:3]
-                    valuehalo[cell] = values_dict[loc](center[0], center[1], center[2])
+             
+              for j in range(self._domain.nodes.haloghostid[i, -1]):
+                ghost_id = self._domain.nodes.haloghostid[i, j]
+                face_center = self._domain.ghost.ext_info_flt[ghost_id][4:7]
+                valuehalo[ghost_id] = values_dict[loc](face_center[0], face_center[1], face_center[2])
 
           elif isinstance(values_dict[loc], (int, float)):
             for i in BCs[loc].BCfaces:
@@ -220,11 +219,9 @@ class Variable:
             for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
               valuenode[i] = values_dict[loc]
 
-              if self._domain.nodes.haloghostcenter.shape[0] > 0:
-                for j in range(len(self._domain.nodes.haloghostcenter[i])):
-                  cell = self._domain.nodes.haloghostcenter_info[i, j, -1]
-                  if cell != -1:
-                    valuehalo[cell] = values_dict[loc]
+              for j in range(self._domain.nodes.haloghostid[i, -1]):
+                ghost_id = self._domain.nodes.haloghostid[i, j]
+                valuehalo[ghost_id] = values_dict[loc]
 
           BCs[loc].BCvalueface = valueface
           BCs[loc].BCvaluenode = valuenode
@@ -254,13 +251,10 @@ class Variable:
               valuenode[i] = values_dict[loc](self._domain.nodes.vertex[i][0], self._domain.nodes.vertex[i][1],
                                                self._domain.nodes.vertex[i][2])
 
-              if self._domain.nodes.haloghostcenter.shape[0] > 0:
-                for j in range(len(self._domain.nodes.haloghostcenter[i])):
-
-                  cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                  if cell != -1:
-                    center = self._domain.nodes.haloghostfaceinfo[i][j][0:3]
-                    valuehalo[cell] = values_dict[loc](center[0], center[1], center[2])
+              for j in range(self._domain.nodes.haloghostid[i, -1]):
+                ghost_id = self._domain.nodes.haloghostid[i, j]
+                face_center = self._domain.ghost.ext_info_flt[ghost_id][4:7]
+                valuehalo[ghost_id] = values_dict[loc](face_center[0], face_center[1], face_center[2])
 
           elif isinstance(values_dict[loc], (int, float)):
             for i in BCs[loc].BCfaces:
@@ -269,11 +263,9 @@ class Variable:
             for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
               valuenode[i] = values_dict[loc]
 
-              if self._domain.nodes.haloghostcenter.shape[0] > 0:
-                for j in range(len(self._domain.nodes.haloghostcenter[i])):
-                  cell = self._domain.nodes.node_haloghostcenter_info[i, j, -1]
-                  if cell != -1:
-                    valuehalo[cell] = values_dict[loc]
+              for j in range(self._domain.nodes.haloghostid[i, -1]):
+                ghost_id = self._domain.nodes.haloghostid[i, j]
+                valuehalo[ghost_id] = values_dict[loc]
 
           BCs[loc].constNH = valueface
           BCs[loc].constNHNode = valuenode
@@ -373,7 +365,7 @@ class Variable:
     dirichletfaces = np.asarray(dirichletfaces, dtype=types.np_int_type)
     BCdirichlet = np.asarray(BCdirichlet, dtype=types.np_int_type)
     neumannNHfaces = np.asarray(neumannNHfaces, dtype=types.np_int_type)
-    BCneumannNH = np.asarray(BCdirichlet, dtype=types.np_int_type)
+    BCneumannNH = np.asarray(BCneumannNH, dtype=types.np_int_type)
 
     return (neumannfaces,
             BCneumann,
@@ -445,17 +437,17 @@ class Variable:
   def interpolate_celltoface(self):
     self._celltoface(self.cell, self.face, self.ghost, self.halo, self._domain.faces.cellid,
                          self._domain.faces.halofid,
-                         self._domain.innerfaces, self._domain.boundaryfaces, self._domain.halofaces)
+                         self._domain.innerfaces, self._domain.boundaryfaces, self._domain.halofaces, self._domain.faces.ghost_id)
 
   def interpolate_celltonode(self):
     # self.update_halo_value()
     # self.update_ghost_value()
     self._func_interp(self.cell, self.ghost, self.halo, self.haloghost, self._domain.cells.center,
                           self._domain.halos.centvol,
-                          self._domain.nodes.cellid, self._domain.nodes.ghostid, self._domain.nodes.haloghostid,
+                          self._domain.nodes.cellid, self._domain.ghost.info_flt, self._domain.ghost.ext_info_flt, self._domain.nodes.ghostid,
+                          self._domain.nodes.haloghostid,
                           self._domain.nodes.periodicid, self._domain.nodes.halonid, self._domain.nodes.vertex,
                           self._domain.nodes.oldname,
-                          self._domain.faces.ghostcenter, self._domain.cells.haloghostcenter,
                           self._domain.nodes.R_x, self._domain.nodes.R_y, self._domain.nodes.R_z,
                           self._domain.nodes.lambda_x,
                           self._domain.nodes.lambda_y, self._domain.nodes.lambda_z,
@@ -463,10 +455,9 @@ class Variable:
 
   def compute_cell_gradient(self):
     self._cell_gradient(self.cell, self.ghost, self.halo, self.haloghost, self._domain.cells.center,
-                            self._domain.cells.cellnid, self._domain.cells.ghostnid, self._domain.cells.haloghostnid,
+                            self._domain.cells.cellnid, self._domain.ghost.info_flt, self._domain.ghost.ext_info_flt, self._domain.cells.ghostnid, self._domain.cells.haloghostnid,
                             self._domain.cells.halonid, self._domain.cells.nodeid, self._domain.cells.periodicnid,
-                            self._domain.nodes.periodicid, self._domain.faces.ghostcenter,
-                            self._domain.cells.haloghostcenter,
+                            self._domain.nodes.periodicid,
                             self._domain.nodes.oldname, self._domain.halos.centvol, self._domain.cells.shift,
                             self.gradcellx,
                             self.gradcelly, self.gradcellz)
@@ -474,7 +465,7 @@ class Variable:
     # The limiter depend on hc value
     self._barthlimiter(self.cell, self.ghost, self.halo, self.gradcellx, self.gradcelly, self.gradcellz,
                            self.psi, self._domain.faces.cellid, self._domain.cells.faceid, self._domain.faces.name,
-                           self._domain.faces.halofid, self._domain.cells.center, self._domain.faces.center)
+                           self._domain.faces.halofid, self._domain.cells.center, self._domain.faces.center, self.domain.faces.ghost_id)
 
     self.domain.halo_comm.graph_comm.Barrier()
     # update the halo values
@@ -486,22 +477,21 @@ class Variable:
   def compute_face_gradient(self):
 
     self._face_gradient(self.cell, self.ghost, self.halo, self.node, self._domain.faces.cellid,
-                            self._domain.faces.nodeid, self._domain.faces.ghostcenter,
-                            self._domain.faces.halofid, self._domain.cells.center,
-                            self._domain.halos.centvol, self._domain.nodes.vertex, self._domain.faces.airDiamond,
+                            self._domain.faces.nodeid,
+                            self._domain.faces.halofid, self._domain.faces.airDiamond,
                             self._domain.faces.normal, self._domain.faces.f_1, self._domain.faces.f_2,
-                            self._domain.faces.f_3, self._domain.faces.f_4, self._domain.cells.shift,
+                            self._domain.faces.f_3, self._domain.faces.f_4,
                             self.gradfacex, self.gradfacey, self.gradfacez, self._domain.innerfaces,
                             self._domain.halofaces, self.dirichletfaces, self.neumannfaces,
-                            self._domain.periodicboundaryfaces)
+                            self._domain.periodicboundaryfaces, self.domain.faces.ghost_id)
 
   def update_ghost_value(self):
     for BC in self._BCs.values():
       BC.func_ghost(BC.BCvalueface, self.ghost, self._domain.faces.cellid,
-                     np.asarray(BC.BCfaces, dtype=types.np_int_type),
-                     BC.constNH, self._domain.faces.dist_ortho)
-      BC.func_haloghost(BC.BCvaluehalo, self.haloghost, self._domain.nodes.haloghostcenter,
-                         self._domain.nodes.haloghostcenter_info, BC.BCtypeindex, self._domain.halonodes, BC.constNHNode)
+                     BC.BCfaces,
+                     BC.constNH, self._domain.faces.dist_ortho, self._domain.faces.ghost_id)
+      BC.func_haloghost(BC.BCvaluehalo, self.haloghost, self._domain.nodes.haloghostid,
+                         self._domain.ghost.ext_info_int, self._domain.ghost.ext_info_flt, BC.BCtypeindex, self._domain.halonodes, BC.constNHNode)
 
   def norml2(self, exact, order=None):
 

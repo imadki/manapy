@@ -20,6 +20,7 @@ class Domain:
     self.nbcells = local_domain.nb_cells
     self.nbfaces = local_domain.nb_faces
     self.nbhalos = local_domain.halo_halosext.shape[0]
+    self.nbghost = local_domain.nb_phy_faces
     self._maxcellfid = local_domain.max_cell_faceid
     self._maxcellnodeid = local_domain.max_cell_nodeid
     self._maxfacenid = local_domain.max_face_nodeid

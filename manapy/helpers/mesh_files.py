@@ -1,5 +1,5 @@
 import os
-
+from typing import Union
 # gmsh ./meshes/tetra_test_2.geo -3 -setnumber Nx 100 -setnumber Ny 100 -setnumber Nz 100  -o ./meshes/big/tetra_test_100.msh > /dev/null
 
 root_file = os.path.dirname(os.path.abspath(__file__))
@@ -33,7 +33,7 @@ test_meshes_list = [
   (3, "smallHybrid3d.msh"),
 ]
 
-def get_mesh(name: 'int || str'):
+def get_mesh(name: Union[int, str]):
   dic = {}
   for item in meshes_list:
     dic[item[1]] = item[0]
@@ -45,7 +45,7 @@ def get_mesh(name: 'int || str'):
   mesh_path = os.path.join(meshes_folder, mesh_name)
   return dim, mesh_path, mesh_name
 
-def get_test_mesh(name: 'int || str'):
+def get_test_mesh(name: Union[int, str]):
   dic = {}
   for item in test_meshes_list:
     dic[item[1]] = item[0]
