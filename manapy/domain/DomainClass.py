@@ -118,6 +118,7 @@ class Domain:
     self.ghost._info_flt = local_domain.ghost_info_flt
     self.ghost._ext_info_int = local_domain.ext_ghost_info_int
     self.ghost._ext_info_flt = local_domain.ext_ghost_info_flt
+    self.ghost._faceid = local_domain.phyid_to_faceid
 
     # Domain
     self._bounds = local_domain.bounds

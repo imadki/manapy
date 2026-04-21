@@ -21,31 +21,27 @@ def _rhs_value_neumannNH_face(w_c: 'float[:]', Pbordface: 'float[:]', cellid: 'i
 #################################################################################
 
 def _ghost_value_nonslip(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
-                        cst: 'float[:]', face_dist_ortho: 'float[:]', face_ghost_id: 'int[:]'):
+                        cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
-    ghost_id = face_ghost_id[i]
-    w_ghost[ghost_id] = -1 * w_c[face_cellid[i][0]]
+    w_ghost[i] = -1 * w_c[face_cellid[i][0]]
 
 
 def _ghost_value_neumann(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
-                        cst: 'float[:]', face_dist_ortho: 'float[:]', face_ghost_id: 'int[:]'):
+                        cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
-    ghost_id = face_ghost_id[i]
-    w_ghost[ghost_id] = w_c[face_cellid[i][0]]
+    w_ghost[i] = w_c[face_cellid[i][0]]
 
 
 def _ghost_value_neumannNH(w_c: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
-                          cst: 'float[:]', face_dist_ortho: 'float[:]', face_ghost_id: 'int[:]'):
+                          cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
-    ghost_id = face_ghost_id[i]
-    w_ghost[ghost_id] = w_c[face_cellid[i][0]] + cst[i] * face_dist_ortho[i]
+    w_ghost[i] = w_c[face_cellid[i][0]] + cst[i] * face_dist_ortho[i]
 
 
 def _ghost_value_dirichlet(value: 'float[:]', w_ghost: 'float[:]', face_cellid: 'int[:,:]', bc_faces: 'int[:]',
-                          cst: 'float[:]', face_dist_ortho: 'float[:]', face_ghost_id: 'int[:]'):
+                          cst: 'float[:]', face_dist_ortho: 'float[:]'):
   for i in bc_faces:
-    ghost_id = face_ghost_id[i]
-    w_ghost[ghost_id] = value[i]
+    w_ghost[i] = value[i]
 
 #################################################################################
 #################################################################################

@@ -9,7 +9,7 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                       node_periodicid: 'int[:,:]',
                       node_halonid: 'int[:,:]', nodes: 'float[:,:]', node_oldname:'int[:]',
                       node_R_x: 'float[:]', node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]',
-                      node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]', w_n: 'float[:]'):
+                      node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]', w_n: 'float[:]', ghost_faceid: 'int[:]'):
   w_n[:] = 0.
 
   nbnode = len(nodes)
@@ -36,7 +36,7 @@ def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
       alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / (
                 node_number[i] + node_lambda_x[i] * node_R_x[i] + node_lambda_y[i] * node_R_y[i])
 
-      w_n[i] += alpha * w_ghost[ghost_id]
+      w_n[i] += alpha * w_ghost[ghost_faceid[ghost_id]]
 
     for j in range(node_haloghostid[i, -1]):
       ghost_id = node_haloghostid[i][j]
@@ -93,7 +93,7 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
                      face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]',
                      wx_face: 'float[:]', wy_face: 'float[:]', wz_face: 'float[:]', d_innerfaces: 'int[:]',
                      d_halofaces: 'int[:]',
-                     dirichletfaces: 'int[:]', neumann: 'int[:]', d_periodicfaces: 'int[:]', face_ghost_id: 'int[:]'):
+                     dirichletfaces: 'int[:]', neumann: 'int[:]', d_periodicfaces: 'int[:]'):
 
   for i in d_innerfaces:
     c_left = face_cellid[i][0]
@@ -156,7 +156,7 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     vi1 = w_node[i_1]
     vi2 = w_node[i_2]
     vv1 = w_c[c_left]
-    vv2 = w_ghost[face_ghost_id[c_right]]
+    vv2 = w_ghost[c_right]
 
     wx_face[i] = 1 / (2 * face_airDiamond[i]) * (
               (vi1 + vv1) * face_f1[i][1] + (vv1 + vi2) * face_f2[i][1] + (vi2 + vv2) * face_f3[i][1] + (vv2 + vi1) * face_f4[i][1])
@@ -173,7 +173,7 @@ def _face_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
     vi1 = w_node[i_1]
     vi2 = w_node[i_2]
     vv1 = w_c[c_left]
-    vv2 = w_ghost[face_ghost_id[c_right]]
+    vv2 = w_ghost[c_right]
 
     wx_face[i] = 1 / (2 * face_airDiamond[i]) * (
               (vi1 + vv1) * face_f1[i][1] + (vv1 + vi2) * face_f2[i][1] + (vi2 + vv2) * face_f3[i][1] + (vv2 + vi1) * face_f4[i][1])
@@ -185,7 +185,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
                      ghost_info_flt: 'float[:, :]', ghost_ext_info_flt: 'float[:, :]', cell_ghostnid: 'int[:,:]', cell_haloghostnid: 'int[:,:]',
                      cell_halonid: 'int[:,:]',
                      cells: 'int[:,:]', cell_periodicfid: 'int[:,:]', node_periodicid: 'int[:,:]', node_oldname: 'int[:]', halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]',
-                     w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]'):
+                     w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', ghost_faceid: 'int[:]'):
   center = np.zeros(3)
   nbelement = len(w_c)
 
@@ -215,8 +215,8 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
       i_yy += j_y * j_y
       i_xy += (j_x * j_y)
 
-      j_xw += (j_x * (w_ghost[ghost_id] - w_c[i]))
-      j_yw += (j_y * (w_ghost[ghost_id] - w_c[i]))
+      j_xw += (j_x * (w_ghost[ghost_faceid[ghost_id]] - w_c[i]))
+      j_yw += (j_y * (w_ghost[ghost_faceid[ghost_id]] - w_c[i]))
 
     for k in range(cells[i][-1]):
       nod = cells[i][k]
@@ -283,7 +283,7 @@ def _cell_gradient_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', 
 def _barthlimiter_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
                     w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]', psi: 'float[:]',
                     face_cellid: 'int[:,:]', cell_faceid: 'int[:,:]', face_name: 'int[:]',
-                    face_haloid: 'int[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_ghost_id: 'int[:]'):
+                    face_haloid: 'int[:]', cell_center: 'float[:,:]', face_center: 'float[:,:]'):
   nbelement = len(w_c)
   val = 1.
   psi[:] = val
@@ -299,8 +299,8 @@ def _barthlimiter_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
         w_max = max(w_max, w_c[face_cellid[face][0]], w_c[face_cellid[face][1]])
         w_min = min(w_min, w_c[face_cellid[face][0]], w_c[face_cellid[face][1]])
       elif face_name[face] == 1 or face_name[face] == 2 or face_name[face] == 3 or face_name[face] == 4:
-        w_max = max(w_max, w_c[face_cellid[face][0]], w_ghost[face_ghost_id[face]])
-        w_min = min(w_min, w_c[face_cellid[face][0]], w_ghost[face_ghost_id[face]])
+        w_max = max(w_max, w_c[face_cellid[face][0]], w_ghost[face])
+        w_min = min(w_min, w_c[face_cellid[face][0]], w_ghost[face])
       else:
         w_max = max(w_max, w_c[face_cellid[face][0]], w_halo[face_haloid[face]])
         w_min = min(w_min, w_c[face_cellid[face][0]], w_halo[face_haloid[face]])

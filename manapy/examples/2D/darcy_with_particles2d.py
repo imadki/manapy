@@ -14,7 +14,7 @@ SIZE = COMM.Get_size()
 RANK = COMM.Get_rank()
 
 
-def face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghostid: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]',
+def face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghost_id: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]',
                           face_normal: 'float[:,:]',
                           cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', face_halofid: 'int[:]', nodes: 'float[:,:]',
                           face_airDiamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]', face_param3: 'float[:]',
@@ -53,7 +53,7 @@ def face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_ghost
     elif face_name[i] == 10:
       v_2[:] = halo_centvol[face_halofid[i]][0:dim]
     else:
-      ghost_id = face_ghostid[i]
+      ghost_id = face_ghost_id[i]
       v_2[:] = ghost_info_flt[ghost_id][0:dim]
 
     face_f1[i][:] = v_1[:] - xy_1[:]
@@ -365,7 +365,7 @@ while time < tfinal:
                                cells.center, faces.center, halos.centvol,
                                faces.cellid, faces.normal, faces.halofid, faces.name,
                                domain.innerfaces, domain.halofaces, domain.boundaryfaces,
-                               domain.periodicboundaryfaces, cells.shift, order, domain.faces.ghost_id)
+                               domain.periodicboundaryfaces, cells.shift, order)
 
   update_new_value(I.cell, I.Flux, dissip_I, src_I, d_t, cells.volume)
 

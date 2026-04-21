@@ -15,7 +15,7 @@ def _facetocell(u_face: 'float[:]', u_c: 'float[:]', cell_faceid: 'int[:,:]', di
 
 def _celltoface(u_cell: 'float[:]', u_face: 'float[:]', u_ghost: 'float[:]', u_halo: 'float[:]',
                face_cellid: 'int[:,:]', face_halofid: 'int[:]',
-               d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', d_halofaces: 'int[:]', face_ghost_id: 'int[:]'):
+               d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', d_halofaces: 'int[:]'):
   for i in d_innerfaces:
     c1 = face_cellid[i][0]
     c2 = face_cellid[i][1]
@@ -27,7 +27,7 @@ def _celltoface(u_cell: 'float[:]', u_face: 'float[:]', u_ghost: 'float[:]', u_h
 
   for i in d_boundaryfaces:
     c1 = face_cellid[i][0]
-    u_face[i] = .5 * (u_cell[c1] + u_ghost[face_ghost_id[i]])
+    u_face[i] = .5 * (u_cell[c1] + u_ghost[i])
 
 ############################################################################
 # Public

@@ -54,12 +54,11 @@ class Variable:
     self._nbcells = domain.nbcells
     self._nbnodes = domain.nbnodes
     self._nbhalos = domain.nbhalos
-    self._nbghost = domain.nbghost
 
     self.cell = np.zeros(self._nbcells, dtype=types.np_float_type)
     self.node = np.zeros(self._nbnodes, dtype=types.np_float_type)
     self.face = np.zeros(self._nbfaces, dtype=types.np_float_type)
-    self.ghost = np.zeros(self._nbghost, dtype=types.np_float_type)
+    self.ghost = np.zeros(self._nbfaces, dtype=types.np_float_type) # !! Indexed by face not ghostid
     self.halo = np.zeros(self._nbhalos, dtype=types.np_float_type)
 
     self.gradcellx = np.zeros(self._nbcells, dtype=types.np_float_type)
@@ -437,7 +436,7 @@ class Variable:
   def interpolate_celltoface(self):
     self._celltoface(self.cell, self.face, self.ghost, self.halo, self._domain.faces.cellid,
                          self._domain.faces.halofid,
-                         self._domain.innerfaces, self._domain.boundaryfaces, self._domain.halofaces, self._domain.faces.ghost_id)
+                         self._domain.innerfaces, self._domain.boundaryfaces, self._domain.halofaces)
 
   def interpolate_celltonode(self):
     # self.update_halo_value()
@@ -451,7 +450,7 @@ class Variable:
                           self._domain.nodes.R_x, self._domain.nodes.R_y, self._domain.nodes.R_z,
                           self._domain.nodes.lambda_x,
                           self._domain.nodes.lambda_y, self._domain.nodes.lambda_z,
-                          self._domain.nodes.number, self._domain.cells.shift, self.node)
+                          self._domain.nodes.number, self._domain.cells.shift, self.node, self.domain.ghost.faceid)
 
   def compute_cell_gradient(self):
     self._cell_gradient(self.cell, self.ghost, self.halo, self.haloghost, self._domain.cells.center,
@@ -460,12 +459,12 @@ class Variable:
                             self._domain.nodes.periodicid,
                             self._domain.nodes.oldname, self._domain.halos.centvol, self._domain.cells.shift,
                             self.gradcellx,
-                            self.gradcelly, self.gradcellz)
+                            self.gradcelly, self.gradcellz, self.domain.ghost.faceid)
 
     # The limiter depend on hc value
     self._barthlimiter(self.cell, self.ghost, self.halo, self.gradcellx, self.gradcelly, self.gradcellz,
                            self.psi, self._domain.faces.cellid, self._domain.cells.faceid, self._domain.faces.name,
-                           self._domain.faces.halofid, self._domain.cells.center, self._domain.faces.center, self.domain.faces.ghost_id)
+                           self._domain.faces.halofid, self._domain.cells.center, self._domain.faces.center)
 
     self.domain.halo_comm.graph_comm.Barrier()
     # update the halo values
@@ -483,13 +482,13 @@ class Variable:
                             self._domain.faces.f_3, self._domain.faces.f_4,
                             self.gradfacex, self.gradfacey, self.gradfacez, self._domain.innerfaces,
                             self._domain.halofaces, self.dirichletfaces, self.neumannfaces,
-                            self._domain.periodicboundaryfaces, self.domain.faces.ghost_id)
+                            self._domain.periodicboundaryfaces)
 
   def update_ghost_value(self):
     for BC in self._BCs.values():
       BC.func_ghost(BC.BCvalueface, self.ghost, self._domain.faces.cellid,
                      BC.BCfaces,
-                     BC.constNH, self._domain.faces.dist_ortho, self._domain.faces.ghost_id)
+                     BC.constNH, self._domain.faces.dist_ortho)
       BC.func_haloghost(BC.BCvaluehalo, self.haloghost, self._domain.nodes.haloghostid,
                          self._domain.ghost.ext_info_int, self._domain.ghost.ext_info_flt, BC.BCtypeindex, self._domain.halonodes, BC.constNHNode)
 

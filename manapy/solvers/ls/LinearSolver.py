@@ -174,7 +174,7 @@ class LinearSolver:
                              self.domain.Pbordface,
                              self.var.gradfacex, self.var.gradfacey, self.var.gradfacez, self.var.BCdirichlet,
                              self.domain.innerfaces, self.domain.halofaces, self.var.neumannfaces,
-                             self.var.dirichletfaces, self.domain.periodicboundaryfaces, self.domain.faces.ghost_id)
+                             self.var.dirichletfaces, self.domain.periodicboundaryfaces)
 
   def reordering_matrix(self):
     matrix = csr_matrix((self._data, (self._row, self._col)))
