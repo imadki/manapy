@@ -35,6 +35,7 @@ domain_meshes*PROC
 local_domain_*
 !local_domain_*.py
 results/
+vtk_results/
 benchmark_result
 cuda_cpu_results_saved
 test

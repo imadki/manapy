@@ -7,52 +7,55 @@ meshes_folder = os.path.join(root_file, '..', '..', 'meshes')
 test_meshes_folder = os.path.join(root_file, '..', '..', 'tests', 'data', 'meshes')
 
 meshes_list = [
-  (2, 'rectangles.msh'),#0
-  (2, 'triangles.msh'),#1
-  (2, 'hybrid2d.msh'),#2
-  (3, 'cuboid.msh'),#3
-  (3, 'tetrahedrons.msh'),#4
-  (3, 'hybrid3d.msh'), #5
-  (2, 'big/carre.msh'),#6
-  (3, 'big/tetra_test_100.msh'),#7
-  (3, 'big/tetra_test_200.msh'), #8
-  (2, 'big/carre1.msh'),#6
+  # Meshes
+  (2, f'{meshes_folder}/rectangles.msh'),
+  (2, f'{meshes_folder}/triangles.msh'),
+  (2, f'{meshes_folder}/hybrid2d.msh'),
+  (3, f'{meshes_folder}/cuboid.msh'),
+  (3, f'{meshes_folder}/tetrahedrons.msh'),
+  (3, f'{meshes_folder}/hybrid3d.msh'),
+  (2, f'{meshes_folder}/big/carre.msh'),
+  (3, f'{meshes_folder}/big/tetra_test_100.msh'),
+  (3, f'{meshes_folder}/big/tetra_test_200.msh'),
+  (2, f'{meshes_folder}/big/carre1.msh'),
+  # These are test meshes used for unit testing (don't renamed them)
+  (2, f"{test_meshes_folder}/rectangles.msh"),
+  (2, f"{test_meshes_folder}/triangles.msh"),
+  (2, f"{test_meshes_folder}/smallTriangles.msh"),
+  (2, f"{test_meshes_folder}/smallHybrid2D.msh"),
+  (2, f"{test_meshes_folder}/hybrid2d.msh"),
+  (3, f"{test_meshes_folder}/cuboid.msh"),
+  (3, f"{test_meshes_folder}/smallCuboid.msh"),
+  (3, f"{test_meshes_folder}/smallTetrahedrons.msh"),
+  (3, f'{test_meshes_folder}/tetrahedrons.msh'),
+  (3, f"{test_meshes_folder}/hybrid3d.msh"),
+  (3, f"{test_meshes_folder}/smallHybrid3d.msh"),
 ]
 
-test_meshes_list = [
-  (2, "rectangles.msh"),
-  (2, "triangles.msh"),
-  (2, "smallTriangles.msh"),
-  (2, "smallHybrid2D.msh"),
-  (2, "hybrid2d.msh"),
-  (3, "cuboid.msh"),
-  (3, "smallCuboid.msh"),
-  (3, "smallTetrahedrons.msh"),
-  (3, 'tetrahedrons.msh'),
-  (3, "hybrid3d.msh"),
-  (3, "smallHybrid3d.msh"),
-]
-
-def get_mesh(name: Union[int, str]):
+"""
+Get mesh with default dim using the list above
+If mesh does not exist in the list is must be exist in the root_folder and dim must be specified
+"""
+def get_mesh_helper(root_folder: str, name: str, dim: int = None):
   dic = {}
   for item in meshes_list:
     dic[item[1]] = item[0]
-  if isinstance(name, int):
-    dim, mesh_name = meshes_list[name]
-  else:
-    dim = dic[name]
+
+  mesh_path = os.path.join(root_folder, name)
+  if not os.path.isfile(mesh_path):
+    raise ValueError("Mesh file does not exist")
+  if mesh_path in dic:
+    dim = dic[mesh_path]
     mesh_name = name
-  mesh_path = os.path.join(meshes_folder, mesh_name)
+  else:
+    if dim is None:
+      raise ValueError("Dimension must be specified for mesh")
+    mesh_name = name
+  mesh_path = os.path.join(root_folder, mesh_name)
   return dim, mesh_path, mesh_name
 
-def get_test_mesh(name: Union[int, str]):
-  dic = {}
-  for item in test_meshes_list:
-    dic[item[1]] = item[0]
-  if isinstance(name, int):
-    dim, mesh_name = test_meshes_list[name]
-  else:
-    dim = dic[name]
-    mesh_name = name
-  mesh_path = os.path.join(test_meshes_folder, mesh_name)
-  return dim, mesh_path, mesh_name
+def get_mesh(name: str, dim: int = None):
+  return get_mesh_helper(meshes_folder, name, dim)
+
+def get_test_mesh(name: str, dim: int = None):
+  return get_mesh_helper(test_meshes_folder, name, dim)
