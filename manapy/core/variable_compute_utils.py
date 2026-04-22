@@ -3,9 +3,9 @@ from manapy.backends.compile_fun import compile
 
 def _facetocell(u_face: 'float[:]', u_c: 'float[:]', cell_faceid: 'int[:,:]', dim: 'int'):
   nbelements = len(u_c)
-  u_c[:] = 0.
 
   for i in range(nbelements):
+    u_c[i] = 0.0
     for j in range(cell_faceid[i][-1]):
       u_c[i] += u_face[cell_faceid[i][j]]
 

@@ -102,20 +102,20 @@ class Partitioning:
     local_domain.dim = self.dim
 
     ## Halo related tables
-    local_domain.halo_neighsub = np.zeros(shape=(1, 1), dtype=types.np_int_type)
-    local_domain.node_halos = np.zeros(shape=1, dtype=types.np_int_type)
+    local_domain.halo_neighsub = np.zeros(shape=(0, 1), dtype=types.np_int_type)
+    local_domain.node_halos = np.zeros(shape=0, dtype=types.np_int_type)
     # node_halophyid
-    local_domain.halo_halosext = np.zeros(shape=(1, 1), dtype=types.np_int_type)
-    local_domain.halo_halosint = np.zeros(shape=1, dtype=types.np_int_type)
-    local_domain.halo_centvol = np.zeros(shape=(1, 1), dtype=types.np_float_type)
+    local_domain.halo_halosext = np.zeros(shape=(0, 1), dtype=types.np_int_type)
+    local_domain.halo_halosint = np.zeros(shape=0, dtype=types.np_int_type)
+    local_domain.halo_centvol = np.zeros(shape=(0, 4), dtype=types.np_float_type)
     #local_domain.cell_loctoglob = np.zeros(shape=0, dtype=types.np_int_type) # keep it shape=0
     local_domain.cell_loctoglob = np.arange(0, self.nb_cells, dtype=types.np_int_type)
     local_domain.cell_tc = np.arange(0, self.nb_cells, dtype=types.np_int_type)
-    local_domain.node_loctoglob = np.zeros(shape=1, dtype=types.np_int_type)
+    local_domain.node_loctoglob = np.zeros(shape=0, dtype=types.np_int_type)
 
     local_domain.phyid_recv = np.arange(self.nb_phy_faces, dtype=types.np_int_type)
     local_domain.phyid_recv_part_size = np.array([0, self.nb_phy_faces], dtype=types.np_int_type)
-    local_domain.node_halophyid = np.zeros(shape=(1, 1), dtype=types.np_int_type)
+    local_domain.node_halophyid = np.zeros(shape=(0, 1), dtype=types.np_int_type)
     #local_domain.phyid_send = np.zeros(shape=1, dtype=types.np_int_type)
 
 

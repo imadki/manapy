@@ -50,7 +50,7 @@ def sort_float_arr(dim, arr):
   return arr, indices
 
 
-def get_local_domains(nb_parts: int, mesh_path: str, dim: int, partitioning_type: str):
+def get_local_domains(nb_parts: int, mesh_path: str, dim: int, partitioning_type: str = "Partitioning.Par_Nodal"):
   print(mesh_path)
   create_partitions_mpi_worker = f"""
 import pickle

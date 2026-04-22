@@ -115,15 +115,15 @@ Compile a function once it called the first time (not immediately).
 class FunObj:
   def __init__(self, func, *a, **kw):
     self.target_func = func
+    self.func = self._first_call
     self.args = a
     self.kw = kw
 
-    def com(*args):
-      print("Compiling...", self.target_func.__name__)
-      self.func = compile(self.target_func, *self.args, **self.kw)
-      return func(*args)
-
-    self.func = com
+  def _first_call(self, *args):
+    print("Compiling...", self.target_func.__name__)
+    compiled = compile(self.target_func, *self.args, **self.kw)
+    self.func = compiled  # replace for future calls
+    return compiled(*args)
 
   def __call__(self, *args):
     return self.func(*args)
