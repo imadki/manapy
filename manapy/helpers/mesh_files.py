@@ -41,7 +41,11 @@ def get_mesh_helper(root_folder: str, name: str, dim: int = None):
   for item in meshes_list:
     dic[item[1]] = item[0]
 
-  mesh_path = os.path.join(root_folder, name)
+  name = name.strip()
+  if name[0] != "/":
+    mesh_path = os.path.join(root_folder, name)
+  else:
+    mesh_path = name
   if not os.path.isfile(mesh_path):
     raise ValueError("Mesh file does not exist")
   if mesh_path in dic:
