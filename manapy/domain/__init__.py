@@ -4,5 +4,5 @@ from manapy.domain.LocalDomainClass import LocalDomain
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
 from manapy.domain.MeshClass import Mesh
 from manapy.domain.PartitioningClass import Partitioning
-from manapy.domain.geometry import Cell, Face, Halo, Node
+from manapy.domain.geometry import Cell, Face, Halo, Node, Ghost
 import manapy.domain.utils as utils

@@ -11,6 +11,7 @@ import manapy.backends.types as types
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
 
 class Domain:
+  PartitioningClass = Partitioning
   def __init__(self, local_domain: 'LocalDomain'):
     # Init
     self.rank = local_domain.rank
