@@ -334,8 +334,9 @@ class Domain:
     points = self.nodes.vertex[:, :3]
     points = np.array(points, dtype=types.np_float_type)
 
-    data = {"w": value}
-    data = {"w": data}
+
+    data = {"w": list(value)}
+    # data = {"w": data}
 
     maxw = max(value)
 

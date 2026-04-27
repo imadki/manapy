@@ -107,22 +107,38 @@ if rank == 0:
   mpirun_path = os.path.join(os.path.dirname(sys.executable), "mpirun")
   python_path = os.path.join(os.path.dirname(sys.executable), "python3")
 
+  # Check MPI executable existance
+  if not (os.path.isfile(mpirun_path) and os.access(mpirun_path, os.X_OK)):
+    mpirun_path = shutil.which("mpirun")
+
+    if mpirun_path is None:
+      raise FileNotFoundError("mpirun not found in local path or system PATH")
+
+  print("Using mpirun:", mpirun_path)
+
   is_supports_oversubscribe = _supports_oversubscribe(mpirun_path)
-  if is_supports_oversubscribe:
-    subprocess.run([
-      mpirun_path,
-      "--oversubscribe",
-      "-n", str(nb_parts),
-      python_path,
-      tmp_file_name
-    ], check=True)
-  else:
-    subprocess.run([
-      mpirun_path,
-      "-n", str(nb_parts),
-      python_path,
-      tmp_file_name
-    ], check=True)
+  try:
+    if is_supports_oversubscribe:
+      subprocess.run([
+        mpirun_path,
+        "--oversubscribe",
+        "-n", str(nb_parts),
+        python_path,
+        tmp_file_name,
+      ], check=True, env=os.environ.copy(), capture_output=True, text=True)
+    else:
+      subprocess.run([
+        mpirun_path,
+        "-n", str(nb_parts),
+        python_path,
+        tmp_file_name
+      ], check=True, env=os.environ.copy(), capture_output=True, text=True)
+  except subprocess.CalledProcessError as e:
+    print("Command failed")
+    print("Return code:", e.returncode)
+    print("STDOUT:\n", e.stdout)
+    print("STDERR:\n", e.stderr)
+    exit(1)
 
   os.remove(tmp_file_name)
 
