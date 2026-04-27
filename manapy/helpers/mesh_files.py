@@ -34,7 +34,8 @@ meshes_list = [
 
 """
 Get mesh with default dim using the list above
-If mesh does not exist in the list is must be exist in the root_folder and dim must be specified
+If mesh does not exist in the list, it must be exist in the root_folder and dim must be specified
+Relative path from root_folder or absolute path.
 """
 def get_mesh_helper(root_folder: str, name: str, dim: int = None):
   dic = {}
