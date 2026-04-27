@@ -76,8 +76,9 @@ RUN cd /tmp && \
     python -m pip install scipy scikit-umfpack && \
     rm -rf /tmp/SuiteSparse
 
+RUN useradd -m manapy
+USER manapy
 # COPY . ${PROJECT_ROOT}
-
 WORKDIR ${PROJECT_ROOT}
 VOLUME ["/workspace/manapy"]
 
