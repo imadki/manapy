@@ -13,12 +13,11 @@ def _supports_oversubscribe(mpi_exec_path):
   try:
     result = subprocess.run(
       [mpi_exec_path, "--oversubscribe", "-n", "4", "hostname"],
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE,
       text=True,
+      check=True, env=os.environ.copy(), capture_output=True
     )
     return result.returncode == 0
-  except:
+  except subprocess.CalledProcessError:
     return False
 
 def duplicate_config(configs):
