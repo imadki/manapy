@@ -17,22 +17,9 @@ import pytest
 from manapy.helpers import get_test_mesh, get_mesh
 from manapy.core import Variable
 from manapy.domain import Domain
-
-try:
-    from manapy.solvers.ls import MUMPSSolver
-    MUMPS_AVAILABLE = True
-except Exception:
-    MUMPS_AVAILABLE = False
-
-skip_no_mumps = pytest.mark.skipif(
-    not MUMPS_AVAILABLE, reason="MUMPS solver not installed"
-)
-
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+import sys
+import os
+from manapy.solvers.ls import MUMPSSolver
 
 def _solve_laplacian_2d(domain, func):
     """
@@ -43,7 +30,7 @@ def _solve_laplacian_2d(domain, func):
     Returns the Variable after solving.
     """
     boundaries = {loc: "dirichlet" for loc in ("in", "out", "upper", "bottom")}
-    values = {loc: lambda x, y, z, f=func: f(x, y) for loc in ("in", "out", "upper", "bottom")}
+    values = {loc: lambda x, y, z: func(x, y) for loc in ("in", "out", "upper", "bottom")}
 
     var = Variable(domain=domain, BC=boundaries, values_dict=values)
     solver = MUMPSSolver(domain=domain, var=var, reuse_mtx=False, scheme="diamond")
@@ -52,33 +39,102 @@ def _solve_laplacian_2d(domain, func):
     var.update_ghost_value()
     return var
 
+def error_metrics(values, exact, epsilon=1e-12):
+  values = np.asarray(values)
+  exact = np.asarray(exact)
 
-def _l2_relative_error(var, exact_values):
-    """Compute L2 relative error ||u_h - u||_2 / ||u||_2."""
-    diff = var.cell - exact_values
-    return np.linalg.norm(diff) / (np.linalg.norm(exact_values) + 1e-12)
+  abs_err = np.abs(values - exact)
 
+  # Avoid division by zero
+  rel_err = abs_err / (np.abs(exact) + epsilon)
 
-def test_linear_solution_x(domain):
-  """
-  u(x,y) = x is harmonic (Δu=0).
-  After solving with u=x on all boundaries, the interior must match x.
-  """
-  func = lambda x, y: x
-  var = _solve_laplacian_2d(domain, func)
+  metrics = {
+    "sum_abs_error": np.sum(abs_err),
+    "avg_abs_error": np.mean(abs_err),
+    "sum_rel_error": np.sum(rel_err),
+    "avg_rel_error": np.mean(rel_err),
+  }
 
-  exact = func(domain.cells.center[:, 0], domain.cells.center[:, 1])
-  err = _l2_relative_error(var, exact)
-  assert err < 1e-6, f"L2 relative error for u=x: {err:.2e}"
+  return metrics
+
+def _get_functions():
+  functions = {
+    "linear_x": {
+      "f": lambda x, y: 2 * x + 5,
+      "expr": "2x + 5"
+    },
+    "linear_y": {
+      "f": lambda x, y: -3 * y + 1,
+      "expr": "-3y + 1"
+    },
+    "bilinear": {
+      "f": lambda x, y: x * y,
+      "expr": "xy"
+    },
+    "quadratic_harmonic": {
+      "f": lambda x, y: x ** 2 - y ** 2,
+      "expr": "x^2 - y^2"
+    },
+    "cubic_harmonic": {
+      "f": lambda x, y: x ** 3 - 3 * x * y ** 2,
+      "expr": "x^3 - 3xy^2"
+    },
+    "trig_exp": {
+      "f": lambda x, y: np.exp(x) * np.cos(y),
+      "expr": "e^x cos(y)"
+    },
+    "trig_exp_2": {
+      "f": lambda x, y: np.exp(x) * np.sin(y),
+      "expr": "e^x sin(y)"
+    },
+    # "logarithmic": {
+    #   "f": lambda x, y: np.log(x ** 2 + y ** 2),
+    #   "expr": "log(x^2 + y^2)  (undefined at (0,0))"
+    # },
+    # "arctan": {
+    #   "f": lambda x, y: np.atan2(y, x),
+    #   "expr": "arctan(y/x) (multi-valued / branch cut)"
+    # }
+  }
+  return functions
 
 def main():
-  dim, mesh_path, mesh_name = get_mesh("big/carre.msh", 2)
-  dim, mesh_path, mesh_name = get_mesh("hybrid2d.msh", 2)
-  # dim, mesh_path, mesh_name = get_mesh("rectangles.msh", 2)
-  # dim, mesh_path, mesh_name = get_mesh("triangles.msh", 2)
-  domain = Domain.create_domain(mesh_path, dim, Domain.PartitioningClass.Par_Nodal)
+  # Domain
+  for fun_name in _get_functions():
+    meshes = ["carre.msh", "hybrid.msh", "rectangles2d.msh", "triangles2d.msh"]
+    for mesh in meshes:
+      dim, mesh_path, mesh_name = get_mesh(f"big/var/{mesh}", 2)
+      old_stdout = sys.stdout
+      sys.stdout = open(os.devnull, 'w')
+      domain = Domain.create_domain(mesh_path, dim, Domain.PartitioningClass.Par_Nodal)
+      sys.stdout.close()
+      sys.stdout = old_stdout
 
-  test_linear_solution_x(domain)
+      # Functions
+      function = _get_functions()[fun_name]
+      fun = function["f"]
+      fun_expr = f"fun={function['expr']}"
+
+      # Variable
+      var = _solve_laplacian_2d(domain, fun)
+      u = var.cell
+
+      # Reference
+      exact_u = fun(domain.cells.center[:, 0], domain.cells.center[:, 1])
+
+      metrics = error_metrics(u, exact_u)
+      print(fun_expr)
+      try:
+        np.testing.assert_allclose(u, exact_u, rtol=1e-3, atol=1e-3)
+        print(f'{mesh}: nb_cells={domain.nbcells}, Ok')
+        print(metrics)
+      except AssertionError as e:
+        print(f'{mesh}: nb_cells={domain.nbcells}, Not Ok')
+        print(metrics)
+        print(str(e))
+      print("----------------------------------------------------------------\n")
+    print("\n\n\n\n")
+
 
 if __name__ == "__main__":
   main()

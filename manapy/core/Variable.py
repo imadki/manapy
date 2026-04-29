@@ -290,7 +290,7 @@ class Variable:
           BCneumann.append(BCs[loc].BCtypeindex)
           neumannfaces.extend(BCs[loc].BCfaces)
 
-          valueface = self.cell
+          valueface = self.cell # TODO why not self.face
           valuenode = self.node
           valuehalo = self.halo
 
