@@ -129,7 +129,7 @@ def main():
     sys.stdout = old_stdout
 
     # Functions
-    function = _get_functions()["poly_xy"]
+    function = _get_functions()["sin_xy"]
     fun = function["f"]
     df_dx = function["df_dx"]
     df_dy = function["df_dy"]
