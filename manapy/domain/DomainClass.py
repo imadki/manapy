@@ -42,6 +42,7 @@ class Domain:
     # Cells
     self.cells._nbcells = local_domain.nb_cells
     self.cells._nodeid = local_domain.cells
+    self.cells._type = local_domain.cells_type
     self.cells._faceid = local_domain.cell_faceid
     self.cells._cellfid = local_domain.cell_cellfid
     self.cells._cellnid = local_domain.cell_cellnid
@@ -67,7 +68,6 @@ class Domain:
     self.nodes._haloghostid = local_domain.node_haloghostid
     self.nodes._loctoglob = local_domain.node_loctoglob
     self.nodes._halonid = local_domain.node_haloid
-    self.nodes._nparts = None
     self.nodes._periodicid = local_domain.node_periodicid
     self.nodes._R_x = local_domain.node_R_x
     self.nodes._R_y = local_domain.node_R_y
@@ -87,7 +87,6 @@ class Domain:
     self.faces._mesure = local_domain.face_measure
     self.faces._center = local_domain.face_center # always 3D
     self.faces._dist_ortho = local_domain.face_dist_ortho # ?? in old domain in 3D it is useless to define dist_ortho with shape nbfaces TODO
-    self.faces._oppnodeid = None
     self.faces._halofid = local_domain.face_haloid
     self.faces._param1 = local_domain.face_param1
     self.faces._param2 = local_domain.face_param2
@@ -103,18 +102,18 @@ class Domain:
     self.faces._ghost_id = local_domain.face_to_phyid
 
     # Halos
+    self.halos._nb_halos = len(local_domain.halo_centvol)
     self.halos._halosext = local_domain.halo_halosext
     self.halos._neigh = local_domain.halo_neighsub
     self.halos._halosint = local_domain.halo_halosint
     self.halos._centvol = local_domain.halo_centvol
     self.halos._sizehaloghost = len(local_domain.ext_ghost_info_flt)
-    self.halos._faces = None
-    self.halos._nodes = None
-    self.halos._requests = None
     self.halo_comm =  local_domain.halo_comm
     self.phy_faces_comm = local_domain.phy_faces_comm
 
     #Ghost
+    self.ghost._nb_ghosts = len(local_domain.ghost_info_int)
+    self.ghost._nb_haloghosts = len(local_domain.ext_ghost_info_int)
     self.ghost._info_int = local_domain.ghost_info_int
     self.ghost._info_flt = local_domain.ghost_info_flt
     self.ghost._ext_info_int = local_domain.ext_ghost_info_int
@@ -271,54 +270,21 @@ class Domain:
       os.mkdir(vtkpath)
     return vtkpath
 
-
   def _define_eltypes(self):
-    """
-    Define the type of cells
-    """
     typeOfCells = {}
-    # self._maxcellnodeid = max(self.cells.nodeid[:, -1])
 
     if self.dim == 2:
-      nbOfTriangles = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 3])
-      nbOfQuad = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 4])
-
-      if nbOfQuad != 0:
-        typeOfCells["quad"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 4][:, :4]
-      if nbOfTriangles != 0:
-        typeOfCells["triangle"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 3][:, :3]
-
-      # self._maxfacenid = 2
-      # if self._maxcellnodeid == 3:
-      #   self._maxcellfid = 3
-      # elif self._maxcellnodeid == 4:
-      #   self._maxcellfid = 4
-
+      typeOfCells["quad"] = self.cells.nodeid[self.cells.type == types.MeshCell.QUAD][:, :4]
+      typeOfCells["triangle"] = self.cells.nodeid[self.cells.type == types.MeshCell.TRIANGLE][:, 0:3]
     elif self.dim == 3:
+      typeOfCells["tetra"] = self.cells.nodeid[self.cells.type == types.MeshCell.TETRA][:, :4]
+      typeOfCells["hexahedron"] = self.cells.nodeid[self.cells.type == types.MeshCell.HEXAHEDRON][:, :8]
+      typeOfCells["pyramid"] = self.cells.nodeid[self.cells.type == types.MeshCell.PYRAMID][:, :5]
 
-      nbOfTetra = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 4])
-      nbOfpyra = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 5])
-      nbOfQuad = len(self.cells.nodeid[self.cells.nodeid[:, -1] == 8])
-
-      if nbOfTetra != 0:
-        typeOfCells["tetra"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 4][:, :4]
-      if nbOfQuad != 0:
-        typeOfCells["hexahedron"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 8][:, :8]
-      if nbOfpyra != 0:
-        typeOfCells["pyramid"] = self.cells.nodeid[self.cells.nodeid[:, -1] == 5][:, :5]
-
-      # if self._maxcellnodeid == 4:
-      #   self._maxcellfid = 4
-      #   self._maxfacenid = 3
-      # elif self._maxcellnodeid == 5:
-      #   self._maxcellfid = 4
-      #   self._maxfacenid = 5
-      # elif self._maxcellnodeid == 8:
-      #   self._maxcellfid = 6
-      #   self._maxfacenid = 4
-
-    # self._maxcellfid = types.np_int_type(self._maxcellfid)
-    # self._maxfacenid = types.np_int_type(self._maxfacenid)
+    # Delete tables with length = 0
+    keys_to_delete = [k for k in typeOfCells if len(typeOfCells[k]) == 0]
+    for k in keys_to_delete:
+      del typeOfCells[k]
 
     return typeOfCells
 
