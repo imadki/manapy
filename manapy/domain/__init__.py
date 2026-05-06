@@ -1,4 +1,5 @@
 import manapy.domain.domain_compute as compute
+from manapy.domain.vtk_writer import VTKWriter
 from manapy.domain.DomainClass import Domain
 from manapy.domain.LocalDomainClass import LocalDomain
 from manapy.domain.LocalDomainInterface import LocalDomainInterface

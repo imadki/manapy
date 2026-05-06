@@ -126,11 +126,11 @@ while time < tfinal:
       w.update_ghost_value()
       w.interpolate_celltonode()
 
-      domain.save_on_node_multi(d_t, time, niter, miter, variables=["ne", "u", "v", "w", "P"],
-                                values=[ne.node, u.node, v.node, w.node, P.node])
+      domain.save_on_node_multi(["ne", "u", "v", "w", "P"],
+                                [ne.node, u.node, v.node, w.node, P.node], d_t, time, niter, miter)
     else:
-      domain.save_on_cell_multi(d_t, time, niter, miter, variables=["ne", "u", "v", "w", "P"],
-                                values=[ne.cell, u.cell, v.cell, w.cell, P.cell])
+      domain.save_on_cell_multi(["ne", "u", "v", "w", "P"],
+                                [ne.cell, u.cell, v.cell, w.cell, P.cell], d_t, time, niter, miter)
     miter += 1
 
   niter += 1
