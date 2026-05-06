@@ -581,7 +581,6 @@ def _create_ghost_info(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_
     n_hat = f_normal / np.linalg.norm(f_normal)
     ghostcenter = c_center - 2 * np.dot(c_center - f_center, n_hat) * n_hat
 
-    gamma = 0.0
     if dim == 2:
       face_nodes = nodes[faces[fid, 0:2]]
       u = cell_center[cid] - face_nodes[1]
@@ -982,7 +981,6 @@ def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_p
               (face_f4[i][1] + face_f1[i][1]) * n1 - (face_f4[i][0] + face_f1[i][0]) * n2)
 
 
-# The same as the original
 def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_phyid: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]',
                            halo_centvol: 'float[:,:]', face_haloid: 'int[:]', nodes: 'float[:,:]',
                            face_air_diamond: 'float[:]', face_param1: 'float[:]', face_param2: 'float[:]',
@@ -1062,7 +1060,6 @@ def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
                   node_R_y: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]', node_number: 'int[:]',
                   cell_shift: 'float[:,:]'):
   nbnode = len(node_R_x)
-  one_cpu = (node_haloid.shape[0] == 0)
 
   for i in range(nbnode):
     I_xx = 0.0
@@ -1122,34 +1119,34 @@ def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
         node_R_y[i] += Ry
         node_number[i] += 1
 
-    if not one_cpu:
-      for j in range(node_haloghostid[i][-1]):
-        cell = node_haloghostid[i][j]
 
-        center = ext_ghost_info_flt[cell]
-        Rx = center[0] - nodes[i][0]
-        Ry = center[1] - nodes[i][1]
+    for j in range(node_haloghostid[i][-1]):
+      cell = node_haloghostid[i][j]
 
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_xy += (Rx * Ry)
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_number[i] = node_number[i] + 1
+      center = ext_ghost_info_flt[cell]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
 
-        # if haloidn[i][-1] > 0:
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_xy += (Rx * Ry)
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_number[i] = node_number[i] + 1
 
-      for j in range(node_haloid[i][-1]):
-        cell = node_haloid[i][j]
-        center = halo_centvol[cell][0:3]
-        Rx = center[0] - nodes[i][0]
-        Ry = center[1] - nodes[i][1]
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_xy += (Rx * Ry)
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_number[i] = node_number[i] + 1
+      # if haloidn[i][-1] > 0:
+
+    for j in range(node_haloid[i][-1]):
+      cell = node_haloid[i][j]
+      center = halo_centvol[cell][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_xy += (Rx * Ry)
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_number[i] = node_number[i] + 1
 
     D = I_xx * I_yy - I_xy * I_xy
 
@@ -1167,7 +1164,6 @@ def _variables_3d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
                   node_R_y: 'float[:]', node_R_z: 'float[:]', node_lambda_x: 'float[:]', node_lambda_y: 'float[:]',
                   node_lambda_z: 'float[:]', node_number: 'int[:]', cell_shift: 'float[:,:]'):
   nbnode = len(node_R_x)
-  one_cpu = (node_haloid.shape[0] == 0)
 
   for i in range(nbnode):
     I_xx = 0.0
@@ -1285,44 +1281,43 @@ def _variables_3d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
         node_R_z[i] += Rz
         node_number[i] = node_number[i] + 1
 
-    if not one_cpu:
-      for j in range(node_haloid[i][-1]):
-        cell = node_haloid[i][j]
-        center = halo_centvol[cell][0:3]
-        Rx = center[0] - nodes[i][0]
-        Ry = center[1] - nodes[i][1]
-        Rz = center[2] - nodes[i][2]
+    for j in range(node_haloid[i][-1]):
+      cell = node_haloid[i][j]
+      center = halo_centvol[cell][0:3]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      Rz = center[2] - nodes[i][2]
 
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_zz += (Rz * Rz)
-        I_xy += (Rx * Ry)
-        I_xz += (Rx * Rz)
-        I_yz += (Ry * Rz)
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_zz += (Rz * Rz)
+      I_xy += (Rx * Ry)
+      I_xz += (Rx * Rz)
+      I_yz += (Ry * Rz)
 
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_R_z[i] += Rz
-        node_number[i] = node_number[i] + 1
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_R_z[i] += Rz
+      node_number[i] = node_number[i] + 1
 
-      for j in range(node_haloghostid[i][-1]):
-        cell = node_haloghostid[i][j]
-        center = ext_ghost_info_flt[cell]
-        Rx = center[0] - nodes[i][0]
-        Ry = center[1] - nodes[i][1]
-        Rz = center[2] - nodes[i][2]
+    for j in range(node_haloghostid[i][-1]):
+      cell = node_haloghostid[i][j]
+      center = ext_ghost_info_flt[cell]
+      Rx = center[0] - nodes[i][0]
+      Ry = center[1] - nodes[i][1]
+      Rz = center[2] - nodes[i][2]
 
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_zz += (Rz * Rz)
-        I_xy += (Rx * Ry)
-        I_xz += (Rx * Rz)
-        I_yz += (Ry * Rz)
+      I_xx += (Rx * Rx)
+      I_yy += (Ry * Ry)
+      I_zz += (Rz * Rz)
+      I_xy += (Rx * Ry)
+      I_xz += (Rx * Rz)
+      I_yz += (Ry * Rz)
 
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_R_z[i] += Rz
-        node_number[i] = node_number[i] + 1
+      node_R_x[i] += Rx
+      node_R_y[i] += Ry
+      node_R_z[i] += Rz
+      node_number[i] = node_number[i] + 1
 
     D = I_xx * I_yy * I_zz + 2 * I_xy * I_xz * I_yz - I_xx * I_yz * I_yz - I_yy * I_xz * I_xz - I_zz * I_xy * I_xy
 
