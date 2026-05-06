@@ -46,7 +46,7 @@ tfinal = .15
 miter = 0
 niter = 1
 Pinit = 2.
-saving_at_node = 1
+saving_at_node = 0
 
 boundaries = {"in": "dirichlet",
               "out": "dirichlet",
@@ -109,11 +109,11 @@ while time < tfinal:
       v.update_ghost_value()
       v.interpolate_celltonode()
 
-      domain.save_on_node_multi(d_t, time, niter, miter, variables=["ne", "u","v", "P"],
-                               values=[ne.node, u.node,v.node, P.node], file_format="vtu")
+      domain.save_on_node_multi(["ne", "u", "v", "P"],
+                                [ne.node, u.node, v.node, P.node], d_t, time, niter, miter)
     else:
-      domain.save_on_cell_multi(d_t, time, niter, miter, variables=["ne", "u", "v", "P"],
-                                values=[ne.cell, u.cell, v.cell, P.cell], file_format="vtu")
+      domain.save_on_cell_multi(["ne", "u", "v", "P"], [ne.cell, u.cell, v.cell, P.cell], d_t, time, niter, miter)
+      
     miter += 1
 
   niter += 1

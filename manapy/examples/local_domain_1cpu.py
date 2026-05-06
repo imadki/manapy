@@ -6,7 +6,7 @@ from manapy.helpers import get_mesh
 dim, mesh_path, mesh_name = get_mesh("rectangles.msh")
 mesh = Mesh(mesh_path, dim)
 partitioning = Partitioning(mesh)
-nb_parts = 1
+nb_parts = 4
 part_vert = partitioning.make_n_part_mesh_nodal(nb_parts)
 local_domains = partitioning.create_sub_domains() # intermediate step
 

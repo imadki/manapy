@@ -5,8 +5,7 @@ from manapy.domain.PartitioningClass import Partitioning
 from manapy.domain.geometry import Cell, Node, Halo, Face, Ghost
 import shutil
 from mpi4py import MPI
-import numpy as np
-import meshio
+from manapy.domain import VTKWriter
 import manapy.backends.types as types
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
 
@@ -29,8 +28,6 @@ class Domain:
 
 
     self.comm = MPI.COMM_WORLD
-    self.vtkprecision = "Float32" if types.FLOAT_TYPE == "float32" else "Float64"
-    self._vtkpath = self.get_vtk_path(self.rank)
 
 
     self.cells = Cell()
@@ -120,6 +117,10 @@ class Domain:
     self.ghost._ext_info_flt = local_domain.ext_ghost_info_flt
     self.ghost._faceid = local_domain.phyid_to_faceid
 
+    # VTK
+    vtkprecision = "Float32" if types.FLOAT_TYPE == "float32" else "Float64"
+    self.vtk_writer = VTKWriter(self.nodes, self.dim, self.cells.nodeid, self.cells.type, self.comm, vtkprecision)
+
     # Domain
     self._bounds = local_domain.bounds
     self._BCs = local_domain.BCs
@@ -182,7 +183,6 @@ class Domain:
     self.backfaces = self._backfaces
     self.frontnodes = self._frontnodes
     self.backnodes = self._backnodes
-    self._typeOfCells = self._define_eltypes()
     self.bounds = self._bounds
 
 
@@ -255,270 +255,9 @@ class Domain:
       comm.Barrier()
       return Domain(local_domain)
 
-  ##########################################################################
-  ##########################################################################
-  ##########################################################################
-  ##########################################################################
-  ##########################################################################
 
-  @staticmethod
-  def get_vtk_path(rank):
-    vtkpath = "vtk_results"
-    if rank == 0:
-      if os.path.exists(vtkpath):
-        shutil.rmtree(vtkpath)
-      os.mkdir(vtkpath)
-    return vtkpath
+  def save_on_node_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
+    self.vtk_writer.save_node_multi(variables, values, miter, niter, time, dt)
 
-  def _define_eltypes(self):
-    typeOfCells = {}
-
-    if self.dim == 2:
-      typeOfCells["quad"] = self.cells.nodeid[self.cells.type == types.MeshCell.QUAD][:, :4]
-      typeOfCells["triangle"] = self.cells.nodeid[self.cells.type == types.MeshCell.TRIANGLE][:, 0:3]
-    elif self.dim == 3:
-      typeOfCells["tetra"] = self.cells.nodeid[self.cells.type == types.MeshCell.TETRA][:, :4]
-      typeOfCells["hexahedron"] = self.cells.nodeid[self.cells.type == types.MeshCell.HEXAHEDRON][:, :8]
-      typeOfCells["pyramid"] = self.cells.nodeid[self.cells.type == types.MeshCell.PYRAMID][:, :5]
-
-    # Delete tables with length = 0
-    keys_to_delete = [k for k in typeOfCells if len(typeOfCells[k]) == 0]
-    for k in keys_to_delete:
-      del typeOfCells[k]
-
-    return typeOfCells
-
-
-  def save_on_cell(self, dt=0, time=0, niter=0, miter=0, value=None):
-
-    if value is None:
-      raise ValueError("value must be given")
-    assert len(value) == self.nbcells, 'value size != number of cells'
-
-    elements = self._typeOfCells  # {"quad": self.cells._nodeid}
-
-    points = self.nodes.vertex[:, :3]
-    points = np.array(points, dtype=types.np_float_type)
-
-
-    data = {"w": list(value)}
-    # data = {"w": data}
-
-    maxw = max(value)
-
-    integral_maxw = np.zeros(1, dtype=types.np_float_type)
-
-    self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
-
-    if self.comm.rank == 0:
-      print(" **************************** Computing ****************************")
-      print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Saving Results $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-      print("Iteration = ", niter, "time = ", time, "time step = ", dt)
-      print("max w =", integral_maxw[0])
-
-    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + ".vtu",
-                              points, elements, cell_data=data, file_format="vtu")
-
-    if self.comm.rank == 0:
-      with open(self._vtkpath + "/visu" + str(miter) + ".pvtu", "w") as text_file:
-        text_file.write("<?xml version=\"1.0\"?>\n")
-        text_file.write("<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n")
-        text_file.write("<PUnstructuredGrid GhostLevel=\"0\">\n")
-        text_file.write("<PPoints>\n")
-        text_file.write(
-          "<PDataArray type=\"" + self.vtkprecision + "\" Name=\"Points\" NumberOfComponents=\"3\" format=\"binary\"/>\n")
-        text_file.write("</PPoints>\n")
-        text_file.write("<PCells>\n")
-        text_file.write("<PDataArray type=\"uint32\" Name=\"connectivity\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"uint32\" Name=\"offsets\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"uint32\" Name=\"types\" format=\"binary\"/>\n")
-        text_file.write("</PCells>\n")
-        text_file.write("<PCellData Scalars=\"h\">\n")
-        text_file.write("<PDataArray type=\"" + self.vtkprecision + "\" Name=\"w\" format=\"binary\"/>\n")
-        text_file.write("</PCellData>\n")
-
-        for i in range(self.comm.size):
-          name1 = "visu"
-          bu1 = [10]
-          bu1 = str(i)
-          name1 += bu1
-          name1 += "-" + str(miter)
-          name1 += ".vtu"
-          text_file.write("<Piece Source=\"" + str(name1) + "\"/>\n")
-        text_file.write("</PUnstructuredGrid>\n")
-        text_file.write("</VTKFile>")
-
-  def save_on_node(self, dt=0, time=0, niter=0, miter=0, value=None):
-
-    if value is None:
-      raise ValueError("value must be given")
-    assert len(value) == self.nbnodes, 'value size != number of nodes'
-
-    elements = self._typeOfCells  # {"quad": self.cells._nodeid}
-    points = self.nodes.vertex[:, :3]
-
-    data = {"w": value}
-
-    maxw = max(value)
-
-    integral_maxw = np.zeros(1, dtype=types.np_float_type)
-
-    self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
-
-    if self.comm.rank == 0:
-      print(" **************************** Computing ****************************")
-      print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Saving Results $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-      print("Iteration = ", niter, "time = ", time, "time step = ", dt)
-      print("max w =", integral_maxw[0])
-
-    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + ".vtu",
-                              points, elements, point_data=data, file_format="vtu")
-
-    if self.comm.rank == 0:
-      with open(self._vtkpath + "/visu" + str(miter) + ".pvtu", "w") as text_file:
-        text_file.write("<?xml version=\"1.0\"?>\n")
-        text_file.write("<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n")
-        text_file.write("<PUnstructuredGrid GhostLevel=\"0\">\n")
-        text_file.write("<PPoints>\n")
-        text_file.write(
-          "<PDataArray type=\"" + self.vtkprecision + "\" Name=\"Points\" NumberOfComponents=\"3\" format=\"binary\"/>\n")
-        text_file.write("</PPoints>\n")
-        text_file.write("<PCells>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"connectivity\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"offsets\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"types\" format=\"binary\"/>\n")
-        text_file.write("</PCells>\n")
-        text_file.write("<PPointData Scalars=\"h\">\n")
-        text_file.write("<PDataArray type=\"" + self.vtkprecision + "\" Name=\"w\" format=\"binary\"/>\n")
-        text_file.write("</PPointData>\n")
-
-        for i in range(self.comm.size):
-          name1 = "visu"
-          bu1 = [10]
-          bu1 = str(i)
-          name1 += bu1
-          name1 += "-" + str(miter)
-          name1 += ".vtu"
-          text_file.write("<Piece Source=\"" + str(name1) + "\"/>\n")
-        text_file.write("</PUnstructuredGrid>\n")
-        text_file.write("</VTKFile>")
-
-  def save_on_node_multi(self, dt=0, time=0, niter=0, miter=0, variables=None, values=None, file_format="vtu"):
-
-    if values is None:
-      raise ValueError("value must be given")
-    assert len(values[0]) == self.nbnodes, 'value size != number of nodes'
-
-    elements = self._typeOfCells  # {"quad": self.cells._nodeid}
-    points = self.nodes.vertex[:, :3]
-
-    nvalues = len(values)
-    data = {}
-    for k in range(0, nvalues):
-      data[variables[k]] = values[k]
-
-    maxw = max(values[0])
-
-    integral_maxw = np.zeros(1, dtype=types.np_float_type)
-
-    self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
-
-    if self.comm.rank == 0:
-      print(" **************************** Computing ****************************")
-      print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Saving Results $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-      print("Iteration = ", niter, "time = ", time, "time step = ", dt)
-      print("max" + variables[0] + " =", integral_maxw[0])
-
-    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
-                              points, elements, point_data=data, file_format=file_format)
-
-    if self.comm.rank == 0:
-      with open(self._vtkpath + "/visu" + str(miter) + ".pvtu", "w") as text_file:
-        text_file.write("<?xml version=\"1.0\"?>\n")
-        text_file.write("<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n")
-        text_file.write("<PUnstructuredGrid GhostLevel=\"0\">\n")
-        text_file.write("<PPoints>\n")
-        text_file.write(
-          "<PDataArray type=\"" + self.vtkprecision + "\" Name=\"Points\" NumberOfComponents=\"3\" format=\"binary\"/>\n")
-        text_file.write("</PPoints>\n")
-        text_file.write("<PCells>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"connectivity\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"offsets\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"types\" format=\"binary\"/>\n")
-        text_file.write("</PCells>\n")
-        text_file.write("<PPointData Scalars=\"h\">\n")
-        for k in range(0, nvalues):
-          text_file.write(
-            "<PDataArray type=\"" + self.vtkprecision + "\" Name=\"" + variables[k] + "\" format=\"binary\"/>\n")
-        text_file.write("</PPointData>\n")
-
-        for i in range(self.comm.size):
-          name1 = "visu"
-          bu1 = [10]
-          bu1 = str(i)
-          name1 += bu1
-          name1 += "-" + str(miter)
-          name1 += ".vtu"
-          text_file.write("<Piece Source=\"" + str(name1) + "\"/>\n")
-        text_file.write("</PUnstructuredGrid>\n")
-        text_file.write("</VTKFile>")
-
-  def save_on_cell_multi(self, dt=0, time=0, niter=0, miter=0, variables=None, values=None, file_format="vtu"):
-
-    if values is None:
-      raise ValueError("value must be given")
-    assert len(values[0]) == self.nbcells, 'value size != number of cells'
-
-    elements = self._typeOfCells  # {"triangle": self.cells._nodeid}
-    points = self.nodes.vertex[:, :3]
-
-    nvalues = len(values)
-
-    # data
-    data = {variables[k]: [values[k]] for k in range(nvalues)}
-
-    maxw = max(values[0])
-
-    integral_maxw = np.zeros(1, dtype=types.np_float_type)
-
-    self.comm.Reduce(maxw, integral_maxw, MPI.MAX, 0)
-
-    if self.comm.rank == 0:
-      print(" **************************** Computing ****************************")
-      print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Saving Results $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-      print("Iteration = ", niter, "time = ", time, "time step = ", dt)
-      print("max" + variables[0] + " =", integral_maxw[0])
-
-    meshio.write_points_cells(f"{self._vtkpath}/visu" + str(self.comm.rank) + "-" + str(miter) + "." + file_format,
-                              points, elements, cell_data=data, file_format=file_format)
-
-    if self.comm.rank == 0:
-      with open(self._vtkpath + "/visu" + str(miter) + ".pvtu", "w") as text_file:
-        text_file.write("<?xml version=\"1.0\"?>\n")
-        text_file.write("<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n")
-        text_file.write("<PUnstructuredGrid GhostLevel=\"0\">\n")
-        text_file.write("<PPoints>\n")
-        text_file.write(
-          "<PDataArray type=\"" + self.vtkprecision + "\" Name=\"Points\" NumberOfComponents=\"3\" format=\"binary\"/>\n")
-        text_file.write("</PPoints>\n")
-        text_file.write("<PCells>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"connectivity\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"offsets\" format=\"binary\"/>\n")
-        text_file.write("<PDataArray type=\"int32\" Name=\"types\" format=\"binary\"/>\n")
-        text_file.write("</PCells>\n")
-        text_file.write("<PCellData Scalars=\"h\">\n")
-        for k in range(0, nvalues):
-          text_file.write(
-            "<PDataArray type=\"" + self.vtkprecision + "\" Name=\"" + variables[k] + "\" format=\"binary\"/>\n")
-        text_file.write("</PCellData>\n")
-
-        for i in range(self.comm.size):
-          name1 = "visu"
-          bu1 = [10]
-          bu1 = str(i)
-          name1 += bu1
-          name1 += "-" + str(miter)
-          name1 += ".vtu"
-          text_file.write("<Piece Source=\"" + str(name1) + "\"/>\n")
-        text_file.write("</PUnstructuredGrid>\n")
-        text_file.write("</VTKFile>")
+  def save_on_cell_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
+    self.vtk_writer.save_cell_multi(variables, values, miter, niter, time, dt)
