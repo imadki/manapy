@@ -66,6 +66,7 @@ class Cell:
                            #   ...
                            # ]
                            # where the last entry is the number of valid nodes
+                           # Ordering of nodes inside the cell same as meshio.
 
         '_type',           # Cell type
                            # shape int8[nb_cells,]
@@ -85,6 +86,7 @@ class Cell:
                            #   ...
                            # ]
                            # where the last entry is the number of valid faces
+                           # Note face ordering inside the cell is not guaranteed to match meshio convention.
 
         '_cellfid',        # neighboring cells across faces (face adjacency)
                            # shape: (nb_cells, max_cell_faceid + 1)
@@ -110,6 +112,7 @@ class Cell:
                            #   ...
                            # ]
                            # values index into Halo.halosext
+                           # Note: max_cell_halonid = 0 if MPI_SIZE == 1
 
         '_ghostnid',       # ghost cells associated with boundaries
                            # shape: (nb_cells, max_cell_ghostnid + 1)
@@ -128,6 +131,7 @@ class Cell:
                            #   ...
                            # ]
                            # values index into Ghost.ext_info_int / Ghost.ext_info_flt
+                           # Note: max_cell_haloghostnid = 0 if MPI_SIZE == 1
 
         '_center',         # cell centers
                            # shape: (nb_cells, 3)
@@ -144,6 +148,7 @@ class Cell:
                            #   [[nx, ny, nz], ...],
                            #   ...
                            # ]
+                           # Note: Normal vectors oriented outward from the cell center.
 
         '_loctoglob',      # local-to-global cell index mapping
                            # shape: (nb_cells,)
@@ -169,11 +174,11 @@ class Cell:
 
     def __init__(self):
         pass
-        
+
     @property
     def nbcells(self):
         return self._nbcells
-    
+
     @property
     def nodeid(self):
         return self._nodeid
@@ -185,23 +190,23 @@ class Cell:
     @property
     def faceid(self):
         return self._faceid
-    
+
     @property
     def cellfid(self):
         return self._cellfid
-    
+
     @property
     def cellnid(self):
         return self._cellnid
-    
+
     @property
     def halonid(self):
         return self._halonid
-    
+
     @property
     def ghostnid(self):
         return self._ghostnid
-    
+
     @property
     def haloghostnid(self):
         return self._haloghostnid
@@ -209,11 +214,11 @@ class Cell:
     @property
     def center(self):
         return self._center
-    
+
     @property
     def volume(self):
         return self._volume
-    
+
     @property
     def nf(self):
         return self._nf
@@ -221,23 +226,23 @@ class Cell:
     @property
     def loctoglob(self):
         return self._loctoglob
-    
+
     @property
     def tc(self):
         return self._tc
-    
+
     @property
     def periodicnid(self):
         return self._periodicnid
-    
+
     @property
     def periodicfid(self):
         return self._periodicfid
-    
+
     @property
     def shift(self):
         return self._shift
-            
+
 class Node:
     """ """
     __slots__ = [
@@ -253,7 +258,7 @@ class Node:
                            # layout: [old_name_id, ...]
                            # 0 = interior node
                            # others = physical boundaries (in=1, out=2, bottom=3, upper=4, front=5, back=6)
-                           # Note node_name = Min(node neighboring faces boundary identifier)
+                           # Note node_name = The lowest boundary ID from the faces connected to it > 0
 
         '_name',            # boundary identifier after partitioning
                             # shape: (nb_nodes,)
@@ -285,6 +290,7 @@ class Node:
                            #   ...
                            # ]
                            # values index into Ghost.ext_info_*
+                           # Note: max_node_haloghostid = 0 if MPI_SIZE == 1
 
         '_loctoglob',      # local-to-global node index mapping
                            # shape: (nb_nodes,)
@@ -298,6 +304,7 @@ class Node:
                            #   ...
                            # ]
                            # values index into Halo.halosext
+                           # Note: max_node_halonid = 0 if MPI_SIZE == 1
 
         # TODO description need verification
         '_R_x',            # accumulated Rx = sum(cell_center.x - node.x)
@@ -334,41 +341,41 @@ class Node:
                            # ]
                            # used with shift to reconstruct periodic neighbors
     ]
-     
+
     def __init__(self, nbnodes=None):
         pass
     @property
     def nbnodes(self):
         return self._nbnodes
-    
+
     @property
     def vertex(self):
         return self._vertex
-    
+
     @property
     def name(self):
         return self._name
-    
+
     @property
     def oldname(self):
         return self._oldname
-    
+
     @property
     def cellid(self):
         return self._cellid
-    
+
     @property
     def ghostid(self):
         return self._ghostid
-    
+
     @property
     def haloghostid(self):
         return self._haloghostid
-    
+
     @property
     def loctoglob(self):
         return self._loctoglob
-    
+
     @property
     def halonid(self):
         return self._halonid
@@ -376,31 +383,31 @@ class Node:
     @property
     def periodicid(self):
         return self._periodicid
-    
+
     @property
     def R_x(self):
         return self._R_x
-    
+
     @property
     def R_y(self):
         return self._R_y
-    
+
     @property
     def R_z(self):
         return self._R_z
-    
+
     @property
     def number(self):
         return self._number
-    
+
     @property
     def lambda_x(self):
         return self._lambda_x
-    
+
     @property
     def lambda_y(self):
         return self._lambda_y
-    
+
     @property
     def lambda_z(self):
         return self._lambda_z
@@ -418,6 +425,7 @@ class Face:
                            #   ...
                            # ]
                            # where the last entry is the number of valid nodes.
+                           # Note: face nodes ordering match meshio convention.
 
         '_cellid',         # connectivity: face -> adjacent cells
                            # shape: (nb_faces, 2)
@@ -449,6 +457,7 @@ class Face:
         '_halofid',        # mapping to halo cells
                            # shape: (nb_faces,)
                            # value = index into Halo.halosext, -1 if none
+                           # Note: All -1 if MPI_SIZE == 1
 
         '_tangent',        # face tangent vector
                            # shape: (nb_faces, 3) in 2D shape is 0
