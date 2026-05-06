@@ -494,13 +494,13 @@ while time < tfinal:
       perm_y.update_ghost_value()
       perm_y.interpolate_celltonode()
 
-      domain.save_on_node_multi(d_t, time, niter, miter,
-                                variables=["I", "Iexact", "u", "v", "w", "alpha", r"$C * \phi + \sigma$", "C", "sigma",
+      domain.save_on_node_multi(["I", "Iexact", "u", "v", "w", "alpha", r"$C * \phi + \sigma$", "C", "sigma",
                                            "viscosity",
                                            "porosity", "Perm_x", "Perm_y", "Pression_with_contr"],
-                                values=[I.node, Iexact.node, u.node, v.node, w.node, alpha.node,
+                                [I.node, Iexact.node, u.node, v.node, w.node, alpha.node,
                                         C.node * fi.node + sigma.node,
-                                        C.node, sigma.node, visc.node, fi.node, perm_x.node, perm_y.node, P.node])
+                                        C.node, sigma.node, visc.node, fi.node, perm_x.node, perm_y.node, P.node],
+                                d_t, time, niter, miter)
 
     else:
 
@@ -514,8 +514,10 @@ while time < tfinal:
       # Errors.append(I.norml2(Iexact.cell, 2))
       # Times.append(time)
 
-      domain.save_on_cell_multi(d_t, time, niter, miter, variables=["I", "Iexact", "u", "v", "w", "P", "Pexact"],
-                                values=[I.cell, Iexact.cell, u.cell, v.cell, w.cell, P.cell, Pexact.cell])
+      domain.save_on_cell_multi(["I", "Iexact", "u", "v", "w", "P", "Pexact"],
+                                [I.cell, Iexact.cell, u.cell, v.cell, w.cell, P.cell, Pexact.cell],
+                                d_t, time, niter, miter
+                                )
 
     miter += 1
   # if Tau == 1:

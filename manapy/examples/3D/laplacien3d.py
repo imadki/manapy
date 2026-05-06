@@ -69,7 +69,7 @@ P.update_halo_value()
 P.update_ghost_value()
 P.interpolate_celltonode()
 
-domain.save_on_node_multi(0., 0., niter, miter, variables=["P"], values=[P.node])
+domain.save_on_node_multi(variables=["P"], values=[P.node], dt=0., time=0., niter=niter, miter=miter)
 
 te = MPI.Wtime()
 
