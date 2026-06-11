@@ -1,35 +1,27 @@
 #pragma once
 
-#include "../common.hpp"
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_vulkan.h>
-#include <imgui_internal.h>
-#include <imfilebrowser.h>
+#include "./uiBackend.hpp"
+#include "./uiState.hpp"
 
 class EditorUI {
   public:
-    void init(ImGui_ImplVulkan_InitInfo* initInfo, GLFWwindow* glfwWindow);
-    void cleanup();
+    void init(const VulkanContext&          vkCtx,
+              GLFWwindow*                   glfwWindow,
+              ImGui_ImplVulkan_PipelineInfo imGuiPipelineInfo);
+    void shutdown();
 
-    void draw(VkCommandBuffer commandBuffer, VkDescriptorSet meshViewTexture);
+    void build();
+    void insertMeshViewTexture(VkDescriptorSet meshViewTexture);
 
-    VkExtent2D getMeshViewportExtent() const;
-    bool       isMeshViewportFocused() const;
-    bool       isMeshViewportHovered() const;
-
-    bool hasSelectedMesh(std::string* filePath) const;
-    void clearMeshSelection();
+    const UIState& getState() const;
 
   private:
-    ImVec2 meshViewportSize{800, 600};
-    bool   meshViewportFocused = false;
-    bool   meshViewportHovered = false;
+    UIBackend backend;
+    UIState   state;
 
     ImGui::FileBrowser meshFileDialog;
 
   private:
-    void        build(VkDescriptorSet meshViewTexture);
     static void style();
     static void helpMarker(const char* desc);
 };

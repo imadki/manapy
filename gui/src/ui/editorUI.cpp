@@ -1,17 +1,12 @@
-#include "editorUI.hpp"
+#include "./editorUI.hpp"
+#include <map>
+#include <iostream>
 
-void EditorUI::init(ImGui_ImplVulkan_InitInfo* initInfo, GLFWwindow* glfwWindow)
+void EditorUI::init(const VulkanContext&          vkCtx,
+                    GLFWwindow*                   glfwWindow,
+                    ImGui_ImplVulkan_PipelineInfo imGuiPipelineInfo)
 {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    (void)io;
-
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
-    io.ConfigWindowsMoveFromTitleBarOnly = true;
-
-    ImGui_ImplGlfw_InitForVulkan(glfwWindow, true);
-    ImGui_ImplVulkan_Init(initInfo);
+    backend.init(vkCtx, glfwWindow, imGuiPipelineInfo);
 
     meshFileDialog.SetTitle("Load mesh");
     meshFileDialog.SetTypeFilters({".msh"});
@@ -19,44 +14,11 @@ void EditorUI::init(ImGui_ImplVulkan_InitInfo* initInfo, GLFWwindow* glfwWindow)
     style();
 }
 
-void EditorUI::cleanup()
+void EditorUI::shutdown() { backend.shutdown(); }
+
+void EditorUI::build()
 {
-    ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-}
-
-void EditorUI::draw(VkCommandBuffer commandBuffer, VkDescriptorSet meshViewTexture)
-{
-    build(meshViewTexture);
-
-    ImGui::Render();
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
-}
-
-VkExtent2D EditorUI::getMeshViewportExtent() const
-{
-    uint32_t width  = (meshViewportSize.x > 0) ? static_cast<uint32_t>(meshViewportSize.x) : 0;
-    uint32_t height = (meshViewportSize.y > 0) ? static_cast<uint32_t>(meshViewportSize.y) : 0;
-
-    return VkExtent2D{width, height};
-}
-
-bool EditorUI::isMeshViewportFocused() const { return meshViewportFocused; }
-bool EditorUI::isMeshViewportHovered() const { return meshViewportHovered; }
-
-bool EditorUI::hasSelectedMesh(std::string* filePath) const
-{
-    *filePath = meshFileDialog.GetSelected().string();
-    return meshFileDialog.HasSelected();
-}
-void EditorUI::clearMeshSelection() { meshFileDialog.ClearSelected(); }
-
-void EditorUI::build(VkDescriptorSet meshViewTexture)
-{
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+    backend.newFrame();
 
     ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
 
@@ -93,10 +55,43 @@ void EditorUI::build(VkDescriptorSet meshViewTexture)
 
     ImGui::Begin("Settings");
     ImGui::Text("Settings panel");
-    if (ImGui::Button("Load mesh")) meshFileDialog.Open();
-    meshFileDialog.Display();
+    { // Mesh Load
+        if (ImGui::Button("Load mesh")) meshFileDialog.Open();
+        meshFileDialog.Display();
+
+        if (meshFileDialog.HasSelected()) {
+            state.meshFile.isSelected = true;
+            state.meshFile.path       = meshFileDialog.GetSelected().string();
+            meshFileDialog.ClearSelected();
+        }
+        else {
+            state.meshFile.isSelected = false;
+        }
+    }
+
+    { // Polygon Mode Combo
+        static const std::map<VkPolygonMode, const char*> modeNames = {
+            {VK_POLYGON_MODE_FILL, "Fill"},
+            {VK_POLYGON_MODE_LINE, "Line"},
+            {VK_POLYGON_MODE_POINT, "Point"},
+        };
+
+        const char* preview = modeNames.at(state.meshView.polygoneMode);
+
+        if (ImGui::BeginCombo("Polygon Mode", preview)) {
+            for (const auto& [mode, name] : modeNames) {
+                bool isSelected = (state.meshView.polygoneMode == mode);
+
+                if (ImGui::Selectable(name, isSelected)) state.meshView.polygoneMode = mode;
+
+                if (isSelected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
     ImGui::End();
 
+    // TODO: wrap in if?
     ImGui::Begin("Properties");
     ImGui::Text("Properties panel");
     ImGui::End();
@@ -106,12 +101,25 @@ void EditorUI::build(VkDescriptorSet meshViewTexture)
     ImGui::End();
 
     ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
-    meshViewportFocused = ImGui::IsWindowFocused();
-    meshViewportHovered = ImGui::IsWindowHovered();
-    meshViewportSize    = ImGui::GetContentRegionAvail();
-    ImGui::Image((ImTextureID)meshViewTexture, meshViewportSize);
+    state.meshView.isFocused = ImGui::IsWindowFocused();
+    state.meshView.isHovered = ImGui::IsWindowHovered();
+
+    ImVec2   unscaledSize = ImGui::GetContentRegionAvail();
+    ImGuiIO& io           = ImGui::GetIO();
+
+    state.meshView.size.x = unscaledSize.x * io.DisplayFramebufferScale.x;
+    state.meshView.size.y = unscaledSize.y * io.DisplayFramebufferScale.y;
     ImGui::End();
 }
+
+void EditorUI::insertMeshViewTexture(VkDescriptorSet meshViewTexture)
+{
+    if (ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse))
+        ImGui::Image((ImTextureID)meshViewTexture, ImGui::GetContentRegionAvail());
+    ImGui::End();
+}
+
+const UIState& EditorUI::getState() const { return state; }
 
 void EditorUI::style()
 {
@@ -120,6 +128,9 @@ void EditorUI::style()
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
     ImGuiStyle& style = ImGui::GetStyle();
+
+    ImFont* font = io.Fonts->AddFontFromFileTTF(ASSETS_DIR "/fonts/Rubik-Regular.ttf", 16.f);
+    if (!font) std::cerr << "Failed to load editor UI font" << std::endl;
 
     // - Spacing/Padding
     style.WindowPadding    = ImVec2(12.f, 12.f);

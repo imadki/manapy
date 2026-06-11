@@ -17,6 +17,7 @@ pybind11_add_module(manapyGUI ${SRC_FILES} ${IMGUI_SRC})
 
 target_compile_definitions(manapyGUI PRIVATE
     SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+    ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets"
 )
 
 target_include_directories(manapyGUI PRIVATE

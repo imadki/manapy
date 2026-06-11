@@ -49,11 +49,82 @@ std::array<VkVertexInputAttributeDescription, 2> Vertex::getAttributeDescription
 // │                     Helper Funtions                     │
 // ╰─────────────────────────────────────────────────────────╯
 
+void utils::createImage(VkPhysicalDevice      physicalDevice,
+                        VkDevice              device,
+                        uint32_t              width,
+                        uint32_t              height,
+                        VkFormat              format,
+                        VkImageTiling         tiling,
+                        VkImageUsageFlags     usage,
+                        VkMemoryPropertyFlags properties,
+                        VkImage*              image,
+                        VkDeviceMemory*       imageMemory)
+{
+    // ─[ Create Image Object ]────────────────────────────────────────────
+    VkImageCreateInfo imageInfo{
+        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format    = format,
+        .extent{
+            .width  = width,
+            .height = height,
+            .depth  = 1,
+        },
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = tiling,
+        .usage         = usage,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    VK_CHECK(vkCreateImage(device, &imageInfo, nullptr, image));
+
+    // ─[ Allocate Image Memory ]──────────────────────────────────────────
+    VkMemoryRequirements memoryRequirements;
+    vkGetImageMemoryRequirements(device, *image, &memoryRequirements);
+
+    VkMemoryAllocateInfo allocInfo{
+        .sType          = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memoryRequirements.size,
+        .memoryTypeIndex =
+            utils::findMemoryType(memoryRequirements.memoryTypeBits, properties, physicalDevice),
+    };
+
+    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, imageMemory));
+
+    VK_CHECK(vkBindImageMemory(device, *image, *imageMemory, 0));
+}
+
+void utils::createImageView(VkDevice           device,
+                            VkImage            image,
+                            VkFormat           format,
+                            VkImageAspectFlags aspectFlags,
+                            VkImageView*       imageView)
+{
+    VkImageViewCreateInfo viewInfo{
+        .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image    = image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format   = format,
+        .subresourceRange{
+            .aspectMask     = aspectFlags,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1,
+        },
+    };
+
+    VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, imageView));
+}
+
 void utils::createBuffer(VkDeviceSize          size,
                          VkBufferUsageFlags    usage,
                          VkMemoryPropertyFlags properties,
-                         VkBuffer&             buffer,
-                         VkDeviceMemory&       bufferMemory,
+                         VkBuffer*             buffer,
+                         VkDeviceMemory*       bufferMemory,
                          VkPhysicalDevice      physicalDevice,
                          VkDevice              device)
 {
@@ -65,11 +136,11 @@ void utils::createBuffer(VkDeviceSize          size,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer));
+    VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, buffer));
 
     // ─[ Allocate Buffer Memory ]─────────────────────────────────────────
     VkMemoryRequirements memoryRequirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+    vkGetBufferMemoryRequirements(device, *buffer, &memoryRequirements);
 
     VkMemoryAllocateInfo allocInfo{
         .sType          = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -78,9 +149,9 @@ void utils::createBuffer(VkDeviceSize          size,
             findMemoryType(memoryRequirements.memoryTypeBits, properties, physicalDevice),
     };
 
-    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory));
+    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, bufferMemory));
 
-    VK_CHECK(vkBindBufferMemory(device, buffer, bufferMemory, 0));
+    VK_CHECK(vkBindBufferMemory(device, *buffer, *bufferMemory, 0));
 }
 
 void utils::copyBuffer(VkBuffer      srcBuffer,

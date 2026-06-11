@@ -1,4 +1,4 @@
-class Application:
+class App:
     """
     Python binding for the C++ class providing the Manapy GUI application.
     """

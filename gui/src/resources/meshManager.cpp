@@ -1,9 +1,11 @@
-#include "meshManager.hpp"
+#include "./meshManager.hpp"
+#include "../common/config.hpp"
+#include <cstring>
 
-void MeshManager::init(VulkanContext vulkanContext)
+void MeshManager::init(const VulkanContext& vkCtx)
 {
-    this->vulkanContext = vulkanContext;
     gmsh::initialize();
+
 #ifdef NDEBUG
     gmsh::option::setNumber("General.Verbosity", 0);
 #else
@@ -51,20 +53,30 @@ void MeshManager::init(VulkanContext vulkanContext)
         20, 21, 22, 22, 23, 20  // Left
     };
 
-    currentMeshData.indexCount = static_cast<uint32_t>(indices.size());
-    createVertexBuffer(vertices);
-    createIndexBuffer(indices);
+    meshData.indexCount = static_cast<uint32_t>(indices.size());
+    createVertexBuffer(vkCtx, vertices, &meshData.vertexBuffer, &meshData.vertexBufferMemory);
+    createIndexBuffer(vkCtx, indices, &meshData.indexBuffer, &meshData.indexBufferMemory);
+    meshData.modelMatrix = buildMeshModelMatrix(vertices);
 }
-void MeshManager::cleanup()
+void MeshManager::shutdown(const VulkanContext& vkCtx)
 {
-    cleanupCurrentMesh();
+    meshData.clear(vkCtx);
     gmsh::finalize();
 }
 
-void MeshManager::loadMesh(std::string filePath)
+void MeshManager::update(const VulkanContext& vkCtx, const UIState& uiState)
+{
+    if (uiState.meshFile.isSelected) {
+        loadMesh(vkCtx, uiState.meshFile.path);
+    }
+}
+
+const MeshData& MeshManager::getMeshData() const { return meshData; }
+
+void MeshManager::loadMesh(const VulkanContext& vkCtx, std::string filePath)
 {
     // ─[ Cleanup ]────────────────────────────────────────────────────────
-    cleanupCurrentMesh();
+    meshData.clear(vkCtx);
 
     // ─[ Load Mesh ]──────────────────────────────────────────────────────
     std::vector<Vertex>   vertices;
@@ -72,91 +84,133 @@ void MeshManager::loadMesh(std::string filePath)
 
     gmsh::open(filePath);
 
+    // ─[ 1. Cache Global Node Coordinates ]───────────────────────────────
+    // We get all nodes globally just to know where they are in 3D space.
     std::vector<std::size_t> nodeTags;
     std::vector<double>      coords, parametricCoords;
     gmsh::model::mesh::getNodes(nodeTags, coords, parametricCoords);
 
-    std::unordered_map<std::size_t, uint32_t> tagToIndex;
+    // Map global node tags to their (x,y,z) coords for fast O(1) lookup
+    std::unordered_map<std::size_t, std::array<double, 3>> globalNodeCoords;
     for (std::size_t i = 0; i < nodeTags.size(); i++) {
-        tagToIndex[nodeTags[i]] = static_cast<uint32_t>(vertices.size());
-        vertices.push_back(
-            {{(float)coords[3 * i], (float)coords[3 * i + 1], (float)coords[3 * i + 2]},
-             {0.6f, 0.6f, 0.6f}});
+        globalNodeCoords[nodeTags[i]] = {coords[3 * i], coords[3 * i + 1], coords[3 * i + 2]};
     }
 
-    std::vector<int>                      elemTypes;
-    std::vector<std::vector<std::size_t>> elemTags, elemNodeTags;
-    gmsh::model::mesh::getElements(elemTypes, elemTags, elemNodeTags, 2);
+    // ─[ 2. Map Physical Groups to Colors ]───────────────────────────────
+    std::vector<std::pair<int, int>> physicalGroups;
+    gmsh::model::getPhysicalGroups(physicalGroups, 2);
 
-    for (std::size_t t = 0; t < elemTypes.size(); t++) {
-        std::string         name;
-        int                 dim, order, numNodes, numPrimaryNodes;
-        std::vector<double> localNodeCoord;
-        gmsh::model::mesh::getElementProperties(elemTypes[t],
-                                                name,
-                                                dim,
-                                                order,
-                                                numNodes,
-                                                localNodeCoord,
-                                                numPrimaryNodes);
+    // A rich, vibrant palette with higher saturation for clear 3D visibility
+    const std::vector<std::array<float, 3>> palette = {
+        {0.80f, 0.25f, 0.30f}, // Red
+        {0.15f, 0.45f, 0.75f}, // Blue
+        {0.20f, 0.65f, 0.35f}, // Green
+        {0.85f, 0.55f, 0.15f}, // Gold
+        {0.55f, 0.30f, 0.70f}, // Purple
+        {0.15f, 0.65f, 0.60f}, // Teal
+        {0.80f, 0.40f, 0.15f}  // Orange
+    };
 
-        const auto& nodeList = elemNodeTags[t];
-        size_t      numElems = nodeList.size() / numNodes;
+    std::unordered_map<int, std::array<float, 3>> groupColors;
+    for (size_t i = 0; i < physicalGroups.size(); i++) {
+        int tag = physicalGroups[i].second;
 
-        for (size_t e = 0; e < numElems; e++) {
-            if (numNodes == 3) {
-                for (int n = 0; n < 3; n++)
-                    indices.push_back(tagToIndex.at(nodeList[e * 3 + n]));
-            }
-            else if (numNodes == 4) {
-                uint32_t i0 = tagToIndex.at(nodeList[e * 4 + 0]);
-                uint32_t i1 = tagToIndex.at(nodeList[e * 4 + 1]);
-                uint32_t i2 = tagToIndex.at(nodeList[e * 4 + 2]);
-                uint32_t i3 = tagToIndex.at(nodeList[e * 4 + 3]);
-                indices.insert(indices.end(), {i0, i1, i2, i0, i2, i3});
+        // Assign colors sequentially from the palette, wrapping around if
+        // you have more physical groups than available colors.
+        groupColors[tag] = palette[i % palette.size()];
+    }
+
+    // ─[ 3. Process Entities & Duplicate Boundary Vertices ]──────────────
+    std::vector<std::pair<int, int>> entities;
+    gmsh::model::getEntities(entities, 2);
+
+    for (const auto& entity : entities) {
+        int entityTag = entity.second;
+
+        // Determine this entity's color
+        std::vector<int> physicalTags;
+        gmsh::model::getPhysicalGroupsForEntity(2, entityTag, physicalTags);
+        std::array<float, 3> entityColor = {0.5f, 0.5f, 0.5f};
+        if (!physicalTags.empty()) {
+            entityColor = groupColors[physicalTags[0]];
+        }
+
+        // LOCAL map: Ensures vertices are unique to THIS entity.
+        // Boundary nodes will be re-added as new vertices by neighboring entities.
+        std::unordered_map<std::size_t, uint32_t> localTagToIndex;
+
+        std::vector<int>                      elemTypes;
+        std::vector<std::vector<std::size_t>> elemTags, elemNodeTags;
+        gmsh::model::mesh::getElements(elemTypes, elemTags, elemNodeTags, 2, entityTag);
+
+        for (std::size_t t = 0; t < elemTypes.size(); t++) {
+            std::string         name;
+            int                 dim, order, numNodes, numPrimaryNodes;
+            std::vector<double> localNodeCoord;
+            gmsh::model::mesh::getElementProperties(elemTypes[t],
+                                                    name,
+                                                    dim,
+                                                    order,
+                                                    numNodes,
+                                                    localNodeCoord,
+                                                    numPrimaryNodes);
+
+            const auto& nodeList = elemNodeTags[t];
+            size_t      numElems = nodeList.size() / numNodes;
+
+            for (size_t e = 0; e < numElems; e++) {
+                std::vector<uint32_t> currentElemIndices;
+
+                // Process each node in the current element (triangle or quad)
+                for (int n = 0; n < numNodes; n++) {
+                    std::size_t nodeTag = nodeList[e * numNodes + n];
+
+                    // If we haven't created a vertex for this node IN THIS ENTITY yet, create it.
+                    if (localTagToIndex.find(nodeTag) == localTagToIndex.end()) {
+                        const auto& c = globalNodeCoords[nodeTag];
+
+                        uint32_t newVertexIndex  = static_cast<uint32_t>(vertices.size());
+                        localTagToIndex[nodeTag] = newVertexIndex;
+
+                        vertices.push_back(
+                            {.position = {(float)c[0], (float)c[1], (float)c[2]},
+                             .color    = {entityColor[0], entityColor[1], entityColor[2]}});
+                    }
+
+                    // Add the local index to our temporary list for this element
+                    currentElemIndices.push_back(localTagToIndex[nodeTag]);
+                }
+
+                // Push the actual indices to the Vulkan index buffer
+                if (numNodes == 3) {
+                    indices.push_back(currentElemIndices[0]);
+                    indices.push_back(currentElemIndices[1]);
+                    indices.push_back(currentElemIndices[2]);
+                }
+                else if (numNodes == 4) {
+                    indices.insert(indices.end(),
+                                   {currentElemIndices[0],
+                                    currentElemIndices[1],
+                                    currentElemIndices[2],
+                                    currentElemIndices[0],
+                                    currentElemIndices[2],
+                                    currentElemIndices[3]});
+                }
             }
         }
     }
 
     // ─[ Create Mesh Resources ]──────────────────────────────────────────
-    currentMeshData.indexCount = static_cast<uint32_t>(indices.size());
-    createVertexBuffer(vertices);
-    createIndexBuffer(indices);
+    meshData.indexCount = static_cast<uint32_t>(indices.size());
+    createVertexBuffer(vkCtx, vertices, &meshData.vertexBuffer, &meshData.vertexBufferMemory);
+    createIndexBuffer(vkCtx, indices, &meshData.indexBuffer, &meshData.indexBufferMemory);
+    meshData.modelMatrix = buildMeshModelMatrix(vertices);
 }
 
-void MeshManager::bindMeshResources(VkCommandBuffer commandBuffer)
-{
-    VkBuffer     vertexBuffers[] = {currentMeshData.vertexBuffer};
-    VkDeviceSize offsets[]       = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-    vkCmdBindIndexBuffer(commandBuffer, currentMeshData.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-}
-
-void MeshManager::drawMesh(VkCommandBuffer commandBuffer)
-{
-
-    vkCmdDrawIndexed(commandBuffer, currentMeshData.indexCount, 1, 0, 0, 0);
-}
-
-void MeshManager::cleanupCurrentMesh()
-{
-    vkDeviceWaitIdle(vulkanContext.device);
-
-    vkDestroyBuffer(vulkanContext.device, currentMeshData.vertexBuffer, nullptr);
-    vkFreeMemory(vulkanContext.device, currentMeshData.vertexBufferMemory, nullptr);
-
-    vkDestroyBuffer(vulkanContext.device, currentMeshData.indexBuffer, nullptr);
-    vkFreeMemory(vulkanContext.device, currentMeshData.indexBufferMemory, nullptr);
-
-    currentMeshData.vertexBuffer       = VK_NULL_HANDLE;
-    currentMeshData.vertexBufferMemory = VK_NULL_HANDLE;
-    currentMeshData.indexBuffer        = VK_NULL_HANDLE;
-    currentMeshData.indexBufferMemory  = VK_NULL_HANDLE;
-    currentMeshData.indexCount         = 0;
-}
-
-void MeshManager::createVertexBuffer(const std::vector<Vertex>& vertices)
+void MeshManager::createVertexBuffer(const VulkanContext&       vkCtx,
+                                     const std::vector<Vertex>& vertices,
+                                     VkBuffer*                  vertexBuffer,
+                                     VkDeviceMemory*            vertexBufferMemory)
 {
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -167,39 +221,42 @@ void MeshManager::createVertexBuffer(const std::vector<Vertex>& vertices)
     utils::createBuffer(bufferSize,
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        stagingBuffer,
-                        stagingBufferMemory,
-                        vulkanContext.physicalDevice,
-                        vulkanContext.device);
+                        &stagingBuffer,
+                        &stagingBufferMemory,
+                        vkCtx.physicalDevice,
+                        vkCtx.device);
 
     // Copy data
     void* data;
-    VK_CHECK(vkMapMemory(vulkanContext.device, stagingBufferMemory, 0, bufferSize, 0, &data));
+    VK_CHECK(vkMapMemory(vkCtx.device, stagingBufferMemory, 0, bufferSize, 0, &data));
     memcpy(data, vertices.data(), (size_t)bufferSize);
-    vkUnmapMemory(vulkanContext.device, stagingBufferMemory);
+    vkUnmapMemory(vkCtx.device, stagingBufferMemory);
 
     // ─[ Vertex Buffer ]──────────────────────────────────────────────────
     utils::createBuffer(bufferSize,
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                        currentMeshData.vertexBuffer,
-                        currentMeshData.vertexBufferMemory,
-                        vulkanContext.physicalDevice,
-                        vulkanContext.device);
+                        vertexBuffer,
+                        vertexBufferMemory,
+                        vkCtx.physicalDevice,
+                        vkCtx.device);
 
     utils::copyBuffer(stagingBuffer,
-                      currentMeshData.vertexBuffer,
+                      *vertexBuffer,
                       bufferSize,
-                      vulkanContext.device,
-                      vulkanContext.commandPool,
-                      vulkanContext.queue);
+                      vkCtx.device,
+                      vkCtx.graphicsCommandPool,
+                      vkCtx.graphicsQueue);
 
     // ─[ Cleanup ]────────────────────────────────────────────────────────
-    vkDestroyBuffer(vulkanContext.device, stagingBuffer, nullptr);
-    vkFreeMemory(vulkanContext.device, stagingBufferMemory, nullptr);
+    vkDestroyBuffer(vkCtx.device, stagingBuffer, nullptr);
+    vkFreeMemory(vkCtx.device, stagingBufferMemory, nullptr);
 }
 
-void MeshManager::createIndexBuffer(const std::vector<uint32_t>& indices)
+void MeshManager::createIndexBuffer(const VulkanContext&         vkCtx,
+                                    const std::vector<uint32_t>& indices,
+                                    VkBuffer*                    indexBuffer,
+                                    VkDeviceMemory*              indexBufferMemory)
 {
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
@@ -210,34 +267,66 @@ void MeshManager::createIndexBuffer(const std::vector<uint32_t>& indices)
     utils::createBuffer(bufferSize,
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        stagingBuffer,
-                        stagingBufferMemory,
-                        vulkanContext.physicalDevice,
-                        vulkanContext.device);
+                        &stagingBuffer,
+                        &stagingBufferMemory,
+                        vkCtx.physicalDevice,
+                        vkCtx.device);
 
     // Copy data
     void* data;
-    VK_CHECK(vkMapMemory(vulkanContext.device, stagingBufferMemory, 0, bufferSize, 0, &data));
+    VK_CHECK(vkMapMemory(vkCtx.device, stagingBufferMemory, 0, bufferSize, 0, &data));
     memcpy(data, indices.data(), (size_t)bufferSize);
-    vkUnmapMemory(vulkanContext.device, stagingBufferMemory);
+    vkUnmapMemory(vkCtx.device, stagingBufferMemory);
 
     // ─[ Index Buffer ]───────────────────────────────────────────────────
     utils::createBuffer(bufferSize,
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                        currentMeshData.indexBuffer,
-                        currentMeshData.indexBufferMemory,
-                        vulkanContext.physicalDevice,
-                        vulkanContext.device);
+                        indexBuffer,
+                        indexBufferMemory,
+                        vkCtx.physicalDevice,
+                        vkCtx.device);
 
     utils::copyBuffer(stagingBuffer,
-                      currentMeshData.indexBuffer,
+                      *indexBuffer,
                       bufferSize,
-                      vulkanContext.device,
-                      vulkanContext.commandPool,
-                      vulkanContext.queue);
+                      vkCtx.device,
+                      vkCtx.graphicsCommandPool,
+                      vkCtx.graphicsQueue);
 
     // ─[ Cleanup ]────────────────────────────────────────────────────────
-    vkDestroyBuffer(vulkanContext.device, stagingBuffer, nullptr);
-    vkFreeMemory(vulkanContext.device, stagingBufferMemory, nullptr);
+    vkDestroyBuffer(vkCtx.device, stagingBuffer, nullptr);
+    vkFreeMemory(vkCtx.device, stagingBufferMemory, nullptr);
+}
+
+glm::mat4 MeshManager::buildMeshModelMatrix(const std::vector<Vertex>& vertices)
+{
+    // ─[ Center and Scale Mesh ]──────────────────────────────────────────
+    if (vertices.empty()) return glm::mat4(1.f);
+    // WARNING: Should only uses vertices of 2D primitives of the mesh
+
+    // ─[ Get Bounding Box ]───────────────────────────────────────────────
+    glm::vec3 boundingBox[2] = {{
+                                    vertices[0].position.x,
+                                    vertices[0].position.y,
+                                    vertices[0].position.z,
+                                },
+                                {
+                                    vertices[0].position.x,
+                                    vertices[0].position.y,
+                                    vertices[0].position.z,
+                                }};
+
+    for (const auto vertex : vertices) {
+        boundingBox[0] = glm::min(boundingBox[0], vertex.position);
+        boundingBox[1] = glm::max(boundingBox[1], vertex.position);
+    }
+
+    glm::vec3 size     = boundingBox[1] - boundingBox[0];
+    float scaleFactor  = Config::mesh.defaultMeshSize / glm::max(size.x, glm::max(size.y, size.z));
+    glm::mat4 scaleMat = glm::scale(glm::mat4(1.f), scaleFactor * glm::vec3(1.f));
+
+    glm::vec3 center = Config::mesh.worldMeshAnchor + (boundingBox[0] + boundingBox[1]) / 2.f;
+
+    return glm::translate(scaleMat, -center);
 }

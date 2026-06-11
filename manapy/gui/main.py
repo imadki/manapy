@@ -1,7 +1,7 @@
 import manapyGUI
 
 def main():
-    app = manapyGUI.Application()
+    app = manapyGUI.App()
     app.run()
 
 if __name__ == "__main__":
