@@ -88,6 +88,8 @@ class ShallowWaterSolver:
       self.diffusion = False
 
 
+    fvm_utils_compute.setup(self.dim)
+    advecdiff_fvm_utils_compute.setup(self.dim)
     self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_SW
     self._explicitscheme_dissipative = advecdiff_fvm_utils_compute.explicitscheme_dissipative
     self._time_step_SW = fvm_utils_compute.time_step_SW

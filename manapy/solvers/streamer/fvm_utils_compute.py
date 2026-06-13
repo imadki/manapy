@@ -176,12 +176,25 @@ def _update_ST(ne_c: 'float[:]', ni_c: 'float[:]', rez_ne: 'float[:]', rez_ni: '
 
 
 ############################################################################
-# Public
-update_rhs_glob = compile(_update_rhs_glob)
-update_rhs_loc = compile(_update_rhs_loc)
-explicitscheme_dissipative_ST = compile(_explicitscheme_dissipative_ST)
-explicitscheme_source_ST = compile(_explicitscheme_source_ST)
-compute_el_field = compile(_compute_el_field)
-compute_velocity = compile(_compute_velocity)
-time_step_ST = compile(_time_step_ST)
-update_ST = compile(_update_ST)
+# NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
+# ranks) before using any kernel below; StreamerSolver does this in __init__.
+# All kernels here are dimension-agnostic, so they are compiled once.
+_agnostic_done = False
+
+def setup(dim):
+  global _agnostic_done
+  if dim not in (2, 3):
+    raise ValueError(f"Unsupported dimension: {dim}")
+  if not _agnostic_done:
+    global update_rhs_glob, update_rhs_loc, explicitscheme_dissipative_ST
+    global explicitscheme_source_ST, compute_el_field, compute_velocity
+    global time_step_ST, update_ST
+    update_rhs_glob = compile(_update_rhs_glob)
+    update_rhs_loc = compile(_update_rhs_loc)
+    explicitscheme_dissipative_ST = compile(_explicitscheme_dissipative_ST)
+    explicitscheme_source_ST = compile(_explicitscheme_source_ST)
+    compute_el_field = compile(_compute_el_field)
+    compute_velocity = compile(_compute_velocity)
+    time_step_ST = compile(_time_step_ST)
+    update_ST = compile(_update_ST)
+    _agnostic_done = True

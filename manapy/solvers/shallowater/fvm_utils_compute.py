@@ -591,15 +591,27 @@ def _term_wind_SW(Tx_wind: 'float[:]', Ty_wind: 'float[:]', wind_wx: 'float[:]',
 
 
 ############################################################################
-# Private
-_srnh_scheme = compile(_srnh_scheme)
+# NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
+# ranks) before using any kernel below; ShallowWaterSolver does this in __init__.
+# The shallow-water kernels are dimension-agnostic, so they are compiled once.
+# The nested helper _srnh_scheme is compiled (and rebound to the module global)
+# before the kernel that calls it, so numba can resolve the njit->njit call.
+_agnostic_done = False
 
-
-# Public
-update_SW = compile(_update_SW)
-time_step_SW = compile(_time_step_SW)
-term_source_srnh_SW = compile(_term_source_srnh_SW)
-explicitscheme_convective_SW = compile(_explicitscheme_convective_SW)
-term_coriolis_SW = compile(_term_coriolis_SW)
-term_friction_SW = compile(_term_friction_SW)
-term_wind_SW = compile(_term_wind_SW)
+def setup(dim):
+  global _agnostic_done
+  if dim not in (2, 3):
+    raise ValueError(f"Unsupported dimension: {dim}")
+  if not _agnostic_done:
+    global _srnh_scheme  # nested helper first
+    global update_SW, time_step_SW, term_source_srnh_SW, explicitscheme_convective_SW
+    global term_coriolis_SW, term_friction_SW, term_wind_SW
+    _srnh_scheme = compile(_srnh_scheme)
+    update_SW = compile(_update_SW)
+    time_step_SW = compile(_time_step_SW)
+    term_source_srnh_SW = compile(_term_source_srnh_SW)
+    explicitscheme_convective_SW = compile(_explicitscheme_convective_SW)
+    term_coriolis_SW = compile(_term_coriolis_SW)
+    term_friction_SW = compile(_term_friction_SW)
+    term_wind_SW = compile(_term_wind_SW)
+    _agnostic_done = True

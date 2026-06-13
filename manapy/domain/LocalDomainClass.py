@@ -10,10 +10,12 @@ import manapy.backends.types as types
 
 class LocalDomain:
 
-  def __init__(self, local_domain_struct: 'LocalDomainInterface', rank: 'int', size: 'int'):
+  def __init__(self, local_domain_struct: 'LocalDomainInterface', rank: 'int', size: 'int', backend=None):
     if local_domain_struct is None:
       return
 
+    from manapy.backends import get_backend
+    self.backend = get_backend("cpu") if backend is None else (get_backend(backend) if isinstance(backend, str) else backend)
     self.rank = rank
     self.size = size
     self.dim = local_domain_struct.dim
@@ -613,9 +615,8 @@ class LocalDomain:
 
   def _dist_ortho_function_2d(self, d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', face_cellid: 'int[:,:]', cell_center: 'float[:,:]', face_center: 'float[:,:]', face_normal: 'float[:,:]'):
 
-    face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=types.np_float_type) # TODO testing
+    face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
     if self.dim == 2:
-      face_dist_ortho = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
       compute.dist_ortho_function_2d(d_innerfaces, d_boundaryfaces, face_cellid, cell_center, face_center, face_normal, face_dist_ortho)
     return face_dist_ortho
 

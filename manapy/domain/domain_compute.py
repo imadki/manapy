@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import numba
 from numba.typed import Dict
 from manapy.backends.compile_fun import compile
@@ -459,25 +460,33 @@ def _triangle_normal_3d(a: 'float[:]', b: 'float[:]', c: 'float[:]'):
 def _compute_face_info_2d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]',
                           cell_center: 'float[:, :]', face_measure: 'float[:]', face_center: 'float[:, :]',
                           face_normal: 'float[:, :]'):
-  for i in range(len(faces)):
-    nb_vertex = faces[i, -1]
-    points = nodes[faces[i, 0:nb_vertex], 0:2]
+  for i in range(faces.shape[0]):
+    n0 = faces[i, 0]
+    n1 = faces[i, 1]
 
-    # Face Measure
-    u = points[0] - points[1]
-    measure = np.sqrt(u[0] * u[0] + u[1] * u[1])
+    ux = nodes[n0, 0] - nodes[n1, 0]
+    uy = nodes[n0, 1] - nodes[n1, 1]
+    measure = math.sqrt(ux * ux + uy * uy)
     face_measure[i] = measure
 
-    # Center
-    center = np.sum(points, axis=0) / nb_vertex
-    face_center[i, 0:2] = center[0:2]
+    cx = 0.5 * (nodes[n0, 0] + nodes[n1, 0])
+    cy = 0.5 * (nodes[n0, 1] + nodes[n1, 1])
+    face_center[i, 0] = cx
+    face_center[i, 1] = cy
+    face_center[i, 2] = 0.0
 
-    # Face Normal
-    normal = np.array([-u[1], u[0]], dtype=u.dtype)
-    snorm = cell_center[face_cellid[i, 0], 0:2] - center
-    if (np.dot(normal, snorm)) > 0:
-      normal *= -1
-    face_normal[i, 0:2] = normal
+    nx = -uy
+    ny = ux
+    left = face_cellid[i, 0]
+    sx = cell_center[left, 0] - cx
+    sy = cell_center[left, 1] - cy
+    if nx * sx + ny * sy > 0.0:
+      nx = -nx
+      ny = -ny
+
+    face_normal[i, 0] = nx
+    face_normal[i, 1] = ny
+    face_normal[i, 2] = 0.0
 
 
 def _compute_face_info_3d(faces: 'int[:, :]', nodes: 'float[:, :]', face_cellid: 'int[:, :]',
@@ -924,12 +933,7 @@ def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_p
                            face_param3: 'float[:]', face_param4: 'float[:]', face_f1: 'float[:,:]',
                            face_f2: 'float[:,:]', face_f3: 'float[:,:]', face_f4: 'float[:,:]',
                            cell_shift: 'float[:,:]'):
-  nbface = len(face_cellid)
-
-  dim = 2
-  v_2 = np.zeros(dim, dtype=face_air_diamond.dtype)
-
-  for i in range(nbface):
+  for i in range(face_cellid.shape[0]):
 
     c_left = face_cellid[i][0]
     c_right = face_cellid[i][1]
@@ -937,48 +941,62 @@ def _face_gradient_info_2d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_p
     i_1 = faces[i][0]
     i_2 = faces[i][1]
 
-    xy_1 = nodes[i_1][0:dim]
-    xy_2 = nodes[i_2][0:dim]
+    xy_1_0 = nodes[i_1][0]
+    xy_1_1 = nodes[i_1][1]
+    xy_2_0 = nodes[i_2][0]
+    xy_2_1 = nodes[i_2][1]
 
-    v_1 = cell_center[c_left][0:dim]
+    v_1_0 = cell_center[c_left][0]
+    v_1_1 = cell_center[c_left][1]
+    v_2_0 = 0.
+    v_2_1 = 0.
 
     if face_name[i] == 0:
-      v_2[:] = cell_center[c_right][0:dim]
+      v_2_0 = cell_center[c_right][0]
+      v_2_1 = cell_center[c_right][1]
     elif face_name[i] == 11 or face_name[i] == 22:
-      v_2[0] = cell_center[c_right][0] + cell_shift[c_right][0]
-      v_2[1] = cell_center[c_right][1]
+      v_2_0 = cell_center[c_right][0] + cell_shift[c_right][0]
+      v_2_1 = cell_center[c_right][1]
     elif face_name[i] == 33 or face_name[i] == 44:
-      v_2[0] = cell_center[c_right][0]
-      v_2[1] = cell_center[c_right][1] + cell_shift[c_right][1]
+      v_2_0 = cell_center[c_right][0]
+      v_2_1 = cell_center[c_right][1] + cell_shift[c_right][1]
     elif face_name[i] == 10:
-      v_2[:] = halo_centvol[face_haloid[i]][0:dim]
+      v_2_0 = halo_centvol[face_haloid[i]][0]
+      v_2_1 = halo_centvol[face_haloid[i]][1]
     elif face_to_phyid[i] != -1:
       ghost_id = face_to_phyid[i]
-      v_2[:] = ghost_info_flt[ghost_id][0:dim]
-    else:
-      raise RuntimeError("face_to_phyid[i]")
+      v_2_0 = ghost_info_flt[ghost_id][0]
+      v_2_1 = ghost_info_flt[ghost_id][1]
 
-    face_f1[i][:] = v_1[:] - xy_1[:]
-    face_f2[i][:] = xy_2[:] - v_1[:]
-    face_f3[i][:] = v_2[:] - xy_2[:]
-    face_f4[i][:] = xy_1[:] - v_2[:]
+    f1_0 = v_1_0 - xy_1_0
+    f1_1 = v_1_1 - xy_1_1
+    f2_0 = xy_2_0 - v_1_0
+    f2_1 = xy_2_1 - v_1_1
+    f3_0 = v_2_0 - xy_2_0
+    f3_1 = v_2_1 - xy_2_1
+    f4_0 = xy_1_0 - v_2_0
+    f4_1 = xy_1_1 - v_2_1
+
+    face_f1[i][0] = f1_0
+    face_f1[i][1] = f1_1
+    face_f2[i][0] = f2_0
+    face_f2[i][1] = f2_1
+    face_f3[i][0] = f3_0
+    face_f3[i][1] = f3_1
+    face_f4[i][0] = f4_0
+    face_f4[i][1] = f4_1
 
     n1 = face_normal[i][0]
     n2 = face_normal[i][1]
 
-    face_air_diamond[i] = 0.5 * ((xy_2[0] - xy_1[0]) * (v_2[1] - v_1[1]) + (v_1[0] - v_2[0]) * (xy_2[1] - xy_1[1]))
+    air = 0.5 * ((xy_2_0 - xy_1_0) * (v_2_1 - v_1_1) + (v_1_0 - v_2_0) * (xy_2_1 - xy_1_1))
+    face_air_diamond[i] = air
+    inv_air2 = 1. / (2. * air)
 
-    if face_air_diamond[i] == 0:
-      raise RuntimeError("div 0")
-
-    face_param1[i] = 1. / (2. * face_air_diamond[i]) * (
-              (face_f1[i][1] + face_f2[i][1]) * n1 - (face_f1[i][0] + face_f2[i][0]) * n2)
-    face_param2[i] = 1. / (2. * face_air_diamond[i]) * (
-              (face_f2[i][1] + face_f3[i][1]) * n1 - (face_f2[i][0] + face_f3[i][0]) * n2)
-    face_param3[i] = 1. / (2. * face_air_diamond[i]) * (
-              (face_f3[i][1] + face_f4[i][1]) * n1 - (face_f3[i][0] + face_f4[i][0]) * n2)
-    face_param4[i] = 1. / (2. * face_air_diamond[i]) * (
-              (face_f4[i][1] + face_f1[i][1]) * n1 - (face_f4[i][0] + face_f1[i][0]) * n2)
+    face_param1[i] = inv_air2 * ((f1_1 + f2_1) * n1 - (f1_0 + f2_0) * n2)
+    face_param2[i] = inv_air2 * ((f2_1 + f3_1) * n1 - (f2_0 + f3_0) * n2)
+    face_param3[i] = inv_air2 * ((f3_1 + f4_1) * n1 - (f3_0 + f4_0) * n2)
+    face_param4[i] = inv_air2 * ((f4_1 + f1_1) * n1 - (f4_0 + f1_0) * n2)
 
 
 def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_phyid: 'int[:]', ghost_info_flt: 'float[:, :]', face_name: 'int[:]', face_normal: 'float[:,:]', cell_center: 'float[:,:]',
@@ -1333,25 +1351,33 @@ def _variables_3d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
 
 
 def _create_normal_face_of_cell(cell_center: 'float[:,:]', face_center: 'float[:,:]', cell_faceid: 'int[:,:]',
-                                   face_normal: 'float[:,:]', cell_nf: 'float[:,:,:]'):
+                                face_normal: 'float[:,:]', cell_nf: 'float[:,:,:]'):
   # compute the outgoing normal faces for each cell
-
-  for i in range(len(cell_faceid)):
-    c_center = cell_center[i, 0:3]
+  for i in range(cell_faceid.shape[0]):
+    cx = cell_center[i, 0]
+    cy = cell_center[i, 1]
+    cz = cell_center[i, 2]
 
     for j in range(cell_faceid[i, -1]):
       fid = cell_faceid[i, j]
-      f_center = face_center[fid, 0:3]
-      f_normal = face_normal[fid, 0:3]
+      nx = face_normal[fid, 0]
+      ny = face_normal[fid, 1]
+      nz = face_normal[fid, 2]
 
-      snormal = c_center - f_center
-      if (snormal[0] * f_normal[0] + snormal[1] * f_normal[1] + snormal[2] * f_normal[2]) > 0.0:
-        f_normal = f_normal * -1  # is not the same as f_normal *= -1
+      sx = cx - face_center[fid, 0]
+      sy = cy - face_center[fid, 1]
+      sz = cz - face_center[fid, 2]
+      if sx * nx + sy * ny + sz * nz > 0.0:
+        nx = -nx
+        ny = -ny
+        nz = -nz
 
-      cell_nf[i, j] = f_normal
+      cell_nf[i, j, 0] = nx
+      cell_nf[i, j, 1] = ny
+      cell_nf[i, j, 2] = nz
 
 
-def _distance_2d(x: 'float64[:]', y: 'float64[:]'):
+def _distance_2d(x: 'float[:]', y: 'float[:]'):
   return np.sqrt((x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2)
 
 
@@ -1361,26 +1387,40 @@ def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', f
   for i in range(d_boundaryfaces.shape[0]):
     bf = d_boundaryfaces[i]
     K = face_cellid[bf, 0]
-    v = cell_center[K, 0:2] - face_center[bf, 0:2]
-    u = face_normal[bf, 0:2]  # /mesuref[i]
-    projection = cell_center[K, 0:2] - (v[0] * u[0] + v[1] * u[1]) * u
-    face_dist_ortho[bf] = 2 * _distance_2d(cell_center[K].astype('float64'),
-                                           projection.astype(
-                                             'float64'))  # +  distance_2d(ghostcenter[i], projection_bis)
+    u0 = face_normal[bf, 0]
+    u1 = face_normal[bf, 1]
+    v0 = cell_center[K, 0] - face_center[bf, 0]
+    v1 = cell_center[K, 1] - face_center[bf, 1]
+    dot = v0 * u0 + v1 * u1
+    projection0 = cell_center[K, 0] - dot * u0
+    projection1 = cell_center[K, 1] - dot * u1
+    dx = cell_center[K, 0] - projection0
+    dy = cell_center[K, 1] - projection1
+    face_dist_ortho[bf] = 2. * math.sqrt(dx * dx + dy * dy)
 
   for i in range(d_innerfaces.shape[0]):
     bf = d_innerfaces[i]
     K = face_cellid[bf, 0]
     L = face_cellid[bf, 1]
-    u = face_normal[bf, 0:2]  # /mesuref[i]
+    u0 = face_normal[bf, 0]
+    u1 = face_normal[bf, 1]
 
-    v = cell_center[K, 0:2] - face_center[bf, 0:2]
-    projection = cell_center[K, 0:2] - (v[0] * u[0] + v[1] * u[1]) * u
+    v0 = cell_center[K, 0] - face_center[bf, 0]
+    v1 = cell_center[K, 1] - face_center[bf, 1]
+    dot = v0 * u0 + v1 * u1
+    projection0 = cell_center[K, 0] - dot * u0
+    projection1 = cell_center[K, 1] - dot * u1
+    dx = cell_center[K, 0] - projection0
+    dy = cell_center[K, 1] - projection1
 
-    v = cell_center[L, 0:2] - face_center[bf, 0:2]
-    projection_bis = cell_center[L, 0:2] - (v[0] * u[0] + v[1] * u[1]) * u
-    face_dist_ortho[bf] = _distance_2d(cell_center[K, 0:2].astype('float64'), projection.astype('float64')) \
-                          + _distance_2d(cell_center[L, 0:2].astype('float64'), projection_bis.astype('float64'))
+    v0_bis = cell_center[L, 0] - face_center[bf, 0]
+    v1_bis = cell_center[L, 1] - face_center[bf, 1]
+    dot_bis = v0_bis * u0 + v1_bis * u1
+    projection0_bis = cell_center[L, 0] - dot_bis * u0
+    projection1_bis = cell_center[L, 1] - dot_bis * u1
+    dx_bis = cell_center[L, 0] - projection0_bis
+    dy_bis = cell_center[L, 1] - projection1_bis
+    face_dist_ortho[bf] = math.sqrt(dx * dx + dy * dy) + math.sqrt(dx_bis * dx_bis + dy_bis * dy_bis)
 
 
 # #########################################################

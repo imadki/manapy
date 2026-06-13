@@ -63,8 +63,10 @@ class AdvectionDiffusionSolver:
     self.var.__dict__["source"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
 
 
-    self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
-    if self.dim == 3:
+    fvm_utils_compute.setup(self.dim)
+    if self.dim == 2:
+      self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
+    elif self.dim == 3:
       self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_3d
     self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative
     self._time_step = fvm_utils_compute.time_step

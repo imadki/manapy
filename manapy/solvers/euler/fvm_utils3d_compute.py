@@ -1241,26 +1241,61 @@ def _update_euler_3d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float6
     P_c[:]       = (gamma-1)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:])
 
 ############################################################################
-# Public
-node_for_interpolation_3d = compile(_node_for_interpolation_3d)
-node_value_for_interpolation_3d = compile(_node_value_for_interpolation_3d)
-weight_parameters_carac_3d = compile(_weight_parameters_carac_3d)
-set_carac_field_3d = compile(_set_carac_field_3d)
-compute_normale_inverse = compile(_compute_normale_inverse)
-departure_euler_3d = compile(_departure_euler_3d)
-predictor_euler_3d = compile(_predictor_euler_3d)
-initialisation_euler_3d = compile(_initialisation_euler_3d)
-ghost_value_Neumann3D = compile(_ghost_value_Neumann3D)
-ghost_value_TubeSchok3D = compile(_ghost_value_TubeSchok3D)
-ghost_value_gamm = compile(_ghost_value_gamm)
-halghost_value_Neumann3D = compile(_halghost_value_Neumann3D)
-halghost_value_TubeSchok3D = compile(_halghost_value_TubeSchok3D)
-halghost_value_gamm = compile(_halghost_value_gamm)
-time_step_euler_3d = compile(_time_step_euler_3d)
-compute_flux_euler_3d_fvc = compile(_compute_flux_euler_3d_fvc)
-compute_flux_euler_3d_rusanov = compile(_compute_flux_euler_3d_rusanov)
-compute_flux_euler_3d_Roe = compile(_compute_flux_euler_3d_Roe)
-explicitscheme_euler_3d_rusanov = compile(_explicitscheme_euler_3d_rusanov)
-explicitscheme_euler_3d_Roe = compile(_explicitscheme_euler_3d_Roe)
-explicitscheme_euler_3d_fvc = compile(_explicitscheme_euler_3d_fvc)
-update_euler_3d_fvc = compile(_update_euler_3d_fvc)
+# NOTHING is compiled at import. Call setup() once (uniformly on all MPI ranks)
+# before using any kernel below. This module is dimension-specific (3D), so a
+# single guard suffices. Nested helpers (weight_parameters_carac -> set_carac_field,
+# and the compute_flux_* used by the explicit schemes) are compiled and rebound to
+# their module globals before their callers, so numba can resolve njit->njit calls.
+_done = False
+
+def setup(dim=3):
+  global _done
+  if dim != 3:
+    raise ValueError(f"euler.fvm_utils3d expects dim=3, got {dim}")
+  if _done:
+    return
+
+  # Nested helpers first (rebind the underscore globals used inside the kernels).
+  global _weight_parameters_carac_3d, _set_carac_field_3d
+  global _compute_flux_euler_3d_fvc, _compute_flux_euler_3d_rusanov, _compute_flux_euler_3d_Roe
+  _weight_parameters_carac_3d = compile(_weight_parameters_carac_3d)
+  _set_carac_field_3d = compile(_set_carac_field_3d)
+  _compute_flux_euler_3d_fvc = compile(_compute_flux_euler_3d_fvc)
+  _compute_flux_euler_3d_rusanov = compile(_compute_flux_euler_3d_rusanov)
+  _compute_flux_euler_3d_Roe = compile(_compute_flux_euler_3d_Roe)
+
+  # Public entry points (helpers are re-exported under their public names).
+  global node_for_interpolation_3d, node_value_for_interpolation_3d
+  global weight_parameters_carac_3d, set_carac_field_3d, compute_normale_inverse
+  global departure_euler_3d, predictor_euler_3d, initialisation_euler_3d
+  global ghost_value_Neumann3D, ghost_value_TubeSchok3D, ghost_value_gamm
+  global halghost_value_Neumann3D, halghost_value_TubeSchok3D, halghost_value_gamm
+  global time_step_euler_3d
+  global compute_flux_euler_3d_fvc, compute_flux_euler_3d_rusanov, compute_flux_euler_3d_Roe
+  global explicitscheme_euler_3d_rusanov, explicitscheme_euler_3d_Roe, explicitscheme_euler_3d_fvc
+  global update_euler_3d_fvc
+
+  node_for_interpolation_3d = compile(_node_for_interpolation_3d)
+  node_value_for_interpolation_3d = compile(_node_value_for_interpolation_3d)
+  weight_parameters_carac_3d = _weight_parameters_carac_3d
+  set_carac_field_3d = _set_carac_field_3d
+  compute_normale_inverse = compile(_compute_normale_inverse)
+  departure_euler_3d = compile(_departure_euler_3d)
+  predictor_euler_3d = compile(_predictor_euler_3d)
+  initialisation_euler_3d = compile(_initialisation_euler_3d)
+  ghost_value_Neumann3D = compile(_ghost_value_Neumann3D)
+  ghost_value_TubeSchok3D = compile(_ghost_value_TubeSchok3D)
+  ghost_value_gamm = compile(_ghost_value_gamm)
+  halghost_value_Neumann3D = compile(_halghost_value_Neumann3D)
+  halghost_value_TubeSchok3D = compile(_halghost_value_TubeSchok3D)
+  halghost_value_gamm = compile(_halghost_value_gamm)
+  time_step_euler_3d = compile(_time_step_euler_3d)
+  compute_flux_euler_3d_fvc = _compute_flux_euler_3d_fvc
+  compute_flux_euler_3d_rusanov = _compute_flux_euler_3d_rusanov
+  compute_flux_euler_3d_Roe = _compute_flux_euler_3d_Roe
+  explicitscheme_euler_3d_rusanov = compile(_explicitscheme_euler_3d_rusanov)
+  explicitscheme_euler_3d_Roe = compile(_explicitscheme_euler_3d_Roe)
+  explicitscheme_euler_3d_fvc = compile(_explicitscheme_euler_3d_fvc)
+  update_euler_3d_fvc = compile(_update_euler_3d_fvc)
+
+  _done = True

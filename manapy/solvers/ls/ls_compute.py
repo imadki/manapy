@@ -1705,23 +1705,47 @@ def _compute_3dmatrix_size(faces: 'int[:,:]', node_cellid: 'int[:,:]', node_halo
 
 
 ############################################################################
-# Private
-_search_element = compile(_search_element)
+# NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
+# ranks) before using any kernel below; LinearSolver does this in __init__.
+#   - agnostic kernels are compiled once;
+#   - dimension-specific kernels are compiled only for the dimension(s) used.
+# The nested helper _search_element is compiled (and rebound to the module
+# global) before the kernels that call it, so numba can resolve njit->njit calls.
+_agnostic_done = False
+_dims_done = set()
 
-# Public
-convert_solution = compile(_convert_solution)
-rhs_value_dirichlet_node = compile(_rhs_value_dirichlet_node)
-rhs_value_dirichlet_face = compile(_rhs_value_dirichlet_face)
-compute_P_gradient_2d_diamond = compile(_compute_P_gradient_2d_diamond)
-compute_P_gradient_2d_FV4 = compile(_compute_P_gradient_2d_FV4)
-get_triplet_2d = compile(_get_triplet_2d)
-compute_2dmatrix_size = compile(_compute_2dmatrix_size)
-compute_P_gradient_3d_diamond = compile(_compute_P_gradient_3d_diamond)
-get_triplet_3d = compile(_get_triplet_3d)
-compute_3dmatrix_size = compile(_compute_3dmatrix_size)
-get_rhs_glob_2d = compile(_get_rhs_glob_2d)
-get_rhs_glob_3d = compile(_get_rhs_glob_3d)
-get_rhs_loc_2d = compile(_get_rhs_loc_2d)
-get_rhs_loc_3d = compile(_get_rhs_loc_3d)
-get_triplet_2d_with_contrib = compile(_get_triplet_2d_with_contrib)
-get_rhs_glob_2d_with_contrib = compile(_get_rhs_glob_2d_with_contrib)
+def setup(dim):
+  global _agnostic_done
+  if not _agnostic_done:
+    global _search_element  # nested helper first
+    global convert_solution, rhs_value_dirichlet_node, rhs_value_dirichlet_face
+    _search_element = compile(_search_element)
+    convert_solution = compile(_convert_solution)
+    rhs_value_dirichlet_node = compile(_rhs_value_dirichlet_node)
+    rhs_value_dirichlet_face = compile(_rhs_value_dirichlet_face)
+    _agnostic_done = True
+
+  if dim not in _dims_done:
+    if dim == 2:
+      global compute_P_gradient_2d_diamond, compute_P_gradient_2d_FV4, get_triplet_2d
+      global compute_2dmatrix_size, get_rhs_glob_2d, get_rhs_loc_2d
+      global get_triplet_2d_with_contrib, get_rhs_glob_2d_with_contrib
+      compute_P_gradient_2d_diamond = compile(_compute_P_gradient_2d_diamond)
+      compute_P_gradient_2d_FV4 = compile(_compute_P_gradient_2d_FV4)
+      get_triplet_2d = compile(_get_triplet_2d)
+      compute_2dmatrix_size = compile(_compute_2dmatrix_size)
+      get_rhs_glob_2d = compile(_get_rhs_glob_2d)
+      get_rhs_loc_2d = compile(_get_rhs_loc_2d)
+      get_triplet_2d_with_contrib = compile(_get_triplet_2d_with_contrib)
+      get_rhs_glob_2d_with_contrib = compile(_get_rhs_glob_2d_with_contrib)
+    elif dim == 3:
+      global compute_P_gradient_3d_diamond, get_triplet_3d, compute_3dmatrix_size
+      global get_rhs_glob_3d, get_rhs_loc_3d
+      compute_P_gradient_3d_diamond = compile(_compute_P_gradient_3d_diamond)
+      get_triplet_3d = compile(_get_triplet_3d)
+      compute_3dmatrix_size = compile(_compute_3dmatrix_size)
+      get_rhs_glob_3d = compile(_get_rhs_glob_3d)
+      get_rhs_loc_3d = compile(_get_rhs_loc_3d)
+    else:
+      raise ValueError(f"Unsupported dimension: {dim}")
+    _dims_done.add(dim)

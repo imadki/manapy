@@ -1,4 +1,5 @@
 from mpi4py import MPI
+import os
 import time
 
 def re_import(module_name, class_name):
@@ -15,6 +16,9 @@ class Logger:
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     self.rank = rank
+    self.mode = os.environ.get("MANAPY_DEBUG_TIMING", "").lower()
+    self.enabled = self.mode in {"1", "true", "yes", "on", "all", "rank0"}
+    self.rank0_only = self.mode == "rank0"
     self.dic = {}
     self.start = time.time()
     self.last_entry = ""
@@ -23,6 +27,8 @@ class Logger:
     self.start = time.time()
 
   def print_sorted_results(self):
+    if not self.enabled or (self.rank0_only and self.rank != 0):
+      return
     dic = self.dic
     sorted_dic = dict(sorted(dic.items(), key=lambda item: item[1], reverse=True))
     print("------------------------------------------------")
@@ -40,6 +46,8 @@ class Logger:
     self.dic[string] = time.time()
 
   def out(self, string=""):
+    if not self.enabled or (self.rank0_only and self.rank != 0):
+      return
     if string == "":
       string = self.last_entry
     time_taken = time.time() - self.dic[string]

@@ -11,10 +11,6 @@ from manapy.domain import Domain
 import manapy.backends.types as types
 from manapy.boundary.Boundary import Boundary
 from types import LambdaType
-import manapy.core.variable_compute_2d as variable_compute_2d
-import manapy.core.variable_compute_3d as variable_compute_3d
-import manapy.core.variable_compute_utils as variable_compute_utils
-from manapy.backends.compile_fun import compile
 from manapy.backends.types import FLOAT_TYPE
 
 """
@@ -46,28 +42,35 @@ class Variable:
   _compiled_funcs = {}
 
   @classmethod
-  def _get_compiled_funcs(cls, dim):
-    if dim in cls._compiled_funcs:
-      return cls._compiled_funcs[dim]
+  def _get_compiled_funcs(cls, dim, backend):
+    key = (backend.name, dim)
+    if key in cls._compiled_funcs:
+      return cls._compiled_funcs[key]
 
-    funcs = {
-      'facetocell': compile(variable_compute_utils._facetocell),
-      'celltoface': compile(variable_compute_utils._celltoface),
-    }
+    # Corps grid-stride unifies (meme source CPU/GPU quand le kernel s'y prete).
     if dim == 2:
-      funcs['interp']        = compile(variable_compute_2d._centertovertex_2d)
-      funcs['face_gradient'] = compile(variable_compute_2d._face_gradient_2d)
-      funcs['cell_gradient'] = compile(variable_compute_2d._cell_gradient_2d)
-      funcs['barthlimiter']  = compile(variable_compute_2d._barthlimiter_2d)
+      import manapy.core.variable_compute_2d as K
     elif dim == 3:
-      funcs['interp']        = compile(variable_compute_3d._centertovertex_3d)
-      funcs['face_gradient'] = compile(variable_compute_3d._face_gradient_3d)
-      funcs['cell_gradient'] = compile(variable_compute_3d._cell_gradient_3d)
-      funcs['barthlimiter']  = compile(variable_compute_3d._barthlimiter_3d)
+      import manapy.core.variable_compute_3d as K
     else:
       raise ValueError(f"Unsupported dimension: {dim}")
 
-    cls._compiled_funcs[dim] = funcs
+    funcs = {
+      'facetocell': backend.make_gridstride_kernel(K.facetocell, size_arg=1),
+      'celltoface': backend.make_gridstride_kernel(K.celltoface, size_arg=(6, 7, 8)),
+    }
+    if dim == 2:
+      funcs['interp']        = backend.make_gridstride_kernel(K.centertovertex_2d, size_arg=13)
+      funcs['face_gradient'] = backend.make_gridstride_kernel(K.face_gradient_2d, size_arg=(16, 17, 18, 19, 20))
+      funcs['cell_gradient'] = backend.make_gridstride_kernel(K.cell_gradient_2d, size_arg=0)
+      funcs['barthlimiter']  = backend.make_gridstride_kernel(K.barthlimiter_2d, size_arg=0)
+    elif dim == 3:
+      funcs['interp']        = backend.make_gridstride_kernel(K.centertovertex_3d, size_arg=13)
+      funcs['face_gradient'] = backend.make_gridstride_kernel(K.face_gradient_3d, size_arg=(16, 17, 18, 19, 20))
+      funcs['cell_gradient'] = backend.make_gridstride_kernel(K.cell_gradient_3d, size_arg=0)
+      funcs['barthlimiter']  = backend.make_gridstride_kernel(K.barthlimiter_3d, size_arg=0)
+
+    cls._compiled_funcs[key] = funcs
     return funcs
 
   def __init__(self, domain:Domain, BC:dict=None, values_dict:dict=None, name:str=None):
@@ -75,6 +78,7 @@ class Variable:
       raise ValueError("domain must be given")
 
     self._domain = domain
+    self.backend = domain.backend
     self._values = values_dict
     self._name = name
 
@@ -109,6 +113,9 @@ class Variable:
     self.halotosend = np.zeros(len(domain.halos.halosint), dtype=types.np_float_type)
     self.haloghost = np.zeros(domain.halos.sizehaloghost, dtype=types.np_float_type)
 
+    if self.backend.name == "gpu":
+      self._prepare_gpu_storage()
+
     # TODO these attribute should be declared inside domain class
     self._domain.Pbordnode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
     self._domain.Pbordface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
@@ -131,7 +138,7 @@ class Variable:
       self._BCback = self.BCs["back"]
 
     # Functions: compile only the kernels needed for this dimension, once.
-    funcs = Variable._get_compiled_funcs(self._dim)
+    funcs = Variable._get_compiled_funcs(self._dim, self.backend)
     self._facetocell    = funcs['facetocell']
     self._celltoface    = funcs['celltoface']
     self._func_interp   = funcs['interp']
@@ -139,13 +146,34 @@ class Variable:
     self._cell_gradient = funcs['cell_gradient']
     self._barthlimiter  = funcs['barthlimiter']
 
+  def _prepare_gpu_storage(self):
+    from manapy.backends.gpu import set_active_backend, GPUArray
+    set_active_backend(self.backend)
+    for name in (
+      "cell", "node", "face", "ghost", "halo",
+      "gradcellx", "gradcelly", "gradcellz",
+      "gradhalocellx", "gradhalocelly", "gradhalocellz",
+      "gradfacex", "gradfacey", "gradfacez",
+      "psi", "psihalo", "halotosend", "haloghost",
+    ):
+      setattr(self, name, GPUArray(getattr(self, name)))
+
   def add_term(self, name):
-    self.__dict__[name] = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
+    values = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
+    if self.backend.name == "gpu":
+      from manapy.backends.gpu import GPUArray
+      values = GPUArray(values)
+    self.__dict__[name] = values
 
   def _update_boundaries(self, BC:dict, values_dict:dict):
     valueface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
     valuenode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
     valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=types.np_float_type)
+    if self.backend.name == "gpu":
+      from manapy.backends.gpu import GPUArray
+      valueface = GPUArray(valueface)
+      valuenode = GPUArray(valuenode)
+      valuehalo = GPUArray(valuehalo)
 
     neumannfaces = []
     BCneumann = []
