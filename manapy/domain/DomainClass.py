@@ -223,6 +223,7 @@ class Domain:
         except Exception as e:
           import traceback
           print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
+          raise
     else:
       if rank == 0:
         print("====> Start <=====")
