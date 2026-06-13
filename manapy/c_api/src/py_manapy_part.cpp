@@ -63,7 +63,7 @@ static int dense_to_csr(PyArrayObject *graph, idx_t **xadj, idx_t **adjncy, idx_
     }
     (*nb_nodes)++;
 
-    DEBUG_PRINT_INSTANT("Nb_vertices = %ld\n", (long) nb_vertices);
+    DEBUG_PRINT_INSTANT("Nb_cells = %ld\n", (long) nb_vertices);
     DEBUG_PRINT_INSTANT("total_deg size = %d\n", (long) deg_sum);
     DEBUG_PRINT_INSTANT("Nb_nodes = %d\n", (long) (*nb_nodes));
     return 0;

@@ -1622,27 +1622,62 @@ def _update_euler_2d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float6
     P_c[:]      = (gamma-1)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:])/rho_c[:])
 
 ############################################################################
-# Public
-node_for_interpolation_2d = compile(_node_for_interpolation_2d)
-node_value_for_interpolation_2d = compile(_node_value_for_interpolation_2d)
-weight_parameters_carac_2d = compile(_weight_parameters_carac_2d)
-set_carac_field_2d = compile(_set_carac_field_2d)
-initialisation_euler_2d = compile(_initialisation_euler_2d)
-ghost_value_DoubleMach = compile(_ghost_value_DoubleMach)
-ghost_value_TubeSchok = compile(_ghost_value_TubeSchok)
-ghost_value_Neumann = compile(_ghost_value_Neumann)
-ghost_value_Gamm2D = compile(_ghost_value_Gamm2D)
-halghost_value_TubeSchok = compile(_halghost_value_TubeSchok)
-halghost_value_Neumann = compile(_halghost_value_Neumann)
-halghost_value_Gamm2D = compile(_halghost_value_Gamm2D)
-halghost_value_DoubleMach = compile(_halghost_value_DoubleMach)
-time_step_euler_2d = compile(_time_step_euler_2d)
-departure_euler_2d = compile(_departure_euler_2d)
-predictor_euler_2d = compile(_predictor_euler_2d)
-compute_flux_euler_2d_fvc = compile(_compute_flux_euler_2d_fvc)
-compute_flux_euler_2d_rusanov = compile(_compute_flux_euler_2d_rusanov)
-compute_flux_euler_2d_Roe = compile(_compute_flux_euler_2d_Roe)
-explicitscheme_euler_2d_fvc = compile(_explicitscheme_euler_2d_fvc)
-explicitscheme_euler_2d_rusanov = compile(_explicitscheme_euler_2d_rusanov)
-explicitscheme_euler_2d_Roe = compile(_explicitscheme_euler_2d_Roe)
-update_euler_2d_fvc = compile(_update_euler_2d_fvc)
+# NOTHING is compiled at import. Call setup() once (uniformly on all MPI ranks)
+# before using any kernel below. This module is dimension-specific (2D), so a
+# single guard suffices. Nested helpers (weight_parameters_carac -> set_carac_field,
+# and the compute_flux_* used by the explicit schemes) are compiled and rebound to
+# their module globals before their callers, so numba can resolve njit->njit calls.
+_done = False
+
+def setup(dim=2):
+  global _done
+  if dim != 2:
+    raise ValueError(f"euler.fvm_utils2d expects dim=2, got {dim}")
+  if _done:
+    return
+
+  # Nested helpers first (rebind the underscore globals used inside the kernels).
+  global _weight_parameters_carac_2d, _set_carac_field_2d
+  global _compute_flux_euler_2d_fvc, _compute_flux_euler_2d_rusanov, _compute_flux_euler_2d_Roe
+  _weight_parameters_carac_2d = compile(_weight_parameters_carac_2d)
+  _set_carac_field_2d = compile(_set_carac_field_2d)
+  _compute_flux_euler_2d_fvc = compile(_compute_flux_euler_2d_fvc)
+  _compute_flux_euler_2d_rusanov = compile(_compute_flux_euler_2d_rusanov)
+  _compute_flux_euler_2d_Roe = compile(_compute_flux_euler_2d_Roe)
+
+  # Public entry points (helpers are re-exported under their public names).
+  global node_for_interpolation_2d, node_value_for_interpolation_2d
+  global weight_parameters_carac_2d, set_carac_field_2d
+  global initialisation_euler_2d, ghost_value_DoubleMach, ghost_value_TubeSchok
+  global ghost_value_Neumann, ghost_value_Gamm2D
+  global halghost_value_TubeSchok, halghost_value_Neumann, halghost_value_Gamm2D, halghost_value_DoubleMach
+  global time_step_euler_2d, departure_euler_2d, predictor_euler_2d
+  global compute_flux_euler_2d_fvc, compute_flux_euler_2d_rusanov, compute_flux_euler_2d_Roe
+  global explicitscheme_euler_2d_fvc, explicitscheme_euler_2d_rusanov, explicitscheme_euler_2d_Roe
+  global update_euler_2d_fvc
+
+  node_for_interpolation_2d = compile(_node_for_interpolation_2d)
+  node_value_for_interpolation_2d = compile(_node_value_for_interpolation_2d)
+  weight_parameters_carac_2d = _weight_parameters_carac_2d
+  set_carac_field_2d = _set_carac_field_2d
+  initialisation_euler_2d = compile(_initialisation_euler_2d)
+  ghost_value_DoubleMach = compile(_ghost_value_DoubleMach)
+  ghost_value_TubeSchok = compile(_ghost_value_TubeSchok)
+  ghost_value_Neumann = compile(_ghost_value_Neumann)
+  ghost_value_Gamm2D = compile(_ghost_value_Gamm2D)
+  halghost_value_TubeSchok = compile(_halghost_value_TubeSchok)
+  halghost_value_Neumann = compile(_halghost_value_Neumann)
+  halghost_value_Gamm2D = compile(_halghost_value_Gamm2D)
+  halghost_value_DoubleMach = compile(_halghost_value_DoubleMach)
+  time_step_euler_2d = compile(_time_step_euler_2d)
+  departure_euler_2d = compile(_departure_euler_2d)
+  predictor_euler_2d = compile(_predictor_euler_2d)
+  compute_flux_euler_2d_fvc = _compute_flux_euler_2d_fvc
+  compute_flux_euler_2d_rusanov = _compute_flux_euler_2d_rusanov
+  compute_flux_euler_2d_Roe = _compute_flux_euler_2d_Roe
+  explicitscheme_euler_2d_fvc = compile(_explicitscheme_euler_2d_fvc)
+  explicitscheme_euler_2d_rusanov = compile(_explicitscheme_euler_2d_rusanov)
+  explicitscheme_euler_2d_Roe = compile(_explicitscheme_euler_2d_Roe)
+  update_euler_2d_fvc = compile(_update_euler_2d_fvc)
+
+  _done = True

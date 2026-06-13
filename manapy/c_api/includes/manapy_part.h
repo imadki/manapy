@@ -39,6 +39,7 @@ void intersect_arr(PyArray<idx_t, 2> *arr, PyArray<idx_t, 1> *indices, idx_t siz
 std::array<idx_t, 3> get_max_info(idx_t cell_type);
 void print_instant(const char *fmt, ...);
 void time_it(const std::string &);
+bool manapy_debug_timing_enabled();
 
 
 /* ---------------------------------------------------------------------- *
@@ -48,8 +49,8 @@ void time_it(const std::string &);
 
 #if defined( PRINT_DEBUG)
 /* Debug build → expand to real calls */
-#  define DEBUG_PRINT_INSTANT(fmt, ...) print_instant((fmt), ##__VA_ARGS__)
-#  define DEBUG_TIME_IT(msg)            time_it((msg))
+#  define DEBUG_PRINT_INSTANT(fmt, ...) do { if (manapy_debug_timing_enabled()) print_instant((fmt), ##__VA_ARGS__); } while (0)
+#  define DEBUG_TIME_IT(msg)            do { if (manapy_debug_timing_enabled()) time_it((msg)); } while (0)
 #else
 /* Release build → expand to no-ops (costs nothing) */
 #  define DEBUG_PRINT_INSTANT(fmt, ...) ((void)0)

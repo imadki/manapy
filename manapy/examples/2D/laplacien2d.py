@@ -7,9 +7,9 @@ Created on Wed Feb 16 09:13:21 2022
 """
 
 from mpi4py import MPI
-import timeit
+import timeit, os
+
 from manapy.domain import Domain, Partitioning
-from manapy.helpers import get_mesh
 import numpy as np
 from manapy.core.Variable import Variable
 from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver, ScipySolver
@@ -21,8 +21,17 @@ RANK = COMM.Get_rank()
 
 start = timeit.default_timer()
 
-filename = "big/carre.msh"
-dim, mesh_path, mesh_name = get_mesh(filename)
+try:
+  MESH_DIR = os.environ['MESH_DIR']
+except KeyError:
+  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
+
+filename = "carre.msh"
+dim = 2
+mesh_path = os.path.join(MESH_DIR, filename)
+
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells
@@ -59,11 +68,11 @@ values = {"in": 20,
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
 
-# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
+L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
-L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
-              precond='gamg', sub_precond="amg",  # with_mtx=False,
-              eps_a=1e-10, eps_r=1e-10, method="gmres")
+# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
+#               precond='gamg', sub_precond="amg",  # with_mtx=False,
+#               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
 # L = ScipySolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
@@ -72,7 +81,7 @@ ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
 
-L.view()
+# L.view()
 
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:

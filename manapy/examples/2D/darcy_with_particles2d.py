@@ -1,7 +1,7 @@
 from mpi4py import MPI
 import timeit
+import os
 from manapy.domain import Domain, Partitioning
-from manapy.helpers import get_mesh
 import manapy.solvers.advecdiff.fvm_utils_compute as advecdiff_compute
 import manapy.solvers.ls.ls_compute as ls_compute
 from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
@@ -118,6 +118,10 @@ def tau_remplissage(I):
   return Tau_remp
 
 
+# Compile only the 2D kernels we use (lazy per-dimension compilation).
+advecdiff_compute.setup(2)
+ls_compute.setup(2)
+
 get_triplet_2d_with_contrib = ls_compute.get_triplet_2d_with_contrib
 get_rhs_glob_2d_with_contrib = ls_compute.get_rhs_glob_2d_with_contrib
 #
@@ -180,7 +184,15 @@ else: # Default test
 
 start = timeit.default_timer()
 
-dim, mesh_path, mesh_name = get_mesh(filename)
+try:
+  MESH_DIR = os.environ['MESH_DIR']
+except KeyError:
+  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+
+dim = 2
+mesh_path = os.path.join(MESH_DIR, filename)
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells

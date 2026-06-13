@@ -8,8 +8,8 @@ Created on Wed Feb 16 09:13:21 2022
 
 from mpi4py import MPI
 import timeit
+import os
 from manapy.domain import Domain, Partitioning
-from manapy.helpers import get_mesh
 from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.solvers.advecdiff.system import AdvectionDiffusionSolver
 from manapy.core.Variable import Variable
@@ -20,7 +20,16 @@ RANK = COMM.Get_rank()
 start = timeit.default_timer()
 
 
-dim, mesh_path, mesh_name = get_mesh("big/carre.msh")
+try:
+  MESH_DIR = os.environ['MESH_DIR']
+except KeyError:
+  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+
+filename = 'big/carre.msh'
+dim = 2
+mesh_path = os.path.join(MESH_DIR, filename)
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells

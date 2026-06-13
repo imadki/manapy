@@ -1,4 +1,4 @@
-from manapy.backends.compile_fun import compile
+from manapy.backends.compile_fun import FunObj
 import numpy as np
 
 def _initialisation_gaussian_2d(ne: 'float[:]', u: 'float[:]', v: 'float[:]', P: 'float[:]', cell_center: 'float[:, :]', Pinit: 'float'):
@@ -31,12 +31,8 @@ def _initialisation_gaussian_3d(ne: 'float[:]', u: 'float[:]', v: 'float[:]', w:
     P[i] = Pinit * (.5 - xcent)
 
 ############################################################################
-# Public
-
-initialisation_gaussian_2d = compile(_initialisation_gaussian_2d)
-initialisation_gaussian_3d = compile(_initialisation_gaussian_3d)
-
-# initialisation_gaussian_2d = _initialisation_gaussian_2d
-# initialisation_gaussian_3d = _initialisation_gaussian_3d
+# Public: compiled lazily on first call (only the dimension actually used).
+initialisation_gaussian_2d = FunObj(_initialisation_gaussian_2d)
+initialisation_gaussian_3d = FunObj(_initialisation_gaussian_3d)
 
 

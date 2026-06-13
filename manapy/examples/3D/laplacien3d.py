@@ -8,8 +8,8 @@ Created on Wed Feb 16 09:13:21 2022
 
 from mpi4py import MPI
 import timeit
+import os
 from manapy.domain import Domain, Partitioning
-from manapy.helpers import get_mesh
 from manapy.solvers.ls import PETScKrylovSolver, MUMPSSolver, ScipySolver
 from manapy.core.Variable import Variable
 
@@ -19,7 +19,16 @@ RANK = COMM.Get_rank()
 start = timeit.default_timer()
 
 
-dim, mesh_path, mesh_name = get_mesh("hybrid3d.msh")
+try:
+  MESH_DIR = os.environ['MESH_DIR']
+except KeyError:
+  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+
+filename = 'hybrid3d.msh'
+dim = 3
+mesh_path = os.path.join(MESH_DIR, filename)
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells

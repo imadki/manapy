@@ -1,7 +1,7 @@
 import numpy as np
-from numba.typed import Dict, List
 from manapy.domain.MeshClass import Mesh
 import manapy.domain.utils as utils
+import manapy.domain.domain_compute as compute
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
 import warnings
 import manapy.backends.types as types
@@ -13,6 +13,7 @@ class Partitioning:
   Par_Dual = 1 # n_common=3 by default
   Par_Nodal = 2
   def __init__(self, mesh: 'Mesh'):
+    compute.setup(mesh.dim)
     self.nodes = mesh.points
     self.cells = mesh.cells
     self.cells_type = mesh.cells_type

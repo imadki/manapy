@@ -1,5 +1,5 @@
 import numpy as np
-from manapy.backends.compile_fun import compile
+from manapy.backends.compile_fun import FunObj
 
 
 def _initialisation_SW(h: 'float[:]', hu: 'float[:]', hv: 'float[:]', hc: 'float[:]',
@@ -425,12 +425,12 @@ def _initialisation_SW_bis(h: 'float[:]', hu: 'float[:]', hv: 'float[:]', hc: 'f
 # Private
 
 
-# Public
-initialisation_SW = compile(_initialisation_SW)
-initialisation_of_C_in_block = compile(_initialisation_of_C_in_block)
-initial_Tr = compile(_initial_Tr)
-concentration_overtime = compile(_concentration_overtime)
-print_time = compile(_print_time)
-initialisation_SW_bis = compile(_initialisation_SW_bis)
+# Public: compiled lazily on first call.
+initialisation_SW = FunObj(_initialisation_SW)
+initialisation_of_C_in_block = FunObj(_initialisation_of_C_in_block)
+initial_Tr = FunObj(_initial_Tr)
+concentration_overtime = FunObj(_concentration_overtime)
+print_time = FunObj(_print_time)
+initialisation_SW_bis = FunObj(_initialisation_SW_bis)
 
 

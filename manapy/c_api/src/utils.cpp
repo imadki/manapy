@@ -1,5 +1,9 @@
 #include <iomanip>
 #include <sys/time.h>
+#include <cstdlib>
+#include <string>
+#include <algorithm>
+#include <cctype>
 
 #include "manapy_part.h"
 
@@ -11,6 +15,28 @@ double	get_time(void)
     return (((tv.tv_sec * 1000000.0) + ((double)tv.tv_usec / 1.0)));
 }
 
+
+
+static bool env_enabled(const char *value) {
+    if (value == nullptr) {
+        return false;
+    }
+
+    std::string text(value);
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    return text == "1" || text == "true" || text == "yes" || text == "on" || text == "all" || text == "rank0";
+}
+
+bool manapy_debug_timing_enabled() {
+    const char *value = std::getenv("MANAPY_DEBUG_TIMING");
+    if (value == nullptr) {
+        value = std::getenv("MANAPY_TIMING_DEBUG");
+    }
+    return env_enabled(value);
+}
 
 static std::string get_time_as_string(double time) {
     std::ostringstream oss;

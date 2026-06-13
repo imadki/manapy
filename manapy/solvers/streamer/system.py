@@ -67,8 +67,11 @@ class StreamerSolver:
     self.order = order
     self.cfl = cfl
 
-    self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_2d
-    if self.dim == 3:
+    advecdiff_fvm_utils_compute.setup(self.dim)
+    fvm_utils_compute.setup(self.dim)
+    if self.dim == 2:
+      self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_2d
+    elif self.dim == 3:
       self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_3d
 
     self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative_ST
