@@ -12,7 +12,9 @@ import manapy.domain.domain_compute as compute
 
 class Domain:
   PartitioningClass = Partitioning
-  def __init__(self, local_domain: 'LocalDomain'):
+  def __init__(self, local_domain: 'LocalDomain', backend=None):
+    from manapy.backends import get_backend
+    self.backend = get_backend("cpu") if backend is None else (get_backend(backend) if isinstance(backend, str) else backend)
     # Init
     self.rank = local_domain.rank
     self.size = local_domain.size
@@ -186,6 +188,16 @@ class Domain:
     self.backnodes = self._backnodes
     self.bounds = self._bounds
 
+    if self.backend.name == "gpu":
+      self._prepare_gpu_storage()
+
+  def _prepare_gpu_storage(self):
+    from manapy.backends.gpu import set_active_backend, GPUArray
+    from manapy.comms import GPUNeighborCommunication
+    set_active_backend(self.backend)
+    GPUArray.convert_to_gpu_array([self, self.cells, self.faces, self.nodes, self.halos, self.ghost])
+    self.halo_comm = GPUNeighborCommunication(self.halo_comm, self.backend)
+
 
   @staticmethod
   def _all_local_mesh_files_exist(size: int):
@@ -203,7 +215,32 @@ class Domain:
       shutil.rmtree(folder_name)
 
   @staticmethod
-  def create_domain(mesh_path, dim, partitioning_method, recreate=True):
+  def _partitioning_method_name(partitioning_method):
+    names = {
+      Partitioning.Par_Graph_K_Way: "graph_kway",
+      Partitioning.Par_Dual: "mesh_dual",
+      Partitioning.Par_Nodal: "mesh_nodal",
+    }
+    return names.get(partitioning_method, str(partitioning_method))
+
+  @staticmethod
+  def _print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh=None):
+    print("====> Run info <=====", flush=True)
+    print(f"  MPI ranks: {size}", flush=True)
+    print(f"  Dimension: {dim}D", flush=True)
+    print(f"  Mesh: {mesh_path}", flush=True)
+    print(f"  Partitioning: {Domain._partitioning_method_name(partitioning_method)}", flush=True)
+    print(f"  Local domains: {'recreate' if recreate else 'reuse if available'}", flush=True)
+    print(f"  Precision: {types.INT_TYPE} {types.FLOAT_TYPE}", flush=True)
+    if mesh is not None:
+      print(f"  Cells: {len(mesh.cells)}", flush=True)
+      print(f"  Nodes: {len(mesh.points)}", flush=True)
+      print(f"  Faces: {mesh.nb_faces}", flush=True)
+      print(f"  Physical faces: {len(mesh.phy_faces)}", flush=True)
+    print("====================", flush=True)
+
+  @staticmethod
+  def create_domain(mesh_path, dim, partitioning_method, recreate=True, backend=None):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
@@ -215,34 +252,36 @@ class Domain:
 
     if size == 1:
       if recreate == True or not Domain._all_local_mesh_files_exist(size):
-        mesh = Mesh(mesh_path, dim)
+        mesh = Mesh(mesh_path, dim, show_info=False)
+        Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
         partitioner = Partitioning(mesh)
         local_domain_data = partitioner.create_sub_domains()
         LocalDomainInterface.save_local_domains(local_domain_data, size)
-        local_domain = LocalDomain(local_domain_data[0], rank, size)
-        return Domain(local_domain)
+        local_domain = LocalDomain(local_domain_data[0], rank, size, backend=backend)
+        return Domain(local_domain, backend=backend)
       else:
         try:
           local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
-          local_domain = LocalDomain(local_domain_struct, rank, size)
-          return Domain(local_domain)
+          local_domain = LocalDomain(local_domain_struct, rank, size, backend=backend)
+          return Domain(local_domain, backend=backend)
         except Exception as e:
           import traceback
           print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
           raise
     else:
       if rank == 0:
-        print("====> Start <=====")
         try:
           if recreate == True or not Domain._all_local_mesh_files_exist(size):
-            print("====> Creating Mesh <=====")
             Domain._delete_local_domain_folder(size)
-            mesh = Mesh(mesh_path, dim)
+            mesh = Mesh(mesh_path, dim, show_info=False)
+            Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
             partitioner = Partitioning(mesh)
             partitioner.set_part_vert(size, partitioning_method)
             local_domains = partitioner.create_sub_domains()
             LocalDomainInterface.save_local_domains(local_domains, size)
-            print("====> End <=====")
+            print("====> Domain ready <=====", flush=True)
+          else:
+            Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate)
         except Exception as e:
           import traceback
           print(f"[Rank 0] failed: {e} {traceback.format_exc()}")
@@ -253,14 +292,14 @@ class Domain:
 
       try:
         local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
-        local_domain = LocalDomain(local_domain_struct, rank, size)
+        local_domain = LocalDomain(local_domain_struct, rank, size, backend=backend)
       except Exception as e:
         import traceback
         print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
         comm.Abort(1)
 
       comm.Barrier()
-      return Domain(local_domain)
+      return Domain(local_domain, backend=backend)
 
 
   def save_on_node_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):

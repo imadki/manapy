@@ -10,18 +10,13 @@ class Boundary:
   _compiled = {}
 
   @classmethod
-  def _get_funcs(cls, kind):
-    if kind in cls._compiled:
-      return cls._compiled[kind]
-    mapping = {
-      'neumann':   (bc_compute._ghost_value_neumann,   bc_compute._haloghost_value_neumann),
-      'dirichlet': (bc_compute._ghost_value_dirichlet, bc_compute._haloghost_value_dirichlet),
-      'neumannNH': (bc_compute._ghost_value_neumannNH, bc_compute._haloghost_value_neumannNH),
-      'nonslip':   (bc_compute._ghost_value_nonslip,   bc_compute._haloghost_value_nonslip),
-    }
-    g, h = mapping[kind]
-    cls._compiled[kind] = (compile(g), compile(h))
-    return cls._compiled[kind]
+  def _get_funcs(cls, kind, backend):
+    key = (backend.name, kind)
+    if key in cls._compiled:
+      return cls._compiled[key]
+    cls._compiled[key] = (backend.make_gridstride_kernel(bc_compute.GHOST_BODIES[kind], size_arg=3),
+                          backend.make_gridstride_kernel(bc_compute.HALOGHOST_BODIES[kind], size_arg=6))
+    return cls._compiled[key]
 
   def __init__(self, BCtype:str, BCvalueface:'float[:]', BCvaluenode:'float[:]', BCvaluehalo:'float[:]',
                BCloc:str, BCtypeindex:int, domain:Domain):
@@ -36,12 +31,17 @@ class Boundary:
     self.BCvaluenode = BCvaluenode
     self.BCvaluehalo = BCvaluehalo
     self._domain = domain
+    self.backend = domain.backend
 
     self._func_ghost_args = []
     self._func_haloghost_args = []
 
     self.constNH = np.zeros(1, dtype=types.np_float_type)
     self.constNHNode = np.zeros(1, dtype=types.np_float_type)
+    if self.backend.name == "gpu":
+      from manapy.backends.gpu import GPUArray
+      self.constNH = GPUArray(self.constNH)
+      self.constNHNode = GPUArray(self.constNHNode)
 
     if BCloc == "in":
       self._BCfaces = self._domain.infaces
@@ -71,13 +71,13 @@ class Boundary:
       raise ValueError(f"unknown BCloc: {BCloc}")
 
     if self._BCtype == "neumann" or self._BCtype == "periodic":
-      self._func_ghost, self._func_haloghost = Boundary._get_funcs('neumann')
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('neumann', self.backend)
     elif self._BCtype == "dirichlet":
-      self._func_ghost, self._func_haloghost = Boundary._get_funcs('dirichlet')
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('dirichlet', self.backend)
     elif self._BCtype == "neumannNH":
-      self._func_ghost, self._func_haloghost = Boundary._get_funcs('neumannNH')
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('neumannNH', self.backend)
     elif self._BCtype == "nonslip":
-      self._func_ghost, self._func_haloghost = Boundary._get_funcs('nonslip')
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('nonslip', self.backend)
     else:
       raise ValueError(f"unknown BCtype: {BCtype}")
     # elif self._BCtype == "slip":

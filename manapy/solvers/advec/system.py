@@ -43,17 +43,29 @@ class AdvectionSolver:
     self.cfl = cfl
 
 
-    self.var.__dict__["convective"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    self.var.__dict__["dissipative"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    self.var.__dict__["source"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
+    self.var.add_term("convective")
+    self.var.add_term("dissipative")
+    self.var.add_term("source")
 
-    if self.dim == 2:
-      self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
-    elif self.dim == 3:
-      self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_3d
-
-    self._time_step = fvm_utils_compute.time_step
-    self._update_new_value = fvm_utils_compute.update_new_value
+    fvm_utils_compute.setup(self.dim)
+    if self.domain.backend.name == "gpu":
+      if self.dim != 2:
+        raise NotImplementedError("Advection GPU is implemented for 2D only")
+      from manapy.solvers.advec.cuda_fvm_utils import (
+        get_kernel_explicitscheme_convective_2d,
+        get_kernel_time_step,
+        get_kernel_update_new_value,
+      )
+      self._explicitscheme_convective = get_kernel_explicitscheme_convective_2d()
+      self._time_step = get_kernel_time_step()
+      self._update_new_value = get_kernel_update_new_value()
+    else:
+      if self.dim == 2:
+        self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
+      elif self.dim == 3:
+        self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_3d
+      self._time_step = fvm_utils_compute.time_step
+      self._update_new_value = fvm_utils_compute.update_new_value
 
   def explicit_convective(self):
     if self.order == 2:

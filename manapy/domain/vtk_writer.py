@@ -51,12 +51,18 @@ class VTKWriter:
         return res
 
 
+    @staticmethod
+    def _as_host_array(value):
+        if hasattr(value, "to_host"):
+            return np.asarray(value.to_host())
+        return np.asarray(value)
+
     # --------------------------------------------------
     def _log(self, niter: int, time: int, dt: int, variables: list[str], values: list[npt.NDArray]):
         # Compute max for each variable
         maxvals = {}
         for var, val in zip(variables, values):
-            local_max = np.array([np.max(val)], dtype=np.float64)
+            local_max = np.array([np.max(self._as_host_array(val))], dtype=np.float64)
             global_max = np.zeros(1, dtype=np.float64)
             self.comm.Reduce(local_max, global_max, op=MPI.MAX, root=0)
             maxvals[var] = global_max[0]
@@ -101,7 +107,7 @@ class VTKWriter:
 
         for i in range(len(variables)):
             name = variables[i]
-            data = values[i]
+            data = self._as_host_array(values[i])
 
             split_data = []
 
@@ -168,7 +174,7 @@ class VTKWriter:
         self._log(niter, time, dt, variables, values)
         points = np.asarray(self.nodes.vertex[:, :3], dtype=types.np_float_type)
 
-        point_data = {var: np.asarray(val) for var, val in zip(variables, values)}
+        point_data = {var: self._as_host_array(val) for var, val in zip(variables, values)}
         fname = f"visu{self.rank}-{miter}.vtu"
         self._write_vtu(fname, points, point_data=point_data)
         self._write_pvtu(miter, variables, "point")

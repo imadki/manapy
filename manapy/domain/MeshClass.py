@@ -1,10 +1,9 @@
 import numpy as np
 import meshio
-import manapy.domain.mesh_compute as mesh_compute
 import manapy.backends.types as types
 
 class Mesh:
-  def __init__(self, mesh_path, dim):
+  def __init__(self, mesh_path, dim, show_info=True):
     if not (isinstance(dim, int) and dim == 2 or dim == 3):
       raise ValueError('Invalid dimension')
 
@@ -12,7 +11,8 @@ class Mesh:
     cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid = self._create_cells(cells_dict, dim)
     phy_faces, phy_faces_name = self._create_phy_faces(cells_dict, cell_data_dict, dim)
     nb_faces = self._compute_nb_faces(cells_dict, len(phy_faces), dim)
-    print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
+    if show_info:
+      print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
 
     self.mesh = mesh
     self.cells = cells
@@ -30,6 +30,20 @@ class Mesh:
       raise ValueError('Empty mesh')
     if len(phy_faces) == 0:
       raise ValueError('No boundary/physical faces')
+
+
+  @staticmethod
+  def _append_cells(cells, cells_item, counter):
+    for i in range(len(cells_item)):
+      cells[counter, 0:len(cells_item[i])] = cells_item[i]
+      cells[counter, -1] = len(cells_item[i])
+      counter += 1
+
+  @staticmethod
+  def _append_1d(arr_dest, arr_src, counter):
+    for i in range(len(arr_src)):
+      arr_dest[counter] = arr_src[i]
+      counter += 1
 
   def _read_mesh(self, mesh_path):
     mesh = meshio.read(mesh_path)
@@ -79,9 +93,9 @@ class Mesh:
     for k in physicals_key:
       if physicals.get(k) is not None:
         cells = np.array(cells_dict[k], dtype=types.np_int_type)
-        mesh_compute.append(phy_faces, cells, counter)
+        self._append_cells(phy_faces, cells, counter)
         physical = np.array(physicals[k], dtype=types.np_int_type)
-        mesh_compute.append_1d(phy_faces_name, physical, counter)
+        self._append_1d(phy_faces_name, physical, counter)
         counter += len(physicals[k])
 
     return phy_faces, phy_faces_name
@@ -162,7 +176,7 @@ class Mesh:
       if meshio_mesh_dic.get(item) is not None:
         cells_item = np.array(meshio_mesh_dic[item], dtype=types.np_int_type)
         cells_type[counter:counter + len(cells_item)] = cell_type_dic[item]
-        mesh_compute.append(cells, cells_item, counter)
+        self._append_cells(cells, cells_item, counter)
         counter += len(cells_item)
 
     return cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid

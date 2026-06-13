@@ -52,7 +52,18 @@ def _update_new_value(ne_c: 'float[:]', rez_ne: 'float[:]', dissip_ne: 'float[:]
 
 
 ############################################################################
-# Public
-explicitscheme_dissipative = compile(_explicitscheme_dissipative)
-time_step = compile(_time_step)
-update_new_value = compile(_update_new_value)
+# NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
+# ranks) before using any kernel below; DiffusionSolver does this in __init__.
+# All kernels here are dimension-agnostic, so they are compiled once.
+_agnostic_done = False
+
+def setup(dim):
+  global _agnostic_done
+  if dim not in (2, 3):
+    raise ValueError(f"Unsupported dimension: {dim}")
+  if not _agnostic_done:
+    global explicitscheme_dissipative, time_step, update_new_value
+    explicitscheme_dissipative = compile(_explicitscheme_dissipative)
+    time_step = compile(_time_step)
+    update_new_value = compile(_update_new_value)
+    _agnostic_done = True

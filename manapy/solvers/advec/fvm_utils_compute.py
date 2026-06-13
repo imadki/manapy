@@ -336,11 +336,30 @@ def _update_new_value(ne_c: 'float[:]', rez_ne: 'float[:]', dissip_ne: 'float[:]
 
 
 ############################################################################
-# Private
-_compute_upwind_flux = compile(_compute_upwind_flux)
+# NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
+# ranks) before using any kernel below; AdvectionSolver does this in __init__.
+#   - agnostic kernels are compiled once;
+#   - dimension-specific kernels are compiled only for the dimension(s) used.
+# Nested helpers are compiled (and rebound to module globals) before the kernels
+# that call them, so numba can resolve njit->njit calls.
+_agnostic_done = False
+_dims_done = set()
 
-# Public
-explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
-explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
-time_step = compile(_time_step)
-update_new_value = compile(_update_new_value)
+def setup(dim):
+  global _agnostic_done
+  if not _agnostic_done:
+    global _compute_upwind_flux, time_step, update_new_value
+    _compute_upwind_flux = compile(_compute_upwind_flux)  # nested helper first
+    time_step = compile(_time_step)
+    update_new_value = compile(_update_new_value)
+    _agnostic_done = True
+
+  if dim not in _dims_done:
+    global explicitscheme_convective_2d, explicitscheme_convective_3d
+    if dim == 2:
+      explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
+    elif dim == 3:
+      explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
+    else:
+      raise ValueError(f"Unsupported dimension: {dim}")
+    _dims_done.add(dim)

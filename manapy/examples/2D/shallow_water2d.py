@@ -10,8 +10,8 @@ from mpi4py import MPI
 from manapy.solvers.shallowater.system import ShallowWaterSolver
 from manapy.solvers.shallowater.tools_utils_compute import initialisation_SW
 import timeit
+import os
 from manapy.domain import Domain, Partitioning
-from manapy.helpers import get_mesh
 from manapy.core.Variable import Variable
 
 COMM = MPI.COMM_WORLD
@@ -19,7 +19,16 @@ SIZE = COMM.Get_size()
 RANK = COMM.Get_rank()
 start = timeit.default_timer()
 
-dim, mesh_path, mesh_name = get_mesh("big/carre.msh")
+try:
+  MESH_DIR = os.environ['MESH_DIR']
+except KeyError:
+  BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+  BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+
+filename = 'big/carre.msh'
+dim = 2
+mesh_path = os.path.join(MESH_DIR, filename)
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells

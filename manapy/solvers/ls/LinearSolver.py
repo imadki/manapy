@@ -52,6 +52,7 @@ class LinearSolver:
     self.var = var
     self.domain = domain
     self.dim = self.domain.dim
+    ls_compute.setup(self.dim)
     self.mpi_precision = MPI.FLOAT if FLOAT_TYPE == "float32" else MPI.DOUBLE
 
     # Backend
@@ -119,12 +120,14 @@ class LinearSolver:
       self._data = np.zeros(self.dataSize, dtype=FLOAT_TYPE)
 
     if solver_name in [LinearSolver.SolverScipy, LinearSolver.SolverMumps]:
-      self._get_rhs = ls_compute.get_rhs_glob_2d
-      if self.dim == 3:
+      if self.dim == 2:
+        self._get_rhs = ls_compute.get_rhs_glob_2d
+      elif self.dim == 3:
         self._get_rhs = ls_compute.get_rhs_glob_3d
     elif solver_name == LinearSolver.SolverPetsc:
-      self._get_rhs = ls_compute.get_rhs_loc_2d
-      if self.dim == 3:
+      if self.dim == 2:
+        self._get_rhs = ls_compute.get_rhs_loc_2d
+      elif self.dim == 3:
         self._get_rhs = ls_compute.get_rhs_loc_3d
 
     self.convert_solution = ls_compute.convert_solution

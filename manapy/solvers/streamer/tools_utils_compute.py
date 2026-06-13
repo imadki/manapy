@@ -1,5 +1,5 @@
 import numpy as np
-from manapy.backends.compile_fun import compile
+from manapy.backends.compile_fun import FunObj
 
 
 def _initialisation_streamer_2d(ne: 'float[:]', ni: 'float[:]', u: 'float[:]', v: 'float[:]', Ex: 'float[:]', Ey: 'float[:]',
@@ -42,6 +42,6 @@ def _initialisation_streamer_3d(ne: 'float[:]', ni: 'float[:]', u: 'float[:]', v
 
 
 ############################################################################
-# Public
-initialisation_streamer_2d = compile(_initialisation_streamer_2d)
-initialisation_streamer_3d = compile(_initialisation_streamer_3d)
+# Public: compiled lazily on first call (only the dimension actually used).
+initialisation_streamer_2d = FunObj(_initialisation_streamer_2d)
+initialisation_streamer_3d = FunObj(_initialisation_streamer_3d)

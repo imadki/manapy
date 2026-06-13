@@ -64,6 +64,7 @@ class DiffusionSolver:
     self.var.__dict__["dissipative"] = zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
     self.var.__dict__["source"] = zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
 
+    fvm_utils_compute.setup(self.dim)
     self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative
     self._time_step = fvm_utils_compute.time_step
     self._update_new_value = fvm_utils_compute.update_new_value

@@ -1,6 +1,8 @@
 import os
 import tempfile
+import time
 import numba
+import numpy as np
 import inspect
 from numba import cuda
 import hashlib
@@ -9,28 +11,26 @@ from manapy.backends.types import FLOAT_TYPE, INT_TYPE
 
 
 # =============================================================================
-# Choix de la stratégie de synchronisation de la compilation (cache numba).
+# Choix de la strategie de synchronisation de la compilation (cache numba).
 #
-# Pourquoi : en MPI, tous les rangs compilent les mêmes fonctions en même temps
-# et numba (cache=True) écrit le résultat sur disque. Sans précaution, les rangs
-# se marchent dessus sur le fichier cache -> corruption / crash au premier run.
+# Pourquoi : en MPI, tous les rangs compilent les memes fonctions en meme temps
+# et numba (cache=True) ecrit le resultat sur disque. Sans precaution, les rangs
+# peuvent se marcher dessus sur le fichier cache au premier run.
 #
-# Stratégies disponibles (variable d'env MANAPY_COMPILE_SYNC) :
-#   "current"  : comportement historique. Barrières MPI PAR FONCTION
-#                (rang 0 compile, barrière, les autres compilent, barrière).
-#                Simple, mais ~2 barrières x nb_fonctions au démarrage.
-#   "warmup"   : option 1. compile() est LOCAL (aucun MPI) et se contente
-#                d'enregistrer la fonction ; il faut appeler warmup() une fois
-#                après les imports -> UNE seule paire de barrières au total.
-#   "filelock" : option 3. Verrou fichier (lib `filelock`) autour de la
-#                compilation. Découplé de MPI -> aucun risque de deadlock,
-#                marche tant que le système de fichiers est partagé.
-#   "per_node" : option 4. Sous-communicateur par nœud (COMM_TYPE_SHARED) :
-#                seul le rang local 0 de chaque nœud compile, barrière
-#                node-locale, les autres lisent le cache. Évite la barrière
-#                globale et la recompilation redondante inter-nœuds.
+# Strategies disponibles (variable d'env MANAPY_COMPILE_SYNC) :
+#   "current"  : comportement historique. Barrieres MPI par fonction
+#                (rang 0 compile, barriere, les autres compilent, barriere).
+#   "per_node" : sous-communicateur par noeud (COMM_TYPE_SHARED) :
+#                seul le rang local 0 de chaque noeud compile d'abord, puis
+#                les autres rangs du meme noeud lisent le cache.
+#   "claim"    : premier process arrive, premier process compile. Un lock
+#                atomique par fonction empeche deux rangs de compiler la meme
+#                fonction en meme temps ; les autres attendent puis lisent le cache.
+#   "mpi_shared_lock" : verrou MPI shared-memory par noeud. Le premier rang du
+#                noeud qui reserve le slot compile ; les autres attendent puis
+#                lisent le cache.
 # =============================================================================
-COMPILE_SYNC = os.environ.get("MANAPY_COMPILE_SYNC", "current")
+COMPILE_SYNC = os.environ.get("MANAPY_COMPILE_SYNC", "mpi_shared_lock")
 
 
 def get_function_hash(func):
@@ -102,6 +102,107 @@ def _local_compile(func, signature, backend, parallel, nogil, current_hash):
   return compiled_func
 
 
+def _compile_lock_dir():
+  lock_dir = os.environ.get("MANAPY_COMPILE_LOCK_DIR")
+  if lock_dir is None:
+    lock_dir = os.path.join(tempfile.gettempdir(), "manapy_compile_locks")
+  os.makedirs(lock_dir, exist_ok=True)
+  return lock_dir
+
+
+def _compile_lock_path(func):
+  name = f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}"
+  safe_name = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
+  return os.path.join(_compile_lock_dir(), safe_name + ".lock")
+
+
+def _wait_for_compile_lock(lock_path):
+  timeout = float(os.environ.get("MANAPY_COMPILE_LOCK_TIMEOUT", "600"))
+  poll = float(os.environ.get("MANAPY_COMPILE_LOCK_POLL", "0.05"))
+  start = time.monotonic()
+  while os.path.exists(lock_path):
+    if time.monotonic() - start > timeout:
+      raise TimeoutError(f"Timed out waiting for numba compile lock: {lock_path}")
+    time.sleep(poll)
+
+
+_MPI_SHARED_LOCK_STATE = None
+
+
+def _mpi_shared_lock_state():
+  global _MPI_SHARED_LOCK_STATE
+  if _MPI_SHARED_LOCK_STATE is not None:
+    return _MPI_SHARED_LOCK_STATE
+
+  node_comm = MPI.COMM_WORLD.Split_type(MPI.COMM_TYPE_SHARED)
+  nlocks = int(os.environ.get("MANAPY_COMPILE_SHARED_LOCKS", "4096"))
+  dtype = np.dtype("i")
+  nbytes = nlocks * dtype.itemsize if node_comm.Get_rank() == 0 else 0
+  win = MPI.Win.Allocate_shared(nbytes, dtype.itemsize, comm=node_comm)
+  buf, _ = win.Shared_query(0)
+  locks = np.ndarray(buffer=buf, dtype=dtype, shape=(nlocks,))
+
+  if node_comm.Get_rank() == 0:
+    locks.fill(0)
+    win.Sync()
+  node_comm.Barrier()
+
+  _MPI_SHARED_LOCK_STATE = node_comm, win, locks
+  return _MPI_SHARED_LOCK_STATE
+
+
+def _mpi_shared_lock_slot(func):
+  name = f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}"
+  digest = hashlib.md5(name.encode("utf-8")).digest()
+  _, _, locks = _mpi_shared_lock_state()
+  return int.from_bytes(digest[:8], "little") % len(locks)
+
+
+def _mpi_shared_lock_try_claim(slot):
+  _, win, locks = _mpi_shared_lock_state()
+  token = MPI.COMM_WORLD.Get_rank() + 1
+  win.Lock(0, MPI.LOCK_EXCLUSIVE)
+  try:
+    win.Sync()
+    if locks[slot] == 0:
+      locks[slot] = token
+      win.Sync()
+      return True
+    return False
+  finally:
+    win.Unlock(0)
+
+
+def _mpi_shared_lock_wait(slot):
+  _, win, locks = _mpi_shared_lock_state()
+  timeout = float(os.environ.get("MANAPY_COMPILE_LOCK_TIMEOUT", "600"))
+  poll = float(os.environ.get("MANAPY_COMPILE_LOCK_POLL", "0.05"))
+  start = time.monotonic()
+
+  while True:
+    win.Lock(0, MPI.LOCK_SHARED)
+    try:
+      win.Sync()
+      if locks[slot] == 0:
+        return
+    finally:
+      win.Unlock(0)
+
+    if time.monotonic() - start > timeout:
+      raise TimeoutError(f"Timed out waiting for MPI shared compile lock slot {slot}")
+    time.sleep(poll)
+
+
+def _mpi_shared_lock_release(slot):
+  _, win, locks = _mpi_shared_lock_state()
+  win.Lock(0, MPI.LOCK_EXCLUSIVE)
+  try:
+    locks[slot] = 0
+    win.Sync()
+  finally:
+    win.Unlock(0)
+
+
 # -----------------------------------------------------------------------------
 # Stratégie "current" : barrières MPI par fonction (comportement historique).
 # -----------------------------------------------------------------------------
@@ -118,27 +219,6 @@ def _sync_current(func, signature, backend, parallel, nogil, current_hash):
   else:
     compiled_func = _local_compile(func, signature, backend, parallel, nogil, current_hash)
   return compiled_func
-
-
-# -----------------------------------------------------------------------------
-# Stratégie "filelock" (option 3) : verrou fichier, sans barrière MPI.
-# Le premier process à prendre le verrou compile et écrit le cache ; les autres
-# attendent le verrou puis compilent (cache chaud -> simple chargement).
-# -----------------------------------------------------------------------------
-def _lock_dir():
-  d = os.path.join(tempfile.gettempdir(), "manapy_compile_locks")
-  os.makedirs(d, exist_ok=True)
-  return d
-
-def _sync_filelock(func, signature, backend, parallel, nogil, current_hash):
-  try:
-    from filelock import FileLock
-  except ImportError as e:
-    raise ImportError("MANAPY_COMPILE_SYNC=filelock requires the 'filelock' package") from e
-  lock_name = f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}.lock"
-  lock_path = os.path.join(_lock_dir(), lock_name.replace(os.sep, "_"))
-  with FileLock(lock_path):
-    return _local_compile(func, signature, backend, parallel, nogil, current_hash)
 
 
 # -----------------------------------------------------------------------------
@@ -168,112 +248,49 @@ def _sync_per_node(func, signature, backend, parallel, nogil, current_hash):
 
 
 # -----------------------------------------------------------------------------
-# Stratégie "warmup" (option 1) : compilation différée + UNE paire de barrières.
-# compile() enregistre la fonction et renvoie un proxy ; warmup() compile tout.
-#
-# IMPORTANT : appeler warmup() UNE FOIS après avoir importé les modules *_compute,
-# avant le premier run. Si warmup() n'est pas appelé, chaque proxy compile
-# localement à son premier appel (fallback, sans barrière).
-#
-# Limite connue : un proxy ne peut PAS être passé comme argument à une autre
-# fonction numba (njit) ; les noyaux qui s'appellent entre eux doivent référencer
-# les fonctions privées `_xxx`, pas les noms publics compilés.
+# Strategie "claim" : premier arrive, premier servi par fonction.
 # -----------------------------------------------------------------------------
-_WARMUP_REGISTRY = []
+def _sync_claim(func, signature, backend, parallel, nogil, current_hash):
+  lock_path = _compile_lock_path(func)
+  while True:
+    try:
+      fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+      _wait_for_compile_lock(lock_path)
+      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
 
-class _DeferredKernel:
-  def __init__(self, func, signature, backend, parallel, nogil, current_hash):
-    self._spec = (func, signature, backend, parallel, nogil, current_hash)
-    self._source_hash = current_hash
-    self.func = None
-    _WARMUP_REGISTRY.append(self)
+    try:
+      with os.fdopen(fd, "w") as f:
+        comm = MPI.COMM_WORLD
+        f.write(f"rank={comm.Get_rank()} pid={os.getpid()}\n")
+      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
+    finally:
+      try:
+        os.unlink(lock_path)
+      except FileNotFoundError:
+        pass
 
-  def _compile(self):
-    if self.func is None:
-      func, signature, backend, parallel, nogil, h = self._spec
-      self.func = _local_compile(func, signature, backend, parallel, nogil, h)
-    return self.func
+# -----------------------------------------------------------------------------
+# Strategie "mpi_shared_lock" : lock MPI shared-memory par noeud.
+# -----------------------------------------------------------------------------
+def _sync_mpi_shared_lock(func, signature, backend, parallel, nogil, current_hash):
+  slot = _mpi_shared_lock_slot(func)
+  if _mpi_shared_lock_try_claim(slot):
+    try:
+      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
+    finally:
+      _mpi_shared_lock_release(slot)
 
-  @property
-  def signatures(self):
-    return getattr(self.func, 'signatures', None)
-
-  def __call__(self, *args, **kwargs):
-    if self.func is None:
-      self._compile()  # fallback local si warmup() n'a pas été appelé
-    return self.func(*args, **kwargs)
-
-def _sync_warmup(func, signature, backend, parallel, nogil, current_hash):
-  return _DeferredKernel(func, signature, backend, parallel, nogil, current_hash)
-
-def warmup():
-  """Compile toutes les fonctions enregistrées par la stratégie 'warmup',
-  avec une seule paire de barrières MPI (rang 0 d'abord, puis les autres)."""
-  comm = MPI.COMM_WORLD
-  if comm.Get_size() > 1:
-    if comm.Get_rank() == 0:
-      for k in _WARMUP_REGISTRY:
-        k._compile()
-      comm.Barrier()
-    else:
-      comm.Barrier()
-      for k in _WARMUP_REGISTRY:
-        k._compile()
-    comm.Barrier()
-  else:
-    for k in _WARMUP_REGISTRY:
-      k._compile()
+  _mpi_shared_lock_wait(slot)
+  return _local_compile(func, signature, backend, parallel, nogil, current_hash)
 
 
 # -----------------------------------------------------------------------------
-# Stratégie "lazy" (option 5) : compilation AU PREMIER APPEL.
-# Ne compile QUE les fonctions réellement appelées -> dans un run 2D, les noyaux
-# 3D ne sont jamais compilés (et inversement). C'est ce qui évite de compiler
-# tout le 2D+3D à l'import.
-#
-# En MPI (size > 1), le premier appel compile sous un verrou fichier (filelock)
-# pour éviter la course au cache numba. En série, compilation directe.
-#
-# Limite connue : comme pour 'warmup', un proxy ne peut PAS être passé comme
-# argument à une autre fonction numba (les noyaux s'appellent via les `_xxx`).
-# -----------------------------------------------------------------------------
-class _LazyKernel:
-  def __init__(self, func, signature, backend, parallel, nogil, current_hash):
-    self._spec = (func, signature, backend, parallel, nogil, current_hash)
-    self._source_hash = current_hash
-    self.func = None
-
-  def _compile(self):
-    func, signature, backend, parallel, nogil, h = self._spec
-    if MPI.COMM_WORLD.Get_size() > 1:
-      from filelock import FileLock
-      lock_name = f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}.lock"
-      lock_path = os.path.join(_lock_dir(), lock_name.replace(os.sep, "_"))
-      with FileLock(lock_path):
-        self.func = _local_compile(func, signature, backend, parallel, nogil, h)
-    else:
-      self.func = _local_compile(func, signature, backend, parallel, nogil, h)
-    return self.func
-
-  @property
-  def signatures(self):
-    return getattr(self.func, 'signatures', None)
-
-  def __call__(self, *args, **kwargs):
-    if self.func is None:
-      self._compile()
-    return self.func(*args, **kwargs)
-
-def _sync_lazy(func, signature, backend, parallel, nogil, current_hash):
-  return _LazyKernel(func, signature, backend, parallel, nogil, current_hash)
-
-
 _STRATEGIES = {
   "current": _sync_current,
-  "warmup": _sync_warmup,
-  "filelock": _sync_filelock,
   "per_node": _sync_per_node,
-  "lazy": _sync_lazy,
+  "claim": _sync_claim,
+  "mpi_shared_lock": _sync_mpi_shared_lock,
 }
 
 
@@ -318,11 +335,10 @@ class FunObj:
     self.args = a
     self.kw = kw
 
-  def _first_call(self, *args):
-    print("Compiling...", self.target_func.__name__)
+  def _first_call(self, *args, **kwargs):
     compiled = compile(self.target_func, *self.args, **self.kw)
     self.func = compiled  # replace for future calls
-    return compiled(*args)
+    return compiled(*args, **kwargs)
 
-  def __call__(self, *args):
-    return self.func(*args)
+  def __call__(self, *args, **kwargs):
+    return self.func(*args, **kwargs)

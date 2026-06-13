@@ -1,8 +1,30 @@
-import manapy_part32_32
-import manapy_part32_64
-import manapy_part64_32
-import manapy_part64_64
+import importlib
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import sys
+
 from manapy.backends.types import FLOAT_TYPE, INT_TYPE
+
+
+def _import_extension(name):
+    local_dir = Path(__file__).resolve().parent
+    for suffix in importlib.machinery.EXTENSION_SUFFIXES:
+        path = local_dir / f"{name}{suffix}"
+        if path.exists():
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            return module
+    return importlib.import_module(name)
+
+
+manapy_part32_32 = _import_extension("manapy_part32_32")
+manapy_part32_64 = _import_extension("manapy_part32_64")
+manapy_part64_32 = _import_extension("manapy_part64_32")
+manapy_part64_64 = _import_extension("manapy_part64_64")
 
 api_dic = {
     "int32": {
@@ -15,7 +37,8 @@ api_dic = {
     }
 }
 
-print("Used precision: ", INT_TYPE, FLOAT_TYPE)
+if os.environ.get("MANAPY_SHOW_PRECISION", "").lower() in {"1", "true", "yes", "on"}:
+    print("Used precision: ", INT_TYPE, FLOAT_TYPE)
 api = api_dic[INT_TYPE][FLOAT_TYPE]
 
 

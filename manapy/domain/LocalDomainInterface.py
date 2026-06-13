@@ -1,9 +1,17 @@
 import numpy as np
-from numba.typed import Dict, List
 import h5py
 import manapy.backends.types as types
 import manapy.c_api.manapy_c_api as manapy_c_api
 import os
+from concurrent.futures import ThreadPoolExecutor
+from mpi4py import MPI
+
+def _env_enabled(*names):
+  for name in names:
+    value = os.environ.get(name, "").lower()
+    if value in {"1", "true", "yes", "on", "all", "rank0"}:
+      return True
+  return False
 
 # Created inside PartitioningClass
 class LocalDomainInterface:
@@ -189,12 +197,28 @@ class LocalDomainInterface:
   @staticmethod
   def save_local_domains(local_domains, nb_parts: 'int'):
     folder_name = f"local_domain_{nb_parts}"
-    if not os.path.exists(folder_name):
-      os.makedirs(folder_name, exist_ok=True)
-    for rank in range(nb_parts):
+    os.makedirs(folder_name, exist_ok=True)
+
+    def save_one(rank):
       file_name = f"mesh{rank}.hdf5"
       path = os.path.join(folder_name, file_name)
       LocalDomainInterface.save_hdf5(local_domains[rank], path)
+
+    max_workers = int(os.environ.get("MANAPY_SAVE_THREADS", "1"))
+    if max_workers <= 0:
+      max_workers = 1
+
+    ts = MPI.Wtime()
+    if max_workers == 1 or nb_parts <= 1:
+      for rank in range(nb_parts):
+        save_one(rank)
+    else:
+      with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(save_one, range(nb_parts)))
+    te = MPI.Wtime()
+
+    if _env_enabled("MANAPY_DEBUG_TIMING", "MANAPY_TIMING_DEBUG", "MANAPY_SAVE_TIMING"):
+      print(f"====> Save local domains: {te - ts:.6f} s ({nb_parts} files, {max_workers} threads) <=====", flush=True)
 
   @staticmethod
   def load_and_create(rank: 'int', size: 'int'):

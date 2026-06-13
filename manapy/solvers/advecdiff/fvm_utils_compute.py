@@ -23,8 +23,8 @@ def _explicitscheme_dissipative(wx_face: 'float[:]', wy_face: 'float[:]', wz_fac
     else:
       dissip_w[face_cellid[i][0]] += flux_w
 
-def _compute_upwind_flux(w_l: 'float64', w_r: 'float64', u_face: 'float64', v_face: 'float64', w_face: 'float64',
-                        face_normal: 'float64[:]', flux_w: 'float64[:]'):
+def _compute_upwind_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
+                        face_normal: 'float[:]', flux_w: 'float[:]'):
   sign = u_face * face_normal[0] + v_face * face_normal[1] + w_face * face_normal[2]
 
   if sign >= 0:
@@ -365,12 +365,31 @@ def _update_new_value(ne_c: 'float[:]', rez_ne: 'float[:]', dissip_ne: 'float[:]
 
 
 ############################################################################
-# Private
-_compute_upwind_flux = compile(_compute_upwind_flux)
+# NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
+# ranks) before using any kernel below; the solvers do this in __init__.
+#   - agnostic kernels are compiled once;
+#   - dimension-specific kernels are compiled only for the dimension(s) used.
+# Nested helpers are compiled (and rebound to module globals) before the kernels
+# that call them, so numba can resolve njit->njit calls.
+_agnostic_done = False
+_dims_done = set()
 
-# Public
-explicitscheme_dissipative = compile(_explicitscheme_dissipative)
-explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
-explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
-time_step = compile(_time_step)
-update_new_value = compile(_update_new_value)
+def setup(dim):
+  global _agnostic_done
+  if not _agnostic_done:
+    global _compute_upwind_flux, explicitscheme_dissipative, time_step, update_new_value
+    _compute_upwind_flux = compile(_compute_upwind_flux)  # nested helper first
+    explicitscheme_dissipative = compile(_explicitscheme_dissipative)
+    time_step = compile(_time_step)
+    update_new_value = compile(_update_new_value)
+    _agnostic_done = True
+
+  if dim not in _dims_done:
+    global explicitscheme_convective_2d, explicitscheme_convective_3d
+    if dim == 2:
+      explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
+    elif dim == 3:
+      explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
+    else:
+      raise ValueError(f"Unsupported dimension: {dim}")
+    _dims_done.add(dim)

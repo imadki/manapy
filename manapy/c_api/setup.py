@@ -27,16 +27,16 @@ SOURCE = ["src/py_manapy_part.cpp", "src/partitioning.cpp", "src/utils.cpp", "sr
 # Only allow manapy_part64_32, manapy_part64_64 if you compile and link the int64 metis version
 libs = {
     "manapy_part32_32": {
-        "macros": [("FLOAT_TYPE", "float"), ("INT_TYPE", "int32"), ("MODULE_NAME", "manapy_part32_32")]
+        "macros": [("FLOAT_TYPE_SIZE", "32"), ("INT_TYPE_SIZE", "32"), ("MODULE_NAME", "manapy_part32_32")]
     },
     "manapy_part32_64": {
-        "macros": [("FLOAT_TYPE", "double"), ("INT_TYPE", "int32"), ("MODULE_NAME", "manapy_part32_64")]
+        "macros": [("FLOAT_TYPE_SIZE", "64"), ("INT_TYPE_SIZE", "32"), ("MODULE_NAME", "manapy_part32_64")]
     },
     # "manapy_part64_32": {
-    #     "macros": [("FLOAT_TYPE", "float"), ("INT_TYPE", "int64"), ("MODULE_NAME", "manapy_part64_32")]
+    #     "macros": [("FLOAT_TYPE_SIZE", "32"), ("INT_TYPE_SIZE", "64"), ("MODULE_NAME", "manapy_part64_32")]
     # },
     # "manapy_part64_64": {
-    #     "macros": [("FLOAT_TYPE", "double"), ("INT_TYPE", "int64"), ("MODULE_NAME", "manapy_part64_64")]
+    #     "macros": [("FLOAT_TYPE_SIZE", "64"), ("INT_TYPE_SIZE", "64"), ("MODULE_NAME", "manapy_part64_64")]
     # }
 }
 ext_modules = []
