@@ -52,7 +52,14 @@ class NeighborCommunication:
 
   def exchange(self, data, recv_buffer=None):
     if self.size == 1 or self.neighbors.shape[0] == 0:
-      return np.copy(data)
+      # No neighbors: nothing is received. Honor the caller's buffer (left
+      # unchanged) and never return a copy of the local data, which would be
+      # mistaken for data received from neighbors.
+      if recv_buffer is not None:
+        return recv_buffer
+      if data.ndim == 2:
+        return np.empty((0, data.shape[1]), dtype=data.dtype)
+      return np.empty(0, dtype=data.dtype)
     # --- MPI datatype ---
     mpi_type = MPI._typedict.get(data.dtype.char)
     if mpi_type is None:
@@ -108,7 +115,9 @@ class NeighborCommunication:
 
   def immediate_exchange(self, data, recv_buffer):
     if self.size == 1 or self.neighbors.shape[0] == 0:
-      return np.empty_like(data)
+      # No neighbors: nothing to exchange. Return a null request so callers can
+      # still call .Wait()/Waitall() uniformly (recv_buffer is left unchanged).
+      return MPI.REQUEST_NULL
     # --- MPI datatype ---
     mpi_type = MPI._typedict.get(data.dtype.char)
     if mpi_type is None:

@@ -166,7 +166,7 @@ class VTKWriter:
             assert len(item) == self.nbnodes
 
         self._log(niter, time, dt, variables, values)
-        points = np.asarray(self.nodes.vertex[:, :3], dtype=np.float64)
+        points = np.asarray(self.nodes.vertex[:, :3], dtype=types.np_float_type)
 
         point_data = {var: np.asarray(val) for var, val in zip(variables, values)}
         fname = f"visu{self.rank}-{miter}.vtu"
@@ -184,7 +184,7 @@ class VTKWriter:
             assert len(item) == self.nbcells
 
         self._log(niter, time, dt, variables, values)
-        points = np.asarray(self.nodes.vertex[:, :3], dtype=np.float64)
+        points = np.asarray(self.nodes.vertex[:, :3], dtype=types.np_float_type)
 
         cell_data = self._format_cell_data(variables, values)
         fname = f"visu{self.rank}-{miter}.vtu"
