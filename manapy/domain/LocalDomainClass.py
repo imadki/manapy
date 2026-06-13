@@ -17,6 +17,9 @@ class LocalDomain:
     self.rank = rank
     self.size = size
     self.dim = local_domain_struct.dim
+    # Compile the dimension-specific domain kernels once (only the used dim).
+    # Called uniformly on all ranks here to stay barrier-safe.
+    compute.setup(self.dim)
     self.nodes = local_domain_struct.nodes
     self.cells = local_domain_struct.cells
     self.cells_type = local_domain_struct.cells_type

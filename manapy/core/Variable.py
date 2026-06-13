@@ -14,6 +14,7 @@ from types import LambdaType
 import manapy.core.variable_compute_2d as variable_compute_2d
 import manapy.core.variable_compute_3d as variable_compute_3d
 import manapy.core.variable_compute_utils as variable_compute_utils
+from manapy.backends.compile_fun import compile
 from manapy.backends.types import FLOAT_TYPE
 
 """
@@ -40,6 +41,35 @@ is_called = False
 """
 
 class Variable:
+  # Cache of compiled kernels per dimension. Mirrors the old `compile_func`:
+  # only the dimension actually used is ever compiled, and only once.
+  _compiled_funcs = {}
+
+  @classmethod
+  def _get_compiled_funcs(cls, dim):
+    if dim in cls._compiled_funcs:
+      return cls._compiled_funcs[dim]
+
+    funcs = {
+      'facetocell': compile(variable_compute_utils._facetocell),
+      'celltoface': compile(variable_compute_utils._celltoface),
+    }
+    if dim == 2:
+      funcs['interp']        = compile(variable_compute_2d._centertovertex_2d)
+      funcs['face_gradient'] = compile(variable_compute_2d._face_gradient_2d)
+      funcs['cell_gradient'] = compile(variable_compute_2d._cell_gradient_2d)
+      funcs['barthlimiter']  = compile(variable_compute_2d._barthlimiter_2d)
+    elif dim == 3:
+      funcs['interp']        = compile(variable_compute_3d._centertovertex_3d)
+      funcs['face_gradient'] = compile(variable_compute_3d._face_gradient_3d)
+      funcs['cell_gradient'] = compile(variable_compute_3d._cell_gradient_3d)
+      funcs['barthlimiter']  = compile(variable_compute_3d._barthlimiter_3d)
+    else:
+      raise ValueError(f"Unsupported dimension: {dim}")
+
+    cls._compiled_funcs[dim] = funcs
+    return funcs
+
   def __init__(self, domain:Domain, BC:dict=None, values_dict:dict=None, name:str=None):
     if domain is None:
       raise ValueError("domain must be given")
@@ -100,19 +130,14 @@ class Variable:
       self._BCfront = self.BCs["front"]
       self._BCback = self.BCs["back"]
 
-    # Functions
-    self._facetocell = variable_compute_utils.facetocell
-    self._celltoface = variable_compute_utils.celltoface
-    if self._dim == 2:
-      self._func_interp = variable_compute_2d.centertovertex_2d
-      self._face_gradient = variable_compute_2d.face_gradient_2d
-      self._cell_gradient = variable_compute_2d.cell_gradient_2d
-      self._barthlimiter = variable_compute_2d.barthlimiter_2d
-    elif self._dim == 3:
-      self._func_interp = variable_compute_3d.centertovertex_3d
-      self._face_gradient = variable_compute_3d.face_gradient_3d
-      self._cell_gradient = variable_compute_3d.cell_gradient_3d
-      self._barthlimiter = variable_compute_3d.barthlimiter_3d
+    # Functions: compile only the kernels needed for this dimension, once.
+    funcs = Variable._get_compiled_funcs(self._dim)
+    self._facetocell    = funcs['facetocell']
+    self._celltoface    = funcs['celltoface']
+    self._func_interp   = funcs['interp']
+    self._face_gradient = funcs['face_gradient']
+    self._cell_gradient = funcs['cell_gradient']
+    self._barthlimiter  = funcs['barthlimiter']
 
   def add_term(self, name):
     self.__dict__[name] = np.zeros(self._nbcells, dtype=FLOAT_TYPE)

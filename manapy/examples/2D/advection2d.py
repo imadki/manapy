@@ -53,7 +53,7 @@ v = Variable(domain=domain)
 P = Variable(domain=domain)
 
 # Call the transport solver
-S = AdvectionSolver(ne, vel=(u, v), order=1, cfl=0.8)
+S = AdvectionSolver(ne, vel=(u, v), order=2, cfl=0.8)
 
 ####Initialisation
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)

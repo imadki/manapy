@@ -2,8 +2,27 @@ from manapy.domain import Domain
 import manapy.boundary.bc_compute as bc_compute
 import numpy as np
 import manapy.backends.types as types
+from manapy.backends.compile_fun import compile
 
 class Boundary:
+  # Cache of compiled (ghost, haloghost) kernels per BC kind. Mirrors the old
+  # compile_func: only the boundary types actually used are ever compiled.
+  _compiled = {}
+
+  @classmethod
+  def _get_funcs(cls, kind):
+    if kind in cls._compiled:
+      return cls._compiled[kind]
+    mapping = {
+      'neumann':   (bc_compute._ghost_value_neumann,   bc_compute._haloghost_value_neumann),
+      'dirichlet': (bc_compute._ghost_value_dirichlet, bc_compute._haloghost_value_dirichlet),
+      'neumannNH': (bc_compute._ghost_value_neumannNH, bc_compute._haloghost_value_neumannNH),
+      'nonslip':   (bc_compute._ghost_value_nonslip,   bc_compute._haloghost_value_nonslip),
+    }
+    g, h = mapping[kind]
+    cls._compiled[kind] = (compile(g), compile(h))
+    return cls._compiled[kind]
+
   def __init__(self, BCtype:str, BCvalueface:'float[:]', BCvaluenode:'float[:]', BCvaluehalo:'float[:]',
                BCloc:str, BCtypeindex:int, domain:Domain):
 
@@ -52,17 +71,13 @@ class Boundary:
       raise ValueError(f"unknown BCloc: {BCloc}")
 
     if self._BCtype == "neumann" or self._BCtype == "periodic":
-      self._func_ghost = bc_compute.ghost_value_neumann
-      self._func_haloghost = bc_compute.haloghost_value_neumann
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('neumann')
     elif self._BCtype == "dirichlet":
-      self._func_ghost = bc_compute.ghost_value_dirichlet
-      self._func_haloghost = bc_compute.haloghost_value_dirichlet
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('dirichlet')
     elif self._BCtype == "neumannNH":
-      self._func_ghost = bc_compute.ghost_value_neumannNH
-      self._func_haloghost = bc_compute.haloghost_value_neumannNH
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('neumannNH')
     elif self._BCtype == "nonslip":
-      self._func_ghost = bc_compute.ghost_value_nonslip
-      self._func_haloghost = bc_compute.haloghost_value_nonslip
+      self._func_ghost, self._func_haloghost = Boundary._get_funcs('nonslip')
     else:
       raise ValueError(f"unknown BCtype: {BCtype}")
     # elif self._BCtype == "slip":

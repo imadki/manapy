@@ -1390,51 +1390,91 @@ def _dist_ortho_function_2d(d_innerfaces: 'int[:]', d_boundaryfaces: 'int[:]', f
 # #########################################################
 
 
-# private
-_is_in_array = compile(_is_in_array)
-_binary_search = compile(_binary_search)
-_intersect_nodes = compile(_intersect_nodes)
-_intersect = compile(_intersect)
-_create_cell_faces = compile(_create_cell_faces)
-_triangle_area_3d = compile(_triangle_area_3d)
-_triangle_normal_3d = compile(_triangle_normal_3d)
-_get_phyid = compile(_get_phyid)
-_distance_2d = compile(_distance_2d)
-_search_halo_cell = compile(_search_halo_cell)
-
-# public
-
-count_max_node_cellid = compile(_count_max_node_cellid)
-create_node_cellid = compile(_create_node_cellid)
-create_cellfid = compile(_create_cellfid, parallel=True)
-count_max_cell_cellnid = compile(_count_max_cell_cellnid)
-create_cell_cellnid = compile(_create_cell_cellnid)
-create_info = compile(_create_info)
+# c_api aliases (no numba compilation involved, safe at module level)
 compute_cell_center_volume_2d = manapy_c_api.compute_cell_center_area_2d
 compute_cell_center_volume_3d = manapy_c_api.compute_cell_center_volume_3d
-compute_face_info_2d = compile(_compute_face_info_2d)
-compute_face_info_3d = compile(_compute_face_info_3d)
-face_gradient_info_2d = compile(_face_gradient_info_2d)
-face_gradient_info_3d = compile(_face_gradient_info_3d)
-variables_2d = compile(_variables_2d)
-variables_3d = compile(_variables_3d)
-define_node_oldname = compile(_define_node_oldname)
-define_face_name = compile(_define_face_name)
 
-create_halo_cells = compile(_create_halo_cells)
-create_ghost_info = compile(_create_ghost_info)
-get_ghost_part_size = compile(_get_bf_recv_part_info)
-create_ghost_tables = compile(_create_ghost_tables)
 
-count_max_bcell_halophyid = compile(_count_max_bcell_halophyid)
-create_bcell_halophyid = compile(_create_bcell_halophyid)
-create_ghost_new_index = compile(_create_ghost_new_index)
-create_halo_ghost_tables = compile(_create_halo_ghost_tables)
+# =========================================================================
+# NOTHING is compiled at import. Call setup(dim) once, uniformly on all MPI
+# ranks, BEFORE using any kernel below — done at the top of Domain.create_domain
+# and (idempotently) at the start of LocalDomain.__init__.
+#
+#  - agnostic kernels (used by partitioning AND LocalDomain) are compiled once;
+#  - dimension-specific kernels are compiled only for the dimension(s) used.
+#
+# Nested helpers are compiled (and rebound to module globals) before the kernels
+# that call them, so numba can resolve njit->njit calls.
+# =========================================================================
+_agnostic_done = False
+_dims_done = set()
 
-create_normal_face_of_cell = compile(_create_normal_face_of_cell)
-dist_ortho_function_2d = compile(_dist_ortho_function_2d)
+def setup(dim):
+  global _agnostic_done
 
-get_max_b_ncellid = compile(_get_max_b_ncellid)
-create_b_ncellid = compile(_create_b_ncellid)
-create_bf_cellid = compile(_create_bf_cellid)
-get_cell_nb_phyid = compile(_get_cell_nb_phyid)
+  if not _agnostic_done:
+    global _is_in_array, _binary_search, _intersect_nodes, _intersect
+    global _create_cell_faces, _get_phyid, _search_halo_cell
+    global count_max_node_cellid, create_node_cellid, create_cellfid
+    global count_max_cell_cellnid, create_cell_cellnid, create_info
+    global define_node_oldname, define_face_name
+    global create_halo_cells, create_ghost_info, get_ghost_part_size, create_ghost_tables
+    global count_max_bcell_halophyid, create_bcell_halophyid, create_ghost_new_index, create_halo_ghost_tables
+    global create_normal_face_of_cell, get_max_b_ncellid, create_b_ncellid, create_bf_cellid, get_cell_nb_phyid
+
+    # nested helpers first (must be dispatchers before their callers)
+    _is_in_array = compile(_is_in_array)
+    _binary_search = compile(_binary_search)
+    _intersect_nodes = compile(_intersect_nodes)
+    _intersect = compile(_intersect)
+    _create_cell_faces = compile(_create_cell_faces)
+    _get_phyid = compile(_get_phyid)
+    _search_halo_cell = compile(_search_halo_cell)
+
+    # agnostic entry points
+    count_max_node_cellid = compile(_count_max_node_cellid)
+    create_node_cellid = compile(_create_node_cellid)
+    create_cellfid = compile(_create_cellfid, parallel=True)
+    count_max_cell_cellnid = compile(_count_max_cell_cellnid)
+    create_cell_cellnid = compile(_create_cell_cellnid)
+    create_info = compile(_create_info)
+    define_node_oldname = compile(_define_node_oldname)
+    define_face_name = compile(_define_face_name)
+    create_halo_cells = compile(_create_halo_cells)
+    create_ghost_info = compile(_create_ghost_info)
+    get_ghost_part_size = compile(_get_bf_recv_part_info)
+    create_ghost_tables = compile(_create_ghost_tables)
+    count_max_bcell_halophyid = compile(_count_max_bcell_halophyid)
+    create_bcell_halophyid = compile(_create_bcell_halophyid)
+    create_ghost_new_index = compile(_create_ghost_new_index)
+    create_halo_ghost_tables = compile(_create_halo_ghost_tables)
+    create_normal_face_of_cell = compile(_create_normal_face_of_cell)
+    get_max_b_ncellid = compile(_get_max_b_ncellid)
+    create_b_ncellid = compile(_create_b_ncellid)
+    create_bf_cellid = compile(_create_bf_cellid)
+    get_cell_nb_phyid = compile(_get_cell_nb_phyid)
+
+    _agnostic_done = True
+
+  if dim not in _dims_done:
+    global _distance_2d, _triangle_area_3d, _triangle_normal_3d
+    global compute_face_info_2d, compute_face_info_3d
+    global face_gradient_info_2d, face_gradient_info_3d
+    global variables_2d, variables_3d, dist_ortho_function_2d
+
+    if dim == 2:
+      _distance_2d = compile(_distance_2d)
+      compute_face_info_2d = compile(_compute_face_info_2d)
+      face_gradient_info_2d = compile(_face_gradient_info_2d)
+      variables_2d = compile(_variables_2d)
+      dist_ortho_function_2d = compile(_dist_ortho_function_2d)
+    elif dim == 3:
+      _triangle_area_3d = compile(_triangle_area_3d)
+      _triangle_normal_3d = compile(_triangle_normal_3d)
+      compute_face_info_3d = compile(_compute_face_info_3d)
+      face_gradient_info_3d = compile(_face_gradient_info_3d)
+      variables_3d = compile(_variables_3d)
+    else:
+      raise ValueError(f"Unsupported dimension: {dim}")
+
+    _dims_done.add(dim)

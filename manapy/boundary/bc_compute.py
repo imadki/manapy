@@ -95,11 +95,3 @@ def _haloghost_value_nonslip(w_halo: 'float[:]', w_haloghost: 'float[:]', node_h
 #################################################################################
 #################################################################################
 # public
-ghost_value_neumann = compile(_ghost_value_neumann)
-ghost_value_dirichlet = compile(_ghost_value_dirichlet)
-ghost_value_nonslip = compile(_ghost_value_nonslip)
-haloghost_value_nonslip = compile(_haloghost_value_nonslip)
-ghost_value_neumannNH = compile(_ghost_value_neumannNH)
-haloghost_value_neumannNH = compile(_haloghost_value_neumannNH)
-haloghost_value_dirichlet = compile(_haloghost_value_dirichlet)
-haloghost_value_neumann = compile(_haloghost_value_neumann)

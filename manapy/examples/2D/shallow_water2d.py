@@ -60,7 +60,7 @@ Z = Variable(domain=domain)
 
 initialisation_SW(h.cell, hu.cell, hv.cell, hc.cell, Z.cell, cells.center, 0)
 
-S = ShallowWaterSolver(h=h, hvel=(hu, hv), hc=hc, Z=Z, order=2, cfl=0.8)
+S = ShallowWaterSolver(h=h, hvel=(hu, hv), hc=hc, Z=Z, order=1, cfl=0.8)
 
 ts = MPI.Wtime()
 if RANK == 0:

@@ -8,6 +8,7 @@ from mpi4py import MPI
 from manapy.domain import VTKWriter
 import manapy.backends.types as types
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
+import manapy.domain.domain_compute as compute
 
 class Domain:
   PartitioningClass = Partitioning
@@ -206,6 +207,11 @@ class Domain:
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
+
+    # Compile all domain kernels here, once, uniformly on every rank (before the
+    # rank-0-only partitioning step). Keeps zero compilation at import while
+    # staying barrier-safe.
+    compute.setup(dim)
 
     if size == 1:
       if recreate == True or not Domain._all_local_mesh_files_exist(size):
