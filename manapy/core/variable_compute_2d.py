@@ -1,6 +1,4 @@
 import numpy as np
-from manapy.backends.compile_fun import compile
-# import manapy.backends.types as types
 
 def _centertovertex_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
                       cell_center: 'float[:,:]', halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]',
@@ -325,11 +323,4 @@ def _barthlimiter_2d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
           psi_ij = min(val, value)
 
       psi[i] = min(psi[i], psi_ij)
-
-############################################################################33
-# Public
-centertovertex_2d = compile(_centertovertex_2d)
-face_gradient_2d = compile(_face_gradient_2d)
-cell_gradient_2d = compile(_cell_gradient_2d)
-barthlimiter_2d = compile(_barthlimiter_2d)
 

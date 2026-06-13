@@ -1,6 +1,3 @@
-from manapy.backends.compile_fun import compile
-
-
 def _facetocell(u_face: 'float[:]', u_c: 'float[:]', cell_faceid: 'int[:,:]', dim: 'int'):
   nbelements = len(u_c)
 
@@ -29,7 +26,3 @@ def _celltoface(u_cell: 'float[:]', u_face: 'float[:]', u_ghost: 'float[:]', u_h
     c1 = face_cellid[i][0]
     u_face[i] = .5 * (u_cell[c1] + u_ghost[i])
 
-############################################################################
-# Public
-facetocell = compile(_facetocell)
-celltoface = compile(_celltoface)

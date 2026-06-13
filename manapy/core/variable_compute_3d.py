@@ -1,4 +1,3 @@
-from manapy.backends.compile_fun import compile
 import numpy as np
 
 def _centertovertex_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]', w_haloghost: 'float[:]',
@@ -410,14 +409,5 @@ def _barthlimiter_3d(w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
           psi_ij = min(1., value)
 
       psi[i] = min(psi[i], psi_ij)
-
-
-############################################################################
-# Public
-
-cell_gradient_3d = compile(_cell_gradient_3d)
-face_gradient_3d = compile(_face_gradient_3d)
-centertovertex_3d = compile(_centertovertex_3d)
-barthlimiter_3d = compile(_barthlimiter_3d)
 
 
