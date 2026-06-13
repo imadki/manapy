@@ -1,9 +1,95 @@
 import numba
 import inspect
+import os
+import time
+import atexit
 from numba import cuda
 import hashlib
 from mpi4py import MPI
 from manapy.backends.types import FLOAT_TYPE, INT_TYPE
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_TIMING_MODE = os.environ.get("MANAPY_COMPILE_TIMING", "").lower()
+_TIMING_PRINT_EACH = _TIMING_MODE in _TRUE_VALUES or _TIMING_MODE == "all"
+_TIMING_SUMMARY = _TIMING_MODE in _TRUE_VALUES or _TIMING_MODE in {"summary", "all"}
+_TIMING_ALL_RANKS = _TIMING_MODE == "all"
+_COMPILE_TIMINGS = []
+
+
+def _function_name(func):
+  return f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}"
+
+
+def _record_compile_timing(func, backend, parallel, nogil, compile_time, elapsed_time, rank):
+  entry = {
+    "name": _function_name(func),
+    "backend": backend,
+    "parallel": parallel,
+    "nogil": nogil,
+    "rank": rank,
+    "compile_time": compile_time,
+    "elapsed_time": elapsed_time,
+  }
+  _COMPILE_TIMINGS.append(entry)
+
+  if _TIMING_PRINT_EACH and (_TIMING_ALL_RANKS or rank == 0):
+    print(
+      "[manapy.compile] "
+      f"rank={rank} {entry['name']} "
+      f"compile={compile_time:.6f}s elapsed={elapsed_time:.6f}s "
+      f"backend={backend} parallel={parallel}",
+      flush=True,
+    )
+
+
+def reset_compile_timings():
+  _COMPILE_TIMINGS.clear()
+
+
+def get_compile_timings():
+  return [entry.copy() for entry in _COMPILE_TIMINGS]
+
+
+def get_compile_total_time(include_wait=False):
+  key = "elapsed_time" if include_wait else "compile_time"
+  return sum(entry[key] for entry in _COMPILE_TIMINGS)
+
+
+def print_compile_timings(limit=None, sort=True, include_wait=True):
+  entries = get_compile_timings()
+  if sort:
+    key = "elapsed_time" if include_wait else "compile_time"
+    entries.sort(key=lambda entry: entry[key], reverse=True)
+  if limit is not None:
+    entries = entries[:limit]
+
+  total_compile = get_compile_total_time(include_wait=False)
+  total_elapsed = get_compile_total_time(include_wait=True)
+  rank = entries[0]["rank"] if entries else MPI.COMM_WORLD.Get_rank()
+  print(
+    "[manapy.compile] "
+    f"rank={rank} functions={len(_COMPILE_TIMINGS)} "
+    f"compile_total={total_compile:.6f}s elapsed_total={total_elapsed:.6f}s",
+    flush=True,
+  )
+  for entry in entries:
+    print(
+      "[manapy.compile] "
+      f"rank={entry['rank']} {entry['name']} "
+      f"compile={entry['compile_time']:.6f}s "
+      f"elapsed={entry['elapsed_time']:.6f}s",
+      flush=True,
+    )
+
+
+def _print_compile_timings_at_exit():
+  if _TIMING_SUMMARY and _COMPILE_TIMINGS:
+    rank = _COMPILE_TIMINGS[0]["rank"]
+    if _TIMING_ALL_RANKS or rank == 0:
+      print_compile_timings(limit=10)
+
+
+atexit.register(_print_compile_timings_at_exit)
 
 
 def get_function_hash(func):
@@ -93,20 +179,31 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=Fa
 
   # Compile and store hash
   comm = MPI.COMM_WORLD
+  rank = comm.Get_rank()
+  elapsed_start = time.perf_counter()
+  compile_time = 0.0
   if comm.Get_size() > 1:
-    if comm.Get_rank() == 0:
+    if rank == 0:
       # print(f"compile function {func.__name__} with backend:", backend, "using rank ", MPI.COMM_WORLD.Get_rank())
+      compile_start = time.perf_counter()
       compiled_func = _compile_numba(backend, func, signature, parallel=parallel, nogil=nogil)
+      compile_time = time.perf_counter() - compile_start
       comm.Barrier()
     else:
       comm.Barrier()
+      compile_start = time.perf_counter()
       compiled_func = _compile_numba(backend, func, signature, parallel=parallel, nogil=nogil)
+      compile_time = time.perf_counter() - compile_start
     comm.Barrier()
   else:
+    compile_start = time.perf_counter()
     compiled_func = _compile_numba(backend, func, signature, parallel=parallel, nogil=nogil)
+    compile_time = time.perf_counter() - compile_start
+  elapsed_time = time.perf_counter() - elapsed_start
 
   # Attach source hash to compiled function
   compiled_func._source_hash = current_hash
+  _record_compile_timing(func, backend, parallel, nogil, compile_time, elapsed_time, rank)
   return compiled_func
 
 """
