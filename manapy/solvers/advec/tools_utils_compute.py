@@ -9,7 +9,7 @@ def _initialisation_gaussian_2d(ne: 'float[:]', u: 'float[:]', v: 'float[:]', P:
     xcent = cell_center[i][0]
     ycent = cell_center[i][1]
 
-    ne[i] = 5 * np.exp(-1. * ((xcent - 0.2) ** 2 + (ycent - 0.2) ** 2) / sigma ** 2) + 1
+    ne[i] = 5 * np.exp(-1. * ((xcent - 0.) ** 2 + (ycent - 0.2) ** 2) / sigma ** 2) + 1
     u[i] = 0.
     v[i] = 0.
     P[i] = Pinit * (.5 - xcent)

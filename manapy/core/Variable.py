@@ -9,7 +9,7 @@ Created on Wed Feb 16 20:53:35 2022
 import numpy as np
 from manapy.domain import Domain
 import manapy.backends.types as types
-from manapy.boundary.Boundary import Boundary
+from manapy.boundary.Boundary import Boundary, update_slip_ghost
 from types import LambdaType
 from manapy.backends.types import FLOAT_TYPE
 
@@ -127,6 +127,25 @@ class Variable:
     self.BCneumannNH,
     self._BCs) = self._update_boundaries(BC, self._values)
 
+    # A "slip" wall is a coupled (vector) BC: it needs every velocity component
+    # together. Variables carrying a slip BC auto-register on the domain in
+    # creation order (u, v[, w]), so update_ghost_value() can apply the coupled
+    # slip automatically without the user wiring update_slip_ghost() by hand.
+    self._has_slip = any(bc is not None and bc.BCtype in Boundary._VECTOR_TYPES
+                         for bc in self._BCs.values())
+    if self._has_slip:
+      if getattr(self._domain, "slip_velocity", None) is None:
+        self._domain.slip_velocity = []
+        from mpi4py import MPI
+        if MPI.COMM_WORLD.Get_rank() == 0:
+          print("WARNING: 'slip' boundary detected (coupled vector BC).\n"
+                "         Create the velocity components in spatial order "
+                "(u, v[, w]), each with the slip BC;\n"
+                "         only velocity components must carry 'slip'. They "
+                "auto-register and the reflection\n"
+                "         is applied by update_ghost_value() in that order.")
+      self._domain.slip_velocity.append(self)
+
     self._BCin = self.BCs["in"]
     self._BCout = self.BCs["out"]
     self._BCbottom = self.BCs["bottom"]
@@ -164,6 +183,53 @@ class Variable:
       from manapy.backends.gpu import GPUArray
       values = GPUArray(values)
     self.__dict__[name] = values
+
+  def _fill_bc_values(self, value, bcfaces, bctypeindex, valueface, valuenode, valuehalo):
+    """Fill the face / node / haloghost boundary arrays from a prescribed value.
+
+    `value` may be a constant (int/float) or a callable ``lambda x, y, z``.
+    Shared by the dirichlet and neumannNH branches of `_update_boundaries`.
+    """
+    bcnodes = np.where(self._domain.nodes.oldname == bctypeindex)[0]
+
+    # Flatten the ragged (node -> haloghost ids) map for the boundary nodes:
+    # the last column holds the per-node count, the others the ghost ids.
+    haloghostid = self._domain.nodes.haloghostid
+    if len(bcnodes):
+      maxg = haloghostid.shape[1] - 1
+      counts = haloghostid[bcnodes, -1]
+      mask = np.arange(maxg)[None, :] < counts[:, None]
+      ghost_ids = haloghostid[bcnodes][:, :maxg][mask]
+    else:
+      ghost_ids = np.empty(0, dtype=haloghostid.dtype)
+
+    fc = self._domain.faces.center
+    vx = self._domain.nodes.vertex
+    gfc = self._domain.ghost.ext_info_flt
+
+    if isinstance(value, LambdaType):
+      try:
+        valueface[bcfaces] = value(fc[bcfaces, 0], fc[bcfaces, 1], fc[bcfaces, 2])
+        valuenode[bcnodes] = value(vx[bcnodes, 0], vx[bcnodes, 1], vx[bcnodes, 2])
+        if len(ghost_ids):
+          valuehalo[ghost_ids] = value(gfc[ghost_ids, 4], gfc[ghost_ids, 5], gfc[ghost_ids, 6])
+      except (TypeError, ValueError):
+        # lambda not vectorizable over arrays: evaluate element by element
+        for i in bcfaces:
+          valueface[i] = value(fc[i, 0], fc[i, 1], fc[i, 2])
+        for i in bcnodes:
+          valuenode[i] = value(vx[i, 0], vx[i, 1], vx[i, 2])
+        for gid in ghost_ids:
+          valuehalo[gid] = value(gfc[gid, 4], gfc[gid, 5], gfc[gid, 6])
+
+    elif isinstance(value, (int, float)):
+      valueface[bcfaces] = value
+      valuenode[bcnodes] = value
+      if len(ghost_ids):
+        valuehalo[ghost_ids] = value
+
+    else:
+      raise ValueError("BC value must be a number or a callable lambda(x, y, z)")
 
   def _update_boundaries(self, BC:dict, values_dict:dict):
     valueface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
@@ -234,177 +300,78 @@ class Variable:
           if bct == "periodic":
             raise ValueError("BC must be not periodic for " + str(loc))
 
-        if bct == "dirichlet":  # or bct =="neumannNH":
-          BCs[loc] = Boundary(BCtype=bct,
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
+        # Build the Boundary once: the constructor arguments are identical for
+        # every BC type (only BCtype differs).
+        BCs[loc] = Boundary(BCtype=bct,
+                            BCloc=loc,
+                            BCvalueface=self.cell,
+                            BCvaluenode=self.cell,
+                            BCvaluehalo=self.halo,
+                            BCtypeindex=domain_bc_type_idx,
+                            domain=self._domain)
+        bc = BCs[loc]
 
-          BCdirichlet.append(BCs[loc].BCtypeindex)
-          dirichletfaces.extend(BCs[loc].BCfaces)
+        if bct == "dirichlet":
+          BCdirichlet.append(bc.BCtypeindex)
+          dirichletfaces.extend(bc.BCfaces)
 
           if values_dict is None or loc not in values_dict.keys():
             raise ValueError("Value of dirichlet BC for " + str(loc) + " faces must be given")
 
           # TODO check valuehalo (face center miss)
-          if isinstance(values_dict[loc], LambdaType):
-            for i in BCs[loc].BCfaces:
-              valueface[i] = values_dict[loc](self._domain.faces.center[i][0], self._domain.faces.center[i][1],
-                                               self._domain.faces.center[i][2])
-            for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
-              valuenode[i] = values_dict[loc](self._domain.nodes.vertex[i][0], self._domain.nodes.vertex[i][1],
-                                               self._domain.nodes.vertex[i][2])
+          self._fill_bc_values(values_dict[loc], bc.BCfaces, bc.BCtypeindex,
+                               valueface, valuenode, valuehalo)
 
-             
-              for j in range(self._domain.nodes.haloghostid[i, -1]):
-                ghost_id = self._domain.nodes.haloghostid[i, j]
-                face_center = self._domain.ghost.ext_info_flt[ghost_id][4:7]
-                valuehalo[ghost_id] = values_dict[loc](face_center[0], face_center[1], face_center[2])
-
-          elif isinstance(values_dict[loc], (int, float)):
-            for i in BCs[loc].BCfaces:
-              valueface[i] = values_dict[loc]
-
-            for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
-              valuenode[i] = values_dict[loc]
-
-              for j in range(self._domain.nodes.haloghostid[i, -1]):
-                ghost_id = self._domain.nodes.haloghostid[i, j]
-                valuehalo[ghost_id] = values_dict[loc]
-
-          BCs[loc].BCvalueface = valueface
-          BCs[loc].BCvaluenode = valuenode
-          BCs[loc].BCvaluehalo = valuehalo
+          bc.BCvalueface = valueface
+          bc.BCvaluenode = valuenode
+          bc.BCvaluehalo = valuehalo
 
         elif bct == "neumannNH":
-          BCs[loc] = Boundary(BCtype=bct,
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
-
-          BCneumannNH.append(BCs[loc].BCtypeindex)
-          neumannNHfaces.extend(BCs[loc].BCfaces)
+          BCneumannNH.append(bc.BCtypeindex)
+          neumannNHfaces.extend(bc.BCfaces)
 
           if values_dict is None or loc not in values_dict.keys():
-            raise ValueError("Value of dirichlet BC for " + str(loc) + " faces must be given")
+            raise ValueError("Value of neumannNH BC for " + str(loc) + " faces must be given")
 
           # TODO check valuehalo (face center miss)
-          if isinstance(values_dict[loc], LambdaType):
-            for i in BCs[loc].BCfaces:
-              valueface[i] = values_dict[loc](self._domain.faces.center[i][0], self._domain.faces.center[i][1],
-                                               self._domain.faces.center[i][2])
-            for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
-              valuenode[i] = values_dict[loc](self._domain.nodes.vertex[i][0], self._domain.nodes.vertex[i][1],
-                                               self._domain.nodes.vertex[i][2])
+          self._fill_bc_values(values_dict[loc], bc.BCfaces, bc.BCtypeindex,
+                               valueface, valuenode, valuehalo)
 
-              for j in range(self._domain.nodes.haloghostid[i, -1]):
-                ghost_id = self._domain.nodes.haloghostid[i, j]
-                face_center = self._domain.ghost.ext_info_flt[ghost_id][4:7]
-                valuehalo[ghost_id] = values_dict[loc](face_center[0], face_center[1], face_center[2])
+          bc.constNH = valueface
+          bc.constNHNode = valuenode
 
-          elif isinstance(values_dict[loc], (int, float)):
-            for i in BCs[loc].BCfaces:
-              valueface[i] = values_dict[loc]
-
-            for i in np.where(self._domain.nodes.oldname == BCs[loc].BCtypeindex)[0]:
-              valuenode[i] = values_dict[loc]
-
-              for j in range(self._domain.nodes.haloghostid[i, -1]):
-                ghost_id = self._domain.nodes.haloghostid[i, j]
-                valuehalo[ghost_id] = values_dict[loc]
-
-          BCs[loc].constNH = valueface
-          BCs[loc].constNHNode = valuenode
-
-          valueface2 = self.cell
-          valuenode2 = self.node
-          valuehalo2 = self.halo
-
-          BCs[loc].BCvalueface = valueface2
-          BCs[loc].BCvaluenode = valuenode2
-          BCs[loc].BCvaluehalo = valuehalo2
-
+          bc.BCvalueface = self.cell
+          bc.BCvaluenode = self.node
+          bc.BCvaluehalo = self.halo
 
         elif bct == "neumann":
-          BCs[loc] = Boundary(BCtype=bct,
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
+          BCneumann.append(bc.BCtypeindex)
+          neumannfaces.extend(bc.BCfaces)
 
-          BCneumann.append(BCs[loc].BCtypeindex)
-          neumannfaces.extend(BCs[loc].BCfaces)
-
-          valueface = self.cell # TODO why not self.face
-          valuenode = self.node
-          valuehalo = self.halo
-
-          BCs[loc].BCvalueface = valueface
-          BCs[loc].BCvaluenode = valuenode
-          BCs[loc].BCvaluehalo = valuehalo
+          bc.BCvalueface = self.cell  # TODO why not self.face
+          bc.BCvaluenode = self.node
+          bc.BCvaluehalo = self.halo
 
         elif bct == "periodic":
-          BCs[loc] = Boundary(BCtype=bct,
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
-
-          BCs[loc].BCvalueface = np.array([], dtype=types.np_float_type)
-          BCs[loc].BCvaluenode = np.array([], dtype=types.np_float_type)
-          BCs[loc].BCvaluehalo = np.array([], dtype=types.np_float_type)
-
+          bc.BCvalueface = np.array([], dtype=types.np_float_type)
+          bc.BCvaluenode = np.array([], dtype=types.np_float_type)
+          bc.BCvaluehalo = np.array([], dtype=types.np_float_type)
 
         elif bct == "slip":
-          BCs[loc] = Boundary(BCtype=bct,
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
+          BCneumann.append(bc.BCtypeindex)
+          neumannfaces.extend(bc.BCfaces)
 
-          BCneumann.append(BCs[loc].BCtypeindex)
-          neumannfaces.extend(BCs[loc].BCfaces)
-
-          valueface = self.cell
-          valuenode = self.node
-          valuehalo = self.halo
-
-          BCs[loc].BCvalueface = valueface
-          BCs[loc].BCvaluenode = valuenode
-          BCs[loc].BCvaluehalo = valuehalo
-
+          bc.BCvalueface = self.cell
+          bc.BCvaluenode = self.node
+          bc.BCvaluehalo = self.halo
 
         elif bct == "nonslip":
-          BCs[loc] = Boundary(BCtype=bct,
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
+          BCneumann.append(bc.BCtypeindex)
+          neumannfaces.extend(bc.BCfaces)
 
-          BCneumann.append(BCs[loc].BCtypeindex)
-          neumannfaces.extend(BCs[loc].BCfaces)
-
-          valueface = self.cell
-          valuenode = self.node
-          valuehalo = self.halo
-
-          BCs[loc].BCvalueface = valueface
-          BCs[loc].BCvaluenode = valuenode
-          BCs[loc].BCvaluehalo = valuehalo
+          bc.BCvalueface = self.cell
+          bc.BCvaluenode = self.node
+          bc.BCvaluehalo = self.halo
 
         else:
           raise ValueError(f"Invalid BCtype {bct}")
@@ -539,11 +506,20 @@ class Variable:
 
   def update_ghost_value(self):
     for BC in self._BCs.values():
+      # vector (component-coupled) BCs such as slip have no per-scalar kernel;
+      # they are applied below via the coupled update_slip_ghost.
+      if BC.func_ghost is None:
+        continue
       BC.func_ghost(BC.BCvalueface, self.ghost, self._domain.faces.cellid,
                      BC.BCfaces,
                      BC.constNH, self._domain.faces.dist_ortho)
       BC.func_haloghost(BC.BCvaluehalo, self.haloghost, self._domain.nodes.haloghostid,
                          self._domain.ghost.ext_info_int, self._domain.ghost.ext_info_flt, BC.BCtypeindex, self._domain.halonodes, BC.constNHNode)
+
+    # Coupled slip walls: apply the reflection on the whole velocity group that
+    # auto-registered on the domain (in creation order u, v[, w]).
+    if self._has_slip:
+      update_slip_ghost(self._domain.slip_velocity)
 
   def norml2(self, exact, order=None):
 

@@ -151,8 +151,8 @@ def _term_source_srnh_SW(src_h: 'float[:]', src_hu: 'float[:]', src_hv: 'float[:
 
     # TODO
     src_h[i] = 0
-    src_hu[i] = -grav * (s_1[0] + s_2[0] + s_3[0])
-    src_hv[i] = -grav * (s_1[1] + s_2[1] + s_3[1])
+    src_hu[i] = 0#-grav * (s_1[0] + s_2[0] + s_3[0])
+    src_hv[i] = 0#-grav * (s_1[1] + s_2[1] + s_3[1])
     src_hc[i] = 0.
     src_Z[i] = 0.
 
