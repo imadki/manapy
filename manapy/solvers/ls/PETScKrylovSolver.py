@@ -16,6 +16,9 @@ class PETScKrylovSolver(LinearSolver):
      'reordering the matrix only in serial case.'),
     ('reuse_mtx', 'bool', True, False,
      'If True, pre-factorize the matrix.'),
+    ('reuse_ij', 'bool', True, False,
+     'If True, reuse the matrix structure (preallocation) and only refresh '
+     'the values with zeroEntries on subsequent calls.'),
     ('with_mtx', 'bool', False, True,
      'If True, the matrix should be given.'),
     ('method', 'str', 'fgmres', False,
@@ -47,6 +50,7 @@ class PETScKrylovSolver(LinearSolver):
                scheme: str = "diamond",
                reordering: bool = False,
                reuse_mtx: bool = True,
+               reuse_ij: bool = True,
                with_mtx: bool = False,
                method: str = 'fgmres',
                precond: str = 'gamg',
@@ -76,6 +80,9 @@ class PETScKrylovSolver(LinearSolver):
     self.petsc = PETSc
     self.ksp = None
     self.reuse_mtx = reuse_mtx
+    self.reuse_ij = reuse_ij
+    self._ij_already_set = False
+    self.NNZ = None
     self.with_mtx = with_mtx
     self.sub_precond = sub_precond
     self.reordering = reordering
@@ -114,14 +121,17 @@ class PETScKrylovSolver(LinearSolver):
     def custom_monitor(ksp, its, r_norm):
       print(f"Iteration {its}: Residual Norm = {r_norm}")
 
-    if not self.reuse_mtx:
+    if not self.reuse_mtx and not self.reuse_ij:
       self.clear()
 
-    self.create_petsc_matrix(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx)
+    self.create_petsc_matrix(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx,
+                             reuse_ij=self.reuse_ij)
 
     if rhs is not None:
       self.update_rhs(rhs=rhs)
 
+    # warm-start: reuse the previous solution as initial guess
+    self.initiate_sol()
     self.ksp.solve(self.rhs, self.sol)
 
     if self.verbose:
@@ -192,13 +202,19 @@ class PETScKrylovSolver(LinearSolver):
   def initiate_sol(self):
     self.ksp.setInitialGuessNonzero(True)
 
-  def create_petsc_matrix(self, reuse_mtx=False, with_mtx=False):
+  def create_petsc_matrix(self, reuse_mtx=False, with_mtx=False, reuse_ij=False):
     if not reuse_mtx or (self.ksp is None):
       ###################################################################
       self.update_ghost_values()
       # assembly row, col , data, rhs(bc)
       if not with_mtx:
         self.assembly()
+      elif not np.any(self._data):
+        raise ValueError(
+          "with_mtx=True but no matrix was provided: the solver expects you to "
+          "fill the (row, col, data) triplets yourself. Call "
+          "set_matrix(row, col, data) (or fill _row/_col/_data directly) before "
+          "solving, or use with_mtx=False to assemble the matrix automatically.")
 
       ###################################################################
       # reordering matrix
@@ -206,26 +222,31 @@ class PETScKrylovSolver(LinearSolver):
         self.reordering_matrix()
 
       ###################################################################
-      # non zero values for each rows
-      NNZ_loc = np.zeros(self.globalsize, dtype=np.int32)
-      unique, counts = np.unique(np.asarray(self._row, dtype=np.int32),
-                                 return_counts=True)
+      # Create the petsc matrix structure (preallocation) only once when
+      # reuse_ij is enabled; afterwards only the values are refreshed.
+      if not reuse_ij or not self._ij_already_set:
+        # non zero values for each rows
+        NNZ_loc = np.zeros(self.globalsize, dtype=np.int32)
+        unique, counts = np.unique(np.asarray(self._row, dtype=np.int32),
+                                   return_counts=True)
 
-      for i in range(self.domain.nbcells):
-        NNZ_loc[self.domain.cells.loctoglob[i]] = counts[i]
+        for uid, count in zip(unique, counts):
+          NNZ_loc[uid] = count
 
-      NNZ = np.zeros(self.globalsize, dtype=np.int32)
-      self.comm.Allreduce(NNZ_loc, NNZ, op=MPI.SUM)  # , root=0)
+        self.NNZ = np.zeros(self.globalsize, dtype=np.int32)
+        self.comm.Allreduce(NNZ_loc, self.NNZ, op=MPI.SUM)  # , root=0)
 
-      # Create the petsc matrix
+        self.mat = self.petsc.Mat().create()
+        self.mat.setSizes(self.globalsize)
+        self.mat.setType("mpiaij")
+        self.mat.setFromOptions()
+        self.mat.setPreallocationNNZ(max(self.NNZ))
+        self.mat.setOption(self.petsc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+        self._ij_already_set = True
+
       ###################################################################
-      self.mat = self.petsc.Mat().create()
-      self.mat.setSizes(self.globalsize)
-      self.mat.setType("mpiaij")
-      self.mat.setFromOptions()
-      self.mat.setPreallocationNNZ(max(NNZ))
-      self.mat.setOption(self.petsc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
-
+      # Refresh the numerical values
+      self.mat.zeroEntries()
       for i in range(len(self._row)):
         self.mat.setValues(self._row[i], self._col[i], self._data[i], addv=True)
 
@@ -233,8 +254,9 @@ class PETScKrylovSolver(LinearSolver):
       self.mat.assemblyEnd(self.mat.AssemblyType.FINAL)
 
       ###################################################################
-      self.sol = self.mat.getVecRight()
-      self.sendcounts2 = np.array(self.comm.gather(len(self.sol.array), root=0))
+      if self.sol is None:
+        self.sol = self.mat.getVecRight()
+        self.sendcounts2 = np.array(self.comm.gather(len(self.sol.array), root=0))
 
       if self.comm.Get_rank() == 0:
         self.recvbuf = np.empty(sum(self.sendcounts2), dtype=FLOAT_TYPE)
@@ -262,5 +284,19 @@ class PETScKrylovSolver(LinearSolver):
     self.rhs.view()
     self.sol.view()
 
+  def set_matrix(self, row, col, data):
+    """Provide the matrix triplets explicitly (use together with with_mtx=True).
+
+    The (row, col) indices must be 0-based global indices. Call this before
+    solving.
+    """
+    self._row = np.asarray(row, dtype=np.int32)
+    self._col = np.asarray(col, dtype=np.int32)
+    self._data = np.asarray(data, dtype=FLOAT_TYPE)
+
   def clear(self):
     self.ksp = None
+    self._ij_already_set = False
+    self.mat = None
+    self.sol = None
+    self.sendcounts2 = None
