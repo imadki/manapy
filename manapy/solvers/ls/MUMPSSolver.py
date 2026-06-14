@@ -2,7 +2,6 @@ import numpy as np
 from mpi4py import MPI
 from manapy.core.Variable import Variable
 from manapy.domain import Domain
-import manapy.solvers.ls.ls_compute as ls_compute
 from manapy.backends.types import FLOAT_TYPE
 from manapy.solvers.ls.LinearSolver import LinearSolver
 import numpy.typing as npt
@@ -19,14 +18,21 @@ class MUMPSSolver(LinearSolver):
      'reordering the matrix only in serial case.'),
     ('reuse_mtx', 'bool', True, False,
      'If True, pre-factorize the matrix.'),
+    ('reuse_ij', 'bool', True, False,
+     'If True, set the (row, col) structure and run analysis only once, '
+     'then only refresh the numerical values on subsequent calls.'),
     ('with_mtx', 'bool', False, True,
      'If True, the matrix should be given.'),
     ('system', "str", "double", "double",
      'Mumps precision'),
     ('memory_relaxation', 'int', 20, False,
      'The percentage increase in the estimated working space.'),
+    ('blr', 'bool', False, False,
+     'If True, enable Block Low-Rank (BLR) compression.'),
+    ('blr_eps', 'float', 1e-4, False,
+     'BLR dropping tolerance (CNTL(7)).'),
     ('verbose', 'bool', False, False,
-     """If True, the solver can print more information about the                                                                                                                                       
+     """If True, the solver can print more information about the
         solution.""")
   ]
 
@@ -37,9 +43,12 @@ class MUMPSSolver(LinearSolver):
                scheme: str = "diamond",
                reordering: bool = False,
                reuse_mtx: bool = False,
-               with_mtx: bool = True,
+               reuse_ij: bool = True,
+               with_mtx: bool = False,
                system: str = "double",
                memory_relaxation: int = 20,
+               blr: bool = False,
+               blr_eps: float = 1e-4,
                ):
 
     import mumps4py.mumps_solver as mumps
@@ -57,23 +66,38 @@ class MUMPSSolver(LinearSolver):
     self.domain.solver = "mumps"
     self.reordering = reordering
     self.reuse_mtx = reuse_mtx
+    self.reuse_ij = reuse_ij
     self.with_mtx = with_mtx
     self.memory_relaxation = memory_relaxation
+    self.blr = blr
+    self.blr_eps = blr_eps
     self.sol = None
 
+    # State for reuse_ij: structure set / analysis done only once
+    self._ij_already_set = False
+    self._analysis_done = False
+    self._row_origin = None
+    self._col_origin = None
+
     self.rhs0 = np.zeros(self.globalsize, dtype=FLOAT_TYPE)
+    # reduced rhs (BC contribution); kept as an attribute so it survives across
+    # calls when presolve is skipped (reuse_mtx=True in a time loop)
+    self.rhs00 = None
 
   def __call__(self, rhs: npt.NDArray[Union[np.float32, np.float64]]=None):
 
-    if not self.reuse_mtx:
-      self.clear()
+    # clear() is no longer called automatically: with reuse_ij the MUMPS
+    # instance (structure + analysis) must persist across calls even when
+    # reuse_mtx is False (re-factorization each call). Call clear() manually
+    # for a full reset.
 
-    rhs00 = self.presolve(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx)
+    self.presolve(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx,
+                  reuse_ij=self.reuse_ij)
 
     if rhs is not None:
-      rhs += rhs00
+      rhs += self.rhs00
     else:
-      rhs = rhs00
+      rhs = self.rhs00
 
     # Allocation size of rhs
     if self.comm.Get_rank() == 0:
@@ -93,41 +117,72 @@ class MUMPSSolver(LinearSolver):
     self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision], recvbuf=self.var.cell,
                        root=0)
 
-  def presolve(self, reuse_mtx=False, with_mtx=False):
+  def presolve(self, reuse_mtx=False, with_mtx=False, reuse_ij=False):
     if not reuse_mtx or self.mumps_ls is None:
       self.update_ghost_values()
 
       # assembly row, col , data, rhs(bc)
-      # if not with_mtx:
-      #   print("Assembly")
-      self.assembly()
+      if not with_mtx:
+        self.assembly()
+      elif not np.any(self._data):
+        raise ValueError(
+          "with_mtx=True but no matrix was provided: the solver expects you to "
+          "fill the (row, col, data) triplets yourself. Call "
+          "set_matrix(row, col, data) (or fill _row/_col/_data directly) before "
+          "solving, or use with_mtx=False to assemble the matrix automatically.")
       if self.reordering and self.comm.Get_size() == 1:
         print("=>Reordering the matrix ...")
         self.reordering_matrix()
 
-      rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
+      self.rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
 
-      if self.mumps_ls is None:
-        mem_relax = self.memory_relaxation
-        self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
-                                               mem_relax=mem_relax)
-      # Fortran indexing
-      self._row += 1
-      self._col += 1
+      if reuse_ij:
+        if not self._ij_already_set:
+          if self.mumps_ls is None:
+            self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
+                                                   mem_relax=self.memory_relaxation)
+          # Fortran indexing + keep a copy for later restoration
+          self._row += 1
+          self._col += 1
+          self._row_origin = self._row.copy()
+          self._col_origin = self._col.copy()
 
-      self.mumps_ls.set_rcd_distributed(self._row, self._col,
-                                        self._data,
-                                        self.globalsize)
+          self.mumps_ls.set_rc_distributed(self._row, self._col, self.globalsize)
+          self._ij_already_set = True
+        else:
+          # assembly() rewrote _row/_col as 0-based; restore Fortran indexing
+          # (only if assembly ran, i.e. not when the matrix is provided)
+          if not with_mtx:
+            self._row[:] = self._row_origin
+            self._col[:] = self._col_origin
+      else:
+        if self.mumps_ls is None:
+          self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
+                                                 mem_relax=self.memory_relaxation)
+        # Fortran indexing
+        self._row += 1
+        self._col += 1
+        self.mumps_ls.set_rc_distributed(self._row, self._col, self.globalsize)
+
+      self.mumps_ls.set_data_distributed(self._data, self.globalsize)
 
       self.mumps_ls.set_icntl(18, 3)
       self.mumps_ls.set_icntl(16, 1)
-      # self.mumps_ls.set_icntl(14, 40)
+      self.mumps_ls.set_icntl(7, 7)      # ordering (METIS/SCOTCH if available)
+      self.mumps_ls.set_icntl(22, 0)     # out-of-core off (default)
+      if self.blr:
+        self.mumps_ls.set_icntl(35, 1)            # activate BLR
+        self.mumps_ls.set_cntl(7, self.blr_eps)   # BLR dropping tolerance
 
       if self.comm.Get_rank() == 0:
-        self.sol = rhs00.copy()
+        self.sol = self.rhs00.copy()
 
-      # Analyse
-      self.mumps_ls._mumps_call(job=1)
+      # Analyse (only once when reuse_ij)
+      if not self._analysis_done:
+        self.mumps_ls._mumps_call(job=1)
+        if reuse_ij:
+          self._analysis_done = True
+
       # Factorization Phase
       self.mumps_ls._mumps_call(job=2)
 
@@ -137,8 +192,71 @@ class MUMPSSolver(LinearSolver):
       else:
         self.sol = np.zeros(self.globalsize, dtype=FLOAT_TYPE)
 
-      return rhs00
-    return None
+  def set_matrix(self, row, col, data):
+    """Provide the matrix triplets explicitly (use together with with_mtx=True).
+
+    The (row, col) indices must be 0-based; Fortran indexing is handled
+    internally. Call this before solving.
+    """
+    self._row = np.asarray(row, dtype=np.int32)
+    self._col = np.asarray(col, dtype=np.int32)
+    self._data = np.asarray(data, dtype=FLOAT_TYPE)
 
   def clear(self):
     self.mumps_ls = None
+    self._ij_already_set = False
+    self._analysis_done = False
+    self._row_origin = None
+    self._col_origin = None
+
+  def view_matrix_on_root(self, threshold=1e-10):
+    """
+    Gather the distributed sparse matrix (row, col, data) from all processes
+    onto rank 0 and rebuild it as a CSR matrix for display/inspection.
+    """
+    local_row = self._row.astype(np.int32)
+    local_col = self._col.astype(np.int32)
+    local_data = self._data.astype(np.float64)
+
+    comm = self.comm
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+
+    # Step 1: gather local sizes
+    n_local = np.array([len(local_row)], dtype=np.int32)
+    n_sizes = None
+    if rank == 0:
+      n_sizes = np.empty(size, dtype=np.int32)
+    comm.Gather(n_local, n_sizes, root=0)
+
+    # Step 2: gather the data (row, col, data)
+    row_recv = None
+    col_recv = None
+    data_recv = None
+
+    if rank == 0:
+      total_nnz = np.sum(n_sizes)
+      row_recv = np.empty(total_nnz, dtype=np.int32)
+      col_recv = np.empty(total_nnz, dtype=np.int32)
+      data_recv = np.empty(total_nnz, dtype=np.float64)
+
+    comm.Gatherv(local_row, (row_recv, n_sizes), root=0)
+    comm.Gatherv(local_col, (col_recv, n_sizes), root=0)
+    comm.Gatherv(local_data, (data_recv, n_sizes), root=0)
+
+    # Step 3: build the matrix on rank 0
+    if rank == 0:
+      from scipy.sparse import coo_matrix
+      from scipy.sparse import find
+      # _row/_col are 1-based (Fortran) once the structure has been set
+      mat = coo_matrix((data_recv, (row_recv - 1, col_recv - 1)),
+                       shape=(self.globalsize, self.globalsize))
+      csr = mat.tocsr()
+      print("Global matrix (CSR format):")
+      row, col, data = find(csr)
+      for i, j, v in zip(row, col, data):
+        if abs(v) > threshold:
+          print(f"A[{i}, {j}] = {v:.14f}")
+      return csr
+    else:
+      return None

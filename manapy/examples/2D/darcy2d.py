@@ -83,11 +83,11 @@ f = lambda x, y, z: Pinit * (1. - x)
 # reuse_mtx: matrix does not change during the while loop
 # scheme: diamond (fv4 not tested!!!)
 # verbose: printing the mumps/petsc output
-# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=False, scheme='diamond')
+L = MUMPSSolver(domain=domain, var=P, with_mtx=False, reuse_mtx=True, reuse_ij=False, scheme='diamond')
 
-L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=False, scheme='diamond',
-              precond='gamg', sub_precond="amg",  # with_mtx=False,
-              eps_a=1e-10, eps_r=1e-10, method="gmres")
+# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
+#               precond='gamg', sub_precond="amg",  # with_mtx=False,
+#               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
 ts = MPI.Wtime()
 

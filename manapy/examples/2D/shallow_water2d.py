@@ -57,8 +57,8 @@ saving_at_node = 1
 
 boundaries = {"in": "neumann",
               "out": "neumann",
-              "upper": "nonslip",
-              "bottom": "nonslip"
+              "upper": "slip",
+              "bottom": "slip"
               }
 
 h = Variable(domain=domain)
