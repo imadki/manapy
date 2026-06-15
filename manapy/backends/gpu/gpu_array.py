@@ -51,6 +51,11 @@ class GPUArray(np.ndarray):
     """Upload vers le GPU ; cache seulement les GPUArray."""
     if isinstance(arr, _SCALARS):
       return arr
+    # Deja un tableau device (DeviceNDArray, ...) -> passthrough immediat. Evite
+    # cuda.to_device/_require_cuda_context a chaque appel (gros surcout quand les
+    # champs sont de vrais device arrays passes aux kernels a chaque pas).
+    if cuda.is_cuda_array(arr) and not isinstance(arr, GPUArray):
+      return arr
     stream = _stream()
     if not isinstance(arr, GPUArray):
       return cuda.to_device(arr, stream=stream)

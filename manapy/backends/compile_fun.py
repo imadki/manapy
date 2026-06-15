@@ -325,6 +325,27 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=Fa
   return _STRATEGIES[COMPILE_SYNC](func, signature, backend, parallel, nogil, current_hash)
 
 
+def compile_no_cache(func, backend="numba", parallel=False, nogil=False):
+  """Compile without numba's on-disk cache.
+
+  Use for kernels whose compiled code depends on a *global* that is rebound at
+  runtime (e.g. the convective kernel that inlines the currently selected flux):
+  numba's disk cache keys on the kernel source/signature only, so a cached entry
+  would otherwise be reused across different flux bindings. cache=False forces a
+  fresh, correct compilation each process; no disk file means no MPI cache race.
+  """
+  if backend == "python":
+    return func
+  current_hash = get_function_hash(func)
+  if getattr(func, 'signatures', None) and current_hash == getattr(func, '_source_hash', None):
+    return func
+  signature = get_arg_types(func)
+  compiled = numba.jit(signature, nopython=True, fastmath=False, cache=False,
+                       parallel=parallel, nogil=nogil)(func)
+  compiled._source_hash = current_hash
+  return compiled
+
+
 """
 Compile a function once it called the first time (not immediately).
 """

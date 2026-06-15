@@ -12,7 +12,8 @@ import timeit, os
 from manapy.domain import Domain, Partitioning
 import numpy as np
 from manapy.core.Variable import Variable
-from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver, ScipySolver
+from manapy.solvers.ls import (MUMPSSolver, PETScKrylovSolver, ScipySolver, 
+                               GinkgoSolver, GinkgoDistributedSolver)
 
 
 COMM = MPI.COMM_WORLD
@@ -68,11 +69,12 @@ values = {"in": 20,
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
 
-# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
+L = GinkgoSolver(domain=domain, var=P, reuse_mtx=True,
+                            precond="jacobi", scheme='diamond')
 
-L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
-              precond='gamg', sub_precond="amg",  # with_mtx=False,
-              eps_a=1e-10, eps_r=1e-10, method="gmres")
+# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
+#               precond='gamg', sub_precond="amg",  # with_mtx=False,
+#               eps_a=1e-10, eps_r=1e-10, method="gmres")
 
 # L = ScipySolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
@@ -82,6 +84,12 @@ L()
 te = MPI.Wtime()
 
 L.view()
+P.update_halo_value()
+P.update_ghost_value()
+P.interpolate_celltonode()
+
+domain.save_on_node_multi(variables=["P"], values=[P.node], dt=0., time=0., niter=niter, miter=miter)
+
 
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:

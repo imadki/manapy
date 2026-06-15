@@ -15,19 +15,25 @@ from manapy.core.Variable import Variable
 
 
 class AdvectionSolver:
+  # Numerical-flux schemes: name -> integer code used by the compute kernel.
+  SCHEMES = ("upwind", "centered", "rusanov", "lax_friedrichs")
+
   _parameters = [('dt', float, 0., 0.,
                   'time step'),
                  ('order', int, 1, 1,
                   'order of the convective scheme'),
                  ('cfl', float, .4, 0,
-                  'cfl of the explicit scheme')
+                  'cfl of the explicit scheme'),
+                 ('scheme', str, 'upwind', 'upwind',
+                  'numerical flux scheme (upwind or centered)')
                  ]
   def __init__(self,
                var: Variable,
                vel: tuple[Variable, Variable]|tuple[Variable, Variable, Variable],
                dt: float = 0.0,
                order=1,
-               cfl=0.8
+               cfl=0.8,
+               scheme="upwind"
           ):
 
     self.var = var
@@ -42,12 +48,16 @@ class AdvectionSolver:
     self.order = order
     self.cfl = cfl
 
+    if scheme not in AdvectionSolver.SCHEMES:
+      raise ValueError(f"unknown scheme '{scheme}'; choose from {list(AdvectionSolver.SCHEMES)}")
+    self.scheme = scheme
+
 
     self.var.add_term("convective")
     self.var.add_term("dissipative")
     self.var.add_term("source")
 
-    fvm_utils_compute.setup(self.dim)
+    fvm_utils_compute.setup(self.dim, self.scheme)
     if self.domain.backend.name == "gpu":
       if self.dim != 2:
         raise NotImplementedError("Advection GPU is implemented for 2D only")

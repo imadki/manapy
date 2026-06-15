@@ -31,7 +31,9 @@ gpu.set_config(free=True)
 
 backend=gpu
 
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True, backend=backend)
+domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True, 
+                              # backend=backend
+                              )
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos

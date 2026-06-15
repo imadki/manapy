@@ -89,36 +89,38 @@ class Variable:
     self._nbnodes = domain.nbnodes
     self._nbhalos = domain.nbhalos
 
-    self.cell = np.zeros(self._nbcells, dtype=types.np_float_type)
-    self.node = np.zeros(self._nbnodes, dtype=types.np_float_type)
-    self.face = np.zeros(self._nbfaces, dtype=types.np_float_type)
-    self.ghost = np.zeros(self._nbfaces, dtype=types.np_float_type) # !! Indexed by face not ghostid
-    self.halo = np.zeros(self._nbhalos, dtype=types.np_float_type)
+    # Les champs sont alloues DANS la memoire du backend (device sous GPU, host
+    # sous CPU) : pas d'allocation host puis transfert.
+    _z = self.backend.zeros
+    _f = types.np_float_type
+    self.cell = _z(self._nbcells, _f)
+    self.node = _z(self._nbnodes, _f)
+    self.face = _z(self._nbfaces, _f)
+    self.ghost = _z(self._nbfaces, _f)  # !! Indexed by face not ghostid
+    self.halo = _z(self._nbhalos, _f)
 
-    self.gradcellx = np.zeros(self._nbcells, dtype=types.np_float_type)
-    self.gradcelly = np.zeros(self._nbcells, dtype=types.np_float_type)
-    self.gradcellz = np.zeros(self._nbcells, dtype=types.np_float_type)
+    self.gradcellx = _z(self._nbcells, _f)
+    self.gradcelly = _z(self._nbcells, _f)
+    self.gradcellz = _z(self._nbcells, _f)
 
-    self.gradhalocellx = np.zeros(self._nbhalos, dtype=types.np_float_type)
-    self.gradhalocelly = np.zeros(self._nbhalos, dtype=types.np_float_type)
-    self.gradhalocellz = np.zeros(self._nbhalos, dtype=types.np_float_type)
+    self.gradhalocellx = _z(self._nbhalos, _f)
+    self.gradhalocelly = _z(self._nbhalos, _f)
+    self.gradhalocellz = _z(self._nbhalos, _f)
 
-    self.gradfacex = np.zeros(self._nbfaces, dtype=types.np_float_type)
-    self.gradfacey = np.zeros(self._nbfaces, dtype=types.np_float_type)
-    self.gradfacez = np.zeros(self._nbfaces, dtype=types.np_float_type)
+    self.gradfacex = _z(self._nbfaces, _f)
+    self.gradfacey = _z(self._nbfaces, _f)
+    self.gradfacez = _z(self._nbfaces, _f)
 
-    self.psi = np.zeros(self._nbcells, dtype=types.np_float_type)
-    self.psihalo = np.zeros(self._nbhalos, dtype=types.np_float_type)
+    self.psi = _z(self._nbcells, _f)
+    self.psihalo = _z(self._nbhalos, _f)
 
-    self.halotosend = np.zeros(len(domain.halos.halosint), dtype=types.np_float_type)
-    self.haloghost = np.zeros(domain.halos.sizehaloghost, dtype=types.np_float_type)
-
-    if self.backend.name == "gpu":
-      self._prepare_gpu_storage()
+    self.halotosend = _z(len(domain.halos.halosint), _f)
+    self.haloghost = _z(domain.halos.sizehaloghost, _f)
 
     # TODO these attribute should be declared inside domain class
-    self._domain.Pbordnode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
-    self._domain.Pbordface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
+    # Alloues sur le backend (device sous GPU) : ecrits par les kernels BC.
+    self._domain.Pbordnode = _z(self._nbnodes, _f)
+    self._domain.Pbordface = _z(self._nbfaces, _f)
     (self.neumannfaces,
     self.BCneumann,
     self.dirichletfaces,
@@ -165,24 +167,9 @@ class Variable:
     self._cell_gradient = funcs['cell_gradient']
     self._barthlimiter  = funcs['barthlimiter']
 
-  def _prepare_gpu_storage(self):
-    from manapy.backends.gpu import set_active_backend, GPUArray
-    set_active_backend(self.backend)
-    for name in (
-      "cell", "node", "face", "ghost", "halo",
-      "gradcellx", "gradcelly", "gradcellz",
-      "gradhalocellx", "gradhalocelly", "gradhalocellz",
-      "gradfacex", "gradfacey", "gradfacez",
-      "psi", "psihalo", "halotosend", "haloghost",
-    ):
-      setattr(self, name, GPUArray(getattr(self, name)))
-
   def add_term(self, name):
-    values = np.zeros(self._nbcells, dtype=FLOAT_TYPE)
-    if self.backend.name == "gpu":
-      from manapy.backends.gpu import GPUArray
-      values = GPUArray(values)
-    self.__dict__[name] = values
+    # Alloue dans la memoire du backend (device sous GPU, host sous CPU).
+    self.__dict__[name] = self.backend.zeros(self._nbcells, FLOAT_TYPE)
 
   def _fill_bc_values(self, value, bcfaces, bctypeindex, valueface, valuenode, valuehalo):
     """Fill the face / node / haloghost boundary arrays from a prescribed value.
@@ -235,11 +222,8 @@ class Variable:
     valueface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
     valuenode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
     valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=types.np_float_type)
-    if self.backend.name == "gpu":
-      from manapy.backends.gpu import GPUArray
-      valueface = GPUArray(valueface)
-      valuenode = GPUArray(valuenode)
-      valuehalo = GPUArray(valuehalo)
+    # Constantes de BC : remplies sur host (_fill_bc_values) ; transferees au bord
+    # des kernels (read-only). Pas de wrap GPUArray.
 
     neumannfaces = []
     BCneumann = []
