@@ -24,6 +24,8 @@ class LinearSolver:
   SolverPetsc = "petsc"
   SolverMumps = "mumps"
   SolverScipy = "scipy"
+  SolverGinkgo = "ginkgo"
+  SolverGinkgoDist = "ginkgo_dist"
 
   def __init__(self,
                domain: Domain,
@@ -36,7 +38,7 @@ class LinearSolver:
 
     if type(self) is LinearSolver:
       raise TypeError("Base class cannot be instantiated directly")
-    if solver_name not in [LinearSolver.SolverPetsc, LinearSolver.SolverMumps, LinearSolver.SolverScipy]:
+    if solver_name not in [LinearSolver.SolverPetsc, LinearSolver.SolverMumps, LinearSolver.SolverScipy, LinearSolver.SolverGinkgo, LinearSolver.SolverGinkgoDist]:
       raise Exception("Unexpected solver type")
 
     self.comm = comm
@@ -55,6 +57,17 @@ class LinearSolver:
     ls_compute.setup(self.dim)
     self.mpi_precision = MPI.FLOAT if FLOAT_TYPE == "float32" else MPI.DOUBLE
 
+    # GPU backend: matrix/RHS/gradient assembly run on numba.cuda kernels
+    # (cuda_ls_compute) instead of the numba CPU kernels (ls_compute). 2D only.
+    self._gpu = getattr(self.domain.backend, "name", "cpu") == "gpu"
+    if self._gpu:
+      if self.dim != 2:
+        raise NotImplementedError("LinearSolver GPU kernels are 2D-only for now")
+      import manapy.solvers.ls.cuda_ls_compute as gls
+      from manapy.backends.gpu import GPUArray
+      self._gls = gls
+      self._GPUArray = GPUArray
+
     # Backend
 
     self.localsize = self.domain.nbcells
@@ -66,11 +79,13 @@ class LinearSolver:
       self.sendcounts1 = np.array(self.sendcounts1, dtype=np.int32)
     self.x1converted = np.zeros(self.globalsize, dtype=FLOAT_TYPE)
 
-    self.domain.Pbordnode = np.zeros(self.domain.nbnodes, dtype=FLOAT_TYPE)
-    self.domain.Pbordface = np.zeros(self.domain.nbfaces, dtype=FLOAT_TYPE)
-
-    self.domain.Ibordnode = np.zeros(self.domain.nbnodes, dtype=FLOAT_TYPE)
-    self.domain.Ibordface = np.zeros(self.domain.nbfaces, dtype=FLOAT_TYPE)
+    # Pbordnode/Pbordface : ecrits par les kernels dirichlet/neumann (device sous
+    # GPU) puis lus par get_rhs/get_triplet/gradient -> alloues sur le backend.
+    _be = self.domain.backend
+    self.domain.Pbordnode = _be.zeros(self.domain.nbnodes, FLOAT_TYPE)
+    self.domain.Pbordface = _be.zeros(self.domain.nbfaces, FLOAT_TYPE)
+    self.domain.Ibordnode = _be.zeros(self.domain.nbnodes, FLOAT_TYPE)
+    self.domain.Ibordface = _be.zeros(self.domain.nbfaces, FLOAT_TYPE)
 
     matrixinnerfaces = np.concatenate(
       [self.domain.innerfaces, self.domain.periodicinfaces, self.domain.periodicupperfaces])
@@ -87,9 +102,17 @@ class LinearSolver:
 
     elif scheme == "diamond":
       if self.dim == 2:
-        self._compute_P_gradient = ls_compute.compute_P_gradient_2d_diamond
-        self._get_triplet = ls_compute.get_triplet_2d
-        self.dataSize = ls_compute.compute_2dmatrix_size(self.domain.faces.nodeid,
+        # "pure map" gradient: one grid-stride body wrapped for CPU or GPU.
+        self._compute_P_gradient = self.domain.backend.make_gridstride_kernel(
+          ls_compute._gs_compute_P_gradient_2d_diamond, size_arg=(21, 22, 23, 24, 25))
+        # matrix assembly needs atomics -> hand-written GPU kernel, CPU njit.
+        if self._gpu:
+          self._get_triplet = self._gls.get_kernel_get_triplet_2d()
+          _matrix_size = self._gls.get_kernel_compute_2dmatrix_size()
+        else:
+          self._get_triplet = ls_compute.get_triplet_2d
+          _matrix_size = ls_compute.compute_2dmatrix_size
+        self.dataSize = _matrix_size(self.domain.faces.nodeid,
                                                           self.domain.nodes.cellid,
                                                           self.domain.nodes.halonid,
                                                           self.domain.nodes.periodicid,
@@ -115,22 +138,34 @@ class LinearSolver:
                                                           self.domain.halofaces,
                                                           self.var.dirichletfaces)
 
-      self._row = np.zeros(self.dataSize, dtype=np.int32)
-      self._col = np.zeros(self.dataSize, dtype=np.int32)
-      self._data = np.zeros(self.dataSize, dtype=FLOAT_TYPE)
+      # Alloues dans la memoire du backend : ecrits par le kernel d'assemblage
+      # (get_triplet) puis lus par le solveur, cote device sous GPU.
+      _be = self.domain.backend
+      self._row = _be.zeros(self.dataSize, np.int32)
+      self._col = _be.zeros(self.dataSize, np.int32)
+      self._data = _be.zeros(self.dataSize, FLOAT_TYPE)
 
-    if solver_name in [LinearSolver.SolverScipy, LinearSolver.SolverMumps]:
-      if self.dim == 2:
-        self._get_rhs = ls_compute.get_rhs_glob_2d
-      elif self.dim == 3:
-        self._get_rhs = ls_compute.get_rhs_glob_3d
-    elif solver_name == LinearSolver.SolverPetsc:
-      if self.dim == 2:
-        self._get_rhs = ls_compute.get_rhs_loc_2d
-      elif self.dim == 3:
-        self._get_rhs = ls_compute.get_rhs_loc_3d
+    _glob = solver_name in [LinearSolver.SolverScipy, LinearSolver.SolverMumps,
+                            LinearSolver.SolverGinkgo]
+    if self._gpu:
+      # 2D-only GPU RHS kernels (glob for centralized solvers, loc otherwise).
+      self._get_rhs = (self._gls.get_kernel_get_rhs_glob_2d() if _glob
+                       else self._gls.get_kernel_get_rhs_loc_2d())
+    elif _glob:
+      self._get_rhs = ls_compute.get_rhs_glob_2d if self.dim == 2 else ls_compute.get_rhs_glob_3d
+    else:
+      self._get_rhs = ls_compute.get_rhs_loc_2d if self.dim == 2 else ls_compute.get_rhs_loc_3d
 
-    self.convert_solution = ls_compute.convert_solution
+    # "pure map" kernels: single grid-stride body wrapped for CPU or GPU.
+    _be = self.domain.backend
+    self.convert_solution = _be.make_gridstride_kernel(
+      ls_compute._gs_convert_solution, size_arg=lambda a: a[3])  # b0Size
+    self._rhs_value_dirichlet_node = _be.make_gridstride_kernel(
+      ls_compute._gs_rhs_value_dirichlet_node, size_arg=1)       # nodes
+    self._rhs_value_dirichlet_face = _be.make_gridstride_kernel(
+      ls_compute._gs_rhs_value_dirichlet_face, size_arg=1)       # faces
+    self._set_scalar_at = _be.make_gridstride_kernel(
+      ls_compute._gs_set_scalar_at, size_arg=1)                  # idx
 
   def assembly(self):
     self._get_triplet(self.domain.faces.cellid, self.domain.faces.nodeid, self.domain.nodes.vertex,
@@ -159,14 +194,15 @@ class LinearSolver:
   def update_ghost_values(self):
     for BC in self.var.BCs.values():
       if BC.BCtype == "dirichlet":
-        ls_compute.rhs_value_dirichlet_face(self.domain.Pbordface, np.asarray(BC.BCfaces, dtype=np.int32), BC.BCvalueface)
-        ls_compute.rhs_value_dirichlet_node(self.domain.Pbordnode,
+        self._rhs_value_dirichlet_face(self.domain.Pbordface, np.asarray(BC.BCfaces, dtype=np.int32), BC.BCvalueface)
+        self._rhs_value_dirichlet_node(self.domain.Pbordnode,
                                  np.where(self.domain.nodes.oldname == BC.BCtypeindex)[0].astype(np.int32),
                                  BC.BCvaluenode)
 
       elif BC.BCtype == "neumann":
-        for i in np.where(self.domain.nodes.oldname == BC.BCtypeindex)[0]:
-          self.domain.Pbordnode[i] = 1.
+        # Pbordnode[neumann_nodes] = 1, via kernel (Pbordnode est sur le backend).
+        neumann_nodes = np.where(self.domain.nodes.oldname == BC.BCtypeindex)[0].astype(np.int32)
+        self._set_scalar_at(self.domain.Pbordnode, neumann_nodes, 1.0)
 
   def compute_Sol_gradient(self):
     self._compute_P_gradient(self.var.cell, self.var.ghost, self.var.halo, self.var.node, self.domain.faces.cellid,
