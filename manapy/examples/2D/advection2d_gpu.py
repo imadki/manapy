@@ -41,7 +41,8 @@ gpu = GPUBackend(cache=False)        # precision = types globaux (float64/int32)
 gpu.init_stream()
 gpu.set_config(free=True)            # grille dimensionnee sur la taille du probleme
 
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True, backend=gpu)
+domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True,
+                              backend=gpu)
 cells = domain.cells
 
 # --- variables + solveur (identiques au cas CPU) ---

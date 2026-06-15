@@ -1749,3 +1749,145 @@ def setup(dim):
     else:
       raise ValueError(f"Unsupported dimension: {dim}")
     _dims_done.add(dim)
+
+############################################################################
+# Grid-stride kernel bodies: body(start: 'int', stride: 'int', *args). A single body is wrapped
+# by backend.make_gridstride_kernel(...) for BOTH the CPU (numba njit, cache=True)
+# and the GPU (numba.cuda) backends -- one source for both. Used only for the
+# "pure map" kernels (each thread writes its own slot, no contention, so no
+# atomics needed). The dirichlet membership test is INLINED so the body has no
+# per-backend helper dependency.
+
+def _gs_convert_solution(start: 'int', stride: 'int', x1: 'float[:]', x1converted: 'float[:]',
+                         cell_tc: 'int[:]', b0Size: 'int'):
+  for i in range(start, b0Size, stride):
+    x1converted[i] = x1[cell_tc[i]]
+
+
+def _gs_rhs_value_dirichlet_node(start: 'int', stride: 'int', Pbordnode: 'float[:]',
+                                 nodes: 'int[:]', value: 'float[:]'):
+  for k in range(start, nodes.shape[0], stride):
+    i = nodes[k]
+    Pbordnode[i] = value[i]
+
+
+def _gs_rhs_value_dirichlet_face(start: 'int', stride: 'int', Pbordface: 'float[:]',
+                                 faces: 'int[:]', value: 'float[:]'):
+  for k in range(start, faces.shape[0], stride):
+    i = faces[k]
+    Pbordface[i] = value[i]
+
+
+def _gs_compute_P_gradient_2d_diamond(
+    start: 'int', stride: 'int',
+    P_c: 'float[:]', P_ghost: 'float[:]', P_halo: 'float[:]', P_node: 'float[:]',
+    face_cellid: 'int[:,:]', faces: 'int[:,:]', face_haloid: 'int[:]',
+    node_oldname: 'int[:]', face_air_diamond: 'float[:]',
+    face_f1: 'float[:,:]', face_f2: 'float[:,:]', face_f3: 'float[:,:]',
+    face_f4: 'float[:,:]', face_normal: 'float[:,:]', cell_shift: 'float[:,:]',
+    Pbordnode: 'float[:]', Pbordface: 'float[:]',
+    Px_face: 'float[:]', Py_face: 'float[:]', Pz_face: 'float[:]',
+    BCdirichlet: 'int[:]', d_innerfaces: 'int[:]', d_halofaces: 'int[:]',
+    neumannfaces: 'int[:]', dirichletfaces: 'int[:]', d_periodicboundaryfaces: 'int[:]'):
+
+  # inner + periodic + neumann + halo share the diamond formula; only vv2/c_right differ.
+  for idx in range(start, d_innerfaces.shape[0], stride):
+    i = d_innerfaces[idx]
+    c_left = face_cellid[i][0]; c_right = face_cellid[i][1]
+    i_1 = faces[i][0]; i_2 = faces[i][1]
+    vi1 = P_node[i_1]
+    d1 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_1]:
+        d1 = 1; break
+    if d1 == 1: vi1 = Pbordnode[i_1]
+    vi2 = P_node[i_2]
+    d2 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_2]:
+        d2 = 1; break
+    if d2 == 1: vi2 = Pbordnode[i_2]
+    vv1 = P_c[c_left]; vv2 = P_c[c_right]
+    inv = 1.0 / (2.0 * face_air_diamond[i])
+    Px_face[i] = -inv * ((vi1+vv1)*face_f1[i][1] + (vv1+vi2)*face_f2[i][1] + (vi2+vv2)*face_f3[i][1] + (vv2+vi1)*face_f4[i][1])
+    Py_face[i] = inv * ((vi1+vv1)*face_f1[i][0] + (vv1+vi2)*face_f2[i][0] + (vi2+vv2)*face_f3[i][0] + (vv2+vi1)*face_f4[i][0])
+
+  for idx in range(start, d_periodicboundaryfaces.shape[0], stride):
+    i = d_periodicboundaryfaces[idx]
+    c_left = face_cellid[i][0]; c_right = face_cellid[i][1]
+    i_1 = faces[i][0]; i_2 = faces[i][1]
+    vi1 = P_node[i_1]
+    d1 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_1]:
+        d1 = 1; break
+    if d1 == 1: vi1 = Pbordnode[i_1]
+    vi2 = P_node[i_2]
+    d2 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_2]:
+        d2 = 1; break
+    if d2 == 1: vi2 = Pbordnode[i_2]
+    vv1 = P_c[c_left]; vv2 = P_c[c_right]
+    inv = 1.0 / (2.0 * face_air_diamond[i])
+    Px_face[i] = -inv * ((vi1+vv1)*face_f1[i][1] + (vv1+vi2)*face_f2[i][1] + (vi2+vv2)*face_f3[i][1] + (vv2+vi1)*face_f4[i][1])
+    Py_face[i] = inv * ((vi1+vv1)*face_f1[i][0] + (vv1+vi2)*face_f2[i][0] + (vi2+vv2)*face_f3[i][0] + (vv2+vi1)*face_f4[i][0])
+
+  for idx in range(start, neumannfaces.shape[0], stride):
+    i = neumannfaces[idx]
+    c_left = face_cellid[i][0]; c_right = i
+    i_1 = faces[i][0]; i_2 = faces[i][1]
+    vi1 = P_node[i_1]
+    d1 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_1]:
+        d1 = 1; break
+    if d1 == 1: vi1 = Pbordnode[i_1]
+    vi2 = P_node[i_2]
+    d2 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_2]:
+        d2 = 1; break
+    if d2 == 1: vi2 = Pbordnode[i_2]
+    vv1 = P_c[c_left]; vv2 = P_ghost[c_right]
+    inv = 1.0 / (2.0 * face_air_diamond[i])
+    Px_face[i] = -inv * ((vi1+vv1)*face_f1[i][1] + (vv1+vi2)*face_f2[i][1] + (vi2+vv2)*face_f3[i][1] + (vv2+vi1)*face_f4[i][1])
+    Py_face[i] = inv * ((vi1+vv1)*face_f1[i][0] + (vv1+vi2)*face_f2[i][0] + (vi2+vv2)*face_f3[i][0] + (vv2+vi1)*face_f4[i][0])
+
+  for idx in range(start, d_halofaces.shape[0], stride):
+    i = d_halofaces[idx]
+    c_left = face_cellid[i][0]; c_right = face_haloid[i]
+    i_1 = faces[i][0]; i_2 = faces[i][1]
+    vi1 = P_node[i_1]
+    d1 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_1]:
+        d1 = 1; break
+    if d1 == 1: vi1 = Pbordnode[i_1]
+    vi2 = P_node[i_2]
+    d2 = 0
+    for _k in range(BCdirichlet.shape[0]):
+      if BCdirichlet[_k] == node_oldname[i_2]:
+        d2 = 1; break
+    if d2 == 1: vi2 = Pbordnode[i_2]
+    vv1 = P_c[c_left]; vv2 = P_halo[c_right]
+    inv = 1.0 / (2.0 * face_air_diamond[i])
+    Px_face[i] = -inv * ((vi1+vv1)*face_f1[i][1] + (vv1+vi2)*face_f2[i][1] + (vi2+vv2)*face_f3[i][1] + (vv2+vi1)*face_f4[i][1])
+    Py_face[i] = inv * ((vi1+vv1)*face_f1[i][0] + (vv1+vi2)*face_f2[i][0] + (vi2+vv2)*face_f3[i][0] + (vv2+vi1)*face_f4[i][0])
+
+  for idx in range(start, dirichletfaces.shape[0], stride):
+    i = dirichletfaces[idx]
+    c_left = face_cellid[i][0]
+    i_1 = faces[i][0]; i_2 = faces[i][1]
+    vi1 = Pbordnode[i_1]; vi2 = Pbordnode[i_2]
+    vv1 = P_c[c_left]
+    vv2 = 2.0 * Pbordface[i] - vv1
+    inv = 1.0 / (2.0 * face_air_diamond[i])
+    Px_face[i] = -inv * ((vi1+vv1)*face_f1[i][1] + (vv1+vi2)*face_f2[i][1] + (vi2+vv2)*face_f3[i][1] + (vv2+vi1)*face_f4[i][1])
+    Py_face[i] = inv * ((vi1+vv1)*face_f1[i][0] + (vv1+vi2)*face_f2[i][0] + (vi2+vv2)*face_f3[i][0] + (vv2+vi1)*face_f4[i][0])
+
+
+def _gs_set_scalar_at(start: 'int', stride: 'int', target: 'float[:]', idx: 'int[:]', value: 'float'):
+  # target[idx[k]] = value (pour le neumann : Pbordnode[neumann_nodes] = 1.)
+  for k in range(start, idx.shape[0], stride):
+    target[idx[k]] = value

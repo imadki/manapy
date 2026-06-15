@@ -14,6 +14,9 @@ from manapy.core.Variable import Variable
 
 
 class AdvectionDiffusionSolver:
+  # Numerical-flux schemes: name -> integer code used by the compute kernel.
+  SCHEMES = ("upwind", "centered", "rusanov", "lax_friedrichs")
+
   _parameters = [('Dxx', float, 0., 0.,
                   'Diffusion in x direction'),
                  ('Dyy', float, 0., 0.,
@@ -25,7 +28,9 @@ class AdvectionDiffusionSolver:
                  ('order', int, 1, 1,
                   'order of the convective scheme'),
                  ('cfl', float, .4, 0,
-                  'cfl of the explicit scheme')
+                  'cfl of the explicit scheme'),
+                 ('scheme', str, 'upwind', 'upwind',
+                  'numerical flux scheme (upwind or centered)')
                  ]
   def __init__(self,
                var: Variable,
@@ -35,7 +40,8 @@ class AdvectionDiffusionSolver:
                Dzz: float = 0.0,
                dt: float = 0.0,
                order: int = 1,
-               cfl: float = 0.
+               cfl: float = 0.,
+               scheme="upwind"
             ):
 
     self.var = var
@@ -53,24 +59,46 @@ class AdvectionDiffusionSolver:
     self.dt = dt
     self.order = order
     self.cfl = cfl
+
+    if scheme not in AdvectionDiffusionSolver.SCHEMES:
+      raise ValueError(f"unknown scheme '{scheme}'; choose from {list(AdvectionDiffusionSolver.SCHEMES)}")
+    self.scheme = scheme
+
     self.diffusion = True
 
     if self.Dxx == self.Dyy == self.Dzz == 0:
       self.diffusion = False
 
-    self.var.__dict__["convective"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    self.var.__dict__["dissipative"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    self.var.__dict__["source"] = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
+    # Use add_term so these become GPUArray under the GPU backend (a raw np.zeros
+    # would be a plain ndarray -> the convective kernel's writes would land on a
+    # throwaway device copy and update_new_value would read zeros).
+    self.var.add_term("convective")
+    self.var.add_term("dissipative")
+    self.var.add_term("source")
 
 
-    fvm_utils_compute.setup(self.dim)
-    if self.dim == 2:
-      self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
-    elif self.dim == 3:
-      self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_3d
-    self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative
-    self._time_step = fvm_utils_compute.time_step
-    self._update_new_value = fvm_utils_compute.update_new_value
+    fvm_utils_compute.setup(self.dim, self.scheme)
+    if self.domain.backend.name == "gpu":
+      if self.dim != 2:
+        raise NotImplementedError("AdvectionDiffusion GPU is implemented for 2D only")
+      from manapy.solvers.advecdiff.cuda_fvm_utils import (
+        get_kernel_explicitscheme_convective_2d,
+        get_kernel_explicitscheme_dissipative,
+        get_kernel_time_step,
+        get_kernel_update_new_value,
+      )
+      self._explicitscheme_convective = get_kernel_explicitscheme_convective_2d()
+      self._explicitscheme_dissipative = get_kernel_explicitscheme_dissipative()
+      self._time_step = get_kernel_time_step()
+      self._update_new_value = get_kernel_update_new_value()
+    else:
+      if self.dim == 2:
+        self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
+      elif self.dim == 3:
+        self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_3d
+      self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative
+      self._time_step = fvm_utils_compute.time_step
+      self._update_new_value = fvm_utils_compute.update_new_value
 
   def explicit_convective(self):
     if self.order == 2:

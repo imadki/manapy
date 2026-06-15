@@ -9,11 +9,18 @@ Created on Wed Feb 16 09:13:21 2022
 from mpi4py import MPI
 import timeit
 import os
+import numpy as np
 from manapy.domain import Domain, Partitioning
 from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.solvers.advecdiff.system import AdvectionDiffusionSolver
-from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
+
+from manapy.solvers.ls import (MUMPSSolver, PETScKrylovSolver, GinkgoDistributedSolver,
+                               GinkgoSolver)
+
 from manapy.core.Variable import Variable
+from manapy.backends.gpu import GPUBackend
+from manapy.backends.gpu import GPUArray
+
 
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
@@ -28,10 +35,17 @@ except KeyError:
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..')
   MESH_DIR = os.path.join(BASE_DIR, 'meshes')
 
-filename = 'big/carre.msh'
+filename = 'geo/carre.msh'
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
+
+gpu = GPUBackend(float_precision="float64", int_precision="int32", cache=True)
+gpu.init_stream()
+gpu.set_config(free=True)
+
+domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True,
+                                backend=gpu
+                               )
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -74,7 +88,13 @@ P = Variable(domain=domain, BC=boundaries, values_dict=values)
 S = AdvectionDiffusionSolver(ne, vel=(u, v), Dxx=0., Dyy=0., order=2, cfl=0.8)
 
 ####Initialisation
-initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
+# Init sur HOST (lambda/np) puis copie explicite vers les champs (le backend du
+# domaine decide : device sous GPU, host sous CPU).
+be = domain.backend
+_ne = np.zeros(nbcells); _u = np.zeros(nbcells); _v = np.zeros(nbcells); _P = np.zeros(nbcells)
+initialisation_gaussian_2d(_ne, _u, _v, _P, be.to_host(cells.center), Pinit)
+be.copy(ne.cell, _ne); be.copy(u.cell, _u)
+be.copy(v.cell, _v); be.copy(P.cell, _P)
 f = lambda x, y, z: Pinit * (1. - x)
 
 
@@ -83,11 +103,24 @@ f = lambda x, y, z: Pinit * (1. - x)
 # reuse_mtx: matrix does not change during the while loop
 # scheme: diamond (fv4 not tested!!!)
 # verbose: printing the mumps/petsc output
-L = MUMPSSolver(domain=domain, var=P, with_mtx=False, reuse_mtx=True, reuse_ij=False, scheme='diamond')
+L = GinkgoDistributedSolver(domain=domain, var=P,
+                            # precond="jacobi",
+                            device="cuda",
+                            scheme='diamond',
+                            method="cg",
+                            verbose=False,
+                            reuse_mtx=True
+                            )
 
 # L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
 #               precond='gamg', sub_precond="amg",  # with_mtx=False,
 #               eps_a=1e-10, eps_r=1e-10, method="gmres")
+
+# L = MUMPSSolver(domain=domain, var=P, 
+#                 reuse_mtx=True,
+#                 # precond="jacobi", 
+#                 scheme='diamond')
+
 
 ts = MPI.Wtime()
 
@@ -96,15 +129,20 @@ if RANK == 0: print("Start While loop ...")
 # loop over time
 while time < tfinal:
 
+  # print(f"[darcy rank {RANK}] before L iter={niter}", flush=True)
   L()
+  # print("Max P", P.cell.max())
+  # print(f"[darcy rank {RANK}] after L iter={niter}", flush=True)
   P.update_halo_value()
   P.update_ghost_value()
   P.interpolate_celltonode()
   L.compute_Sol_gradient()
+  
+  # print("Max P grad", P.gradfacex.max())
 
-  # TODO -1
-  u.face[:] = P.gradfacex[:]
-  v.face[:] = P.gradfacey[:]
+  # u.face <- grad(P) : copie explicite (device->device sous GPU, host sous CPU).
+  be.copy(u.face, P.gradfacex)
+  be.copy(v.face, P.gradfacey)
 
   u.interpolate_facetocell()
   v.interpolate_facetocell()
@@ -134,8 +172,12 @@ while time < tfinal:
       v.update_ghost_value()
       v.interpolate_celltonode()
 
-      domain.save_on_node_multi(["ne", "u", "v", "P"],
-                                [ne.node, u.node, v.node, P.node], d_t, time, niter, miter)
+      # .node a ete calcule sur device par interpolate_celltonode : transfert
+      # explicite vers host pour la sauvegarde (qui lit des arrays host).
+      domain.save_on_node_multi(
+        ["ne", "u", "v", "P"],
+        [be.to_host(ne.node), be.to_host(u.node),
+         be.to_host(v.node), be.to_host(P.node)], d_t, time, niter, miter)
     else:
       domain.save_on_cell_multi(["ne", "u", "v", "P"],
                                 [ne.cell, u.cell, v.cell, P.cell], d_t, time, niter, miter)
