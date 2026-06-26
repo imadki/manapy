@@ -200,6 +200,44 @@ class GinkgoDistributedSolver(LinearSolver):
     self._perm = np.array([pos[int(g)] for g in self._owned_global],
                           dtype=np.int64)
 
+  # --------------------------------------------------------------- RHS vectors
+  def _setup_vectors(self):
+    """Build the distributed RHS (b) and solution (x) vectors ONCE. Their values
+    are overwritten in place on subsequent solves (vector_set_local), so we avoid
+    rebuilding the distributed vector (read_distributed + device alloc) each step.
+
+    b's local buffer is in Ginkgo's processor-local ordering; _perm maps owned
+    cell i -> its local slot. The RHS (owned-cell order) is scattered by _perm;
+    when that scatter is the identity we can hand the device buffer over directly."""
+    zero = np.zeros(self.localsize, dtype=self._np_value)
+    self.b = self.dpc.vector(self.executor, self.comm, self.partition,
+                             self._owned_global, zero, self.globalsize,
+                             dtype=self._value)
+    self.x = self.dpc.vector(self.executor, self.comm, self.partition,
+                             self._owned_global, zero, self.globalsize,
+                             dtype=self._value)
+    self._perm_identity = bool(
+      np.array_equal(self._perm, np.arange(self.localsize)))
+
+  def _update_rhs(self, rhs):
+    """Overwrite b's processor-local values in place from rhs0 (+ optional user
+    rhs), reordered into Ginkgo's local ordering."""
+    if self._gpu and rhs is None and self._perm_identity:
+      # rhs0 already lives on the device in the right order: zero-copy update.
+      from manapy.backends.gpu import GPUArray
+      self.dpc.vector_set_local(self.b, GPUArray.to_device(self.rhs0),
+                                dtype=self._value)
+      return
+    host = self.domain.backend.to_host(self.rhs0) if self._gpu else self.rhs0
+    if rhs is not None:
+      host = host + rhs
+    if self._perm_identity:
+      ordered = np.ascontiguousarray(host, dtype=self._np_value)
+    else:
+      ordered = np.empty(self.localsize, dtype=self._np_value)
+      ordered[self._perm] = host  # owned cell i -> local slot _perm[i]
+    self.dpc.vector_set_local(self.b, ordered, dtype=self._value)
+
   # ------------------------------------------------------------------ solve
   def __call__(self, rhs: npt.NDArray[Union[np.float32, np.float64]] = None):
 
@@ -211,30 +249,14 @@ class GinkgoDistributedSolver(LinearSolver):
       print(f"[GinkgoDist rank {self.comm.Get_rank()}] presolve done", flush=True)
     self._profile_time("presolve", t0)
 
-    # Local RHS contribution (BC) + optional user rhs, for owned cells only.
+    # Build b/x once, then overwrite b's local values in place each solve
+    # (vector_set_local) instead of rebuilding the distributed vector every step.
     t0 = MPI.Wtime()
-    if self._gpu:
-      from manapy.backends.gpu import GPUArray
-      if rhs is None:
-        # rhs0 was filled on the device by the GPU _get_rhs kernel: pass its
-        # device buffer directly (zero-copy).
-        local_rhs = GPUArray.to_device(self.rhs0)
-      else:
-        local_rhs = np.ascontiguousarray(self.domain.backend.to_host(self.rhs0) + rhs, dtype=self._np_value)
-    else:
-      local_rhs = self.rhs0 if rhs is None else (self.rhs0 + rhs)
-      local_rhs = np.ascontiguousarray(local_rhs, dtype=self._np_value)
-
+    if self.b is None:
+      self._setup_vectors()
     if self.verbose:
-      print(f"[GinkgoDist rank {self.comm.Get_rank()}] rhs vector", flush=True)
-    self.b = self.dpc.vector(self.executor, self.comm, self.partition,
-                             self._owned_global, local_rhs, self.globalsize,
-                             dtype=self._value)
-    if self.x is None:
-      self.x = self.dpc.vector(self.executor, self.comm, self.partition,
-                               self._owned_global,
-                               np.zeros(self.localsize, dtype=self._np_value),
-                               self.globalsize, dtype=self._value)
+      print(f"[GinkgoDist rank {self.comm.Get_rank()}] rhs update", flush=True)
+    self._update_rhs(rhs)
     self._profile_time("vectors", t0)
 
     if self.verbose:
@@ -242,6 +264,11 @@ class GinkgoDistributedSolver(LinearSolver):
     solver_args = json.dumps(self._build_solver_args())
     logger = None
     if self.reuse_mtx and self.method != "cg":
+      # Matrix is fixed across solves: generate the solver once and apply it
+      # repeatedly. NOTE cg is excluded on purpose: a *persistent* Ginkgo cg
+      # solver drifts across repeated apply() calls (iteration count grows every
+      # step), whereas a *fresh* solver each step (the config_solve branch below)
+      # converges in ~2 iters thanks to the warm-started x. b is reused either way.
       if self.solver is None:
         t0 = MPI.Wtime()
         self.solver = self.pGB.solver.__getattribute__(f"config_solver_{self._value}")(

@@ -240,7 +240,7 @@ class Domain:
     print("====================", flush=True)
 
   @staticmethod
-  def create_domain(mesh_path, dim, partitioning_method, recreate=True, backend=None):
+  def create_domain(mesh_path, dim, partitioning_method=Partitioning.Par_Nodal, recreate=True, backend=None):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()

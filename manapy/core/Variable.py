@@ -370,6 +370,29 @@ class Variable:
     neumannNHfaces = np.asarray(neumannNHfaces, dtype=types.np_int_type)
     BCneumannNH = np.asarray(BCneumannNH, dtype=types.np_int_type)
 
+    if self.backend.name == "gpu":
+      neumannfaces = self.backend.asarray(neumannfaces, types.np_int_type)
+      BCneumann = self.backend.asarray(BCneumann, types.np_int_type)
+      dirichletfaces = self.backend.asarray(dirichletfaces, types.np_int_type)
+      BCdirichlet = self.backend.asarray(BCdirichlet, types.np_int_type)
+      neumannNHfaces = self.backend.asarray(neumannNHfaces, types.np_int_type)
+      BCneumannNH = self.backend.asarray(BCneumannNH, types.np_int_type)
+
+      converted_bc_arrays = {}
+      for bc in BCs.values():
+        if bc is None:
+          continue
+        for attr in ("BCvalueface", "BCvaluenode", "BCvaluehalo",
+                     "constNH", "constNHNode"):
+          value = getattr(bc, attr, None)
+          if isinstance(value, np.ndarray):
+            key = id(value)
+            device_value = converted_bc_arrays.get(key)
+            if device_value is None:
+              device_value = self.backend.asarray(value, value.dtype)
+              converted_bc_arrays[key] = device_value
+            setattr(bc, attr, device_value)
+
     return (neumannfaces,
             BCneumann,
             dirichletfaces,

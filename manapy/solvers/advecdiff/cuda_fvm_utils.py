@@ -124,8 +124,9 @@ def get_kernel_explicitscheme_convective_2d():
       cuda.atomic.add(rez_w, face_cellid[i][0], -flux_w[0])
 
   kernel = gpu.compile_kernel(kernel)
+  argcache = {}
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     rez_w = args[0]
     gpu.assign(rez_w, 0.0)
     # une grille dimensionnee sur le plus grand groupe de faces
@@ -159,8 +160,9 @@ def get_kernel_explicitscheme_dissipative():
         cuda.atomic.add(dissip_w, face_cellid[i][0], flux_w)
 
   kernel = gpu.compile_kernel(kernel)
+  argcache = {}
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     dissip_w = args[6]
     gpu.assign(dissip_w, 0.0)
     grid, block = gpu.get_gpu_params(len(args[3]))  # face_cellid
@@ -193,8 +195,9 @@ def get_kernel_time_step():
         cuda.atomic.min(shared_dt, 0, cfl * cell_volume[i] / lam)
 
   kernel = gpu.compile_kernel(kernel)
+  argcache = {}
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     gpu.assign(d_shared_dt, 1e6)
     grid, block = gpu.get_gpu_params(len(args[7]))  # cell_faceid
     kernel[grid, block, gpu.stream](*args, d_shared_dt)
@@ -219,9 +222,10 @@ def get_kernel_update_new_value():
       cuda.atomic.add(ne_c, i, dtime * ((rez_ne[i] + dissip_ne[i]) / cell_volume[i] + src_ne[i]))
 
   kernel = gpu.compile_kernel(kernel)
+  argcache = {}
 
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     grid, block = gpu.get_gpu_params(len(args[0]))
     kernel[grid, block, gpu.stream](*args)
     # pas de synchronize : enchainement sur le meme stream (ordonne) ; la synchro

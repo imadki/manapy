@@ -85,8 +85,10 @@ def get_kernel_get_rhs_loc_2d():
 
   kernel = gpu.compile_kernel(kernel)
 
+  argcache = {}
+
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     rhs_loc = args[12]
     gpu.assign(rhs_loc, 0.0)
     size = max(len(args[14]), len(args[15]), len(args[16]))
@@ -290,8 +292,10 @@ def get_kernel_get_triplet_2d():
   kernel = gpu.compile_kernel(kernel)
   d_cnt = cuda.device_array(shape=(1,), dtype=gpu.int_precision)
 
+  argcache = {}
+
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     gpu.assign(d_cnt, 0)
     size = max(len(args[37]), len(args[38]), len(args[39]))
     grid, block = gpu.get_gpu_params(size)
@@ -345,8 +349,10 @@ def get_kernel_compute_2dmatrix_size():
   kernel = gpu.compile_kernel(kernel)
   d_cnt = cuda.device_array(shape=(1,), dtype=gpu.int_precision)
 
+  argcache = {}
+
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     gpu.assign(d_cnt, 0)
     size = max(len(args[8]), len(args[9]), len(args[10]))
     grid, block = gpu.get_gpu_params(size)
@@ -407,8 +413,10 @@ def get_kernel_get_rhs_glob_2d():
 
   kernel = gpu.compile_kernel(kernel)
 
+  argcache = {}
+
   def result(*args):
-    args = [GPUArray.to_device(a) for a in args]
+    args = GPUArray.to_device_list(argcache, args)
     gpu.assign(args[12], 0.0)  # rhs
     size = max(len(args[14]), len(args[15]), len(args[16]))
     grid, block = gpu.get_gpu_params(size)
