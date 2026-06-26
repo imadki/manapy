@@ -66,6 +66,39 @@ class GPUArray(np.ndarray):
       return d_arr
     return getattr(arr, "__cuda__")
 
+  @staticmethod
+  def to_device_list(cache, args):
+    """Convertit les arguments d'un kernel vers le device.
+
+    Seuls les GPUArray sont memoises ici: ils representent des tableaux stables
+    du domaine/solveur. Les ndarray hote ordinaires peuvent etre temporaires ou
+    mutables, donc ils sont uploades ponctuellement sans etre gardes en cache.
+    """
+    out = []
+    for a in args:
+      if isinstance(a, _SCALARS):
+        out.append(a)
+        continue
+
+      if cuda.is_cuda_array(a) and not isinstance(a, GPUArray):
+        out.append(a)
+        continue
+
+      if isinstance(a, GPUArray):
+        k = id(a)
+        entry = cache.get(k)
+        if entry is not None and entry[0] is a:
+          out.append(entry[1])
+        else:
+          h = GPUArray.to_device(a)
+          cache[k] = (a, h)
+          out.append(h)
+        continue
+
+      out.append(GPUArray.to_device(a))
+
+    return out
+
   def sync_with(self, side):
     """Synchronise hote<->device. side='cpu' pousse vers GPU, 'cuda' rapatrie."""
     stream = _stream()

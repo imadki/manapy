@@ -29,7 +29,7 @@ except KeyError:
 filename = 'hybrid3d.msh'
 dim = 3
 mesh_path = os.path.join(MESH_DIR, filename)
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
+domain = Domain.create_domain(mesh_path, dim, recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -78,7 +78,7 @@ P.update_halo_value()
 P.update_ghost_value()
 P.interpolate_celltonode()
 
-L.view()
+# L.view()
 
 domain.save_on_node_multi(variables=["P"], values=[P.node], dt=0., time=0., niter=niter, miter=miter)
 

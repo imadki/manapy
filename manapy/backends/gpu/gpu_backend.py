@@ -100,11 +100,6 @@ class GPUBackend(Backend):
     self.synchronize()
     return host
 
-  def to_device(self, arr):
-    if isinstance(arr, np.ndarray):
-      return cuda.to_device(arr, stream=self.stream)
-    return arr  # deja un DeviceNDArray
-
   def copy(self, dst, src):
     # UNE copie : numba accepte un src host (upload) ou device (device->device).
     dst.copy_to_device(src, stream=self.stream)
@@ -166,9 +161,11 @@ class GPUBackend(Backend):
     kernel = self.compile_kernel(kfn, device=False)
     resolve = _make_size_resolver(size_arg)
 
+    from manapy.backends.gpu import GPUArray
+    argcache = {}  # id(obj)->(obj, handle) : memoise les handles device par arg.
+
     def wrapper(*args):
-      from manapy.backends.gpu import GPUArray
-      d = [GPUArray.to_device(a) for a in args]
+      d = GPUArray.to_device_list(argcache, args)
       grid, block = self.get_gpu_params(resolve(args))
       kernel[grid, block, self.stream](*d)
       # Pas de synchronize ici : les kernels s'enchainent sur le meme stream

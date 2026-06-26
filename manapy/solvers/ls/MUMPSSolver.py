@@ -208,6 +208,9 @@ class MUMPSSolver(LinearSolver):
     self._analysis_done = False
     self._row_origin = None
     self._col_origin = None
+    
+  def view(self):
+      self.view_matrix_on_root()
 
   def view_matrix_on_root(self, threshold=1e-10):
     """

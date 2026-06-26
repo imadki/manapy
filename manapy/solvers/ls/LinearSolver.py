@@ -144,6 +144,8 @@ class LinearSolver:
       self._row = _be.zeros(self.dataSize, np.int32)
       self._col = _be.zeros(self.dataSize, np.int32)
       self._data = _be.zeros(self.dataSize, FLOAT_TYPE)
+      if self._gpu:
+        self.matrixinnerfaces = _be.asarray(self.matrixinnerfaces, np.int32)
 
     _glob = solver_name in [LinearSolver.SolverScipy, LinearSolver.SolverMumps,
                             LinearSolver.SolverGinkgo]
@@ -166,6 +168,34 @@ class LinearSolver:
       ls_compute._gs_rhs_value_dirichlet_face, size_arg=1)       # faces
     self._set_scalar_at = _be.make_gridstride_kernel(
       ls_compute._gs_set_scalar_at, size_arg=1)                  # idx
+    self._prepare_bc_update_tables()
+
+  def _index_array(self, values):
+    values = np.asarray(values, dtype=np.int32)
+    if self._gpu:
+      return self.domain.backend.asarray(values, np.int32)
+    return values
+
+  def _prepare_bc_update_tables(self):
+    oldname = self.domain.backend.to_host(self.domain.nodes.oldname) if self._gpu else self.domain.nodes.oldname
+    self._bc_update_tables = []
+    for BC in self.var.BCs.values():
+      if BC is None:
+        continue
+      if BC.BCtype == "dirichlet":
+        self._bc_update_tables.append((
+          "dirichlet",
+          BC,
+          self._index_array(BC.BCfaces),
+          self._index_array(np.where(oldname == BC.BCtypeindex)[0]),
+        ))
+      elif BC.BCtype == "neumann":
+        self._bc_update_tables.append((
+          "neumann",
+          BC,
+          None,
+          self._index_array(np.where(oldname == BC.BCtypeindex)[0]),
+        ))
 
   def assembly(self):
     self._get_triplet(self.domain.faces.cellid, self.domain.faces.nodeid, self.domain.nodes.vertex,
@@ -192,17 +222,14 @@ class LinearSolver:
                   self.matrixinnerfaces, self.domain.halofaces, self.var.dirichletfaces)
 
   def update_ghost_values(self):
-    for BC in self.var.BCs.values():
-      if BC.BCtype == "dirichlet":
-        self._rhs_value_dirichlet_face(self.domain.Pbordface, np.asarray(BC.BCfaces, dtype=np.int32), BC.BCvalueface)
-        self._rhs_value_dirichlet_node(self.domain.Pbordnode,
-                                 np.where(self.domain.nodes.oldname == BC.BCtypeindex)[0].astype(np.int32),
-                                 BC.BCvaluenode)
+    for kind, BC, faces, nodes in self._bc_update_tables:
+      if kind == "dirichlet":
+        self._rhs_value_dirichlet_face(self.domain.Pbordface, faces, BC.BCvalueface)
+        self._rhs_value_dirichlet_node(self.domain.Pbordnode, nodes, BC.BCvaluenode)
 
-      elif BC.BCtype == "neumann":
+      elif kind == "neumann":
         # Pbordnode[neumann_nodes] = 1, via kernel (Pbordnode est sur le backend).
-        neumann_nodes = np.where(self.domain.nodes.oldname == BC.BCtypeindex)[0].astype(np.int32)
-        self._set_scalar_at(self.domain.Pbordnode, neumann_nodes, 1.0)
+        self._set_scalar_at(self.domain.Pbordnode, nodes, 1.0)
 
   def compute_Sol_gradient(self):
     self._compute_P_gradient(self.var.cell, self.var.ghost, self.var.halo, self.var.node, self.domain.faces.cellid,

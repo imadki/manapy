@@ -27,10 +27,12 @@ def _explicitscheme_dissipative_ST(u_face: 'float[:]', v_face: 'float[:]', w_fac
     n = 2.5e19
     E = np.sqrt(Ex_face[i] ** 2 + Ey_face[i] ** 2 + Ez_face[i] ** 2)
     ve = np.sqrt(u_face[i] ** 2 + v_face[i] ** 2 + w_face[i] ** 2)
-    De = (0.3341e9 * (E / n) ** 0.54069) * (ve / E)
-
+    # Guard E == 0 BEFORE dividing by E (numba raises on /0; the legacy C kernel
+    # relied on inf then zeroed it afterwards).
     if E == 0.:
       De = 0.
+    else:
+      De = (0.3341e9 * (E / n) ** 0.54069) * (ve / E)
     flux_ne = De * q
 
     if face_name[i] == 0:
@@ -53,7 +55,9 @@ def _explicitscheme_source_ST(ne: 'float[:]', u: 'float[:]', v: 'float[:]', w: '
     E = np.sqrt(Ex[i] ** 2 + Ey[i] ** 2 + Ez[i] ** 2)
     ve = np.sqrt(u[i] ** 2 + v[i] ** 2 + w[i] ** 2)
 
-    if (E / n) > 1.5e-15:
+    if E == 0.:
+      alpha_n = 0.  # no field -> no impact ionization (and ve == 0 anyway)
+    elif (E / n) > 1.5e-15:
       alpha_n = 2e-16 * np.exp(-7.248e-15 / (E / n))
     else:
       alpha_n = 6.619e-17 * np.exp(-5.593e-15 / (E / n))
@@ -148,7 +152,12 @@ def _time_step_ST(u: 'float[:]', v: 'float[:]', w: 'float[:]', Ex: 'float[:]', E
   for i in range(nbelement):
     ve = np.sqrt(u[i] ** 2 + v[i] ** 2 + w[i] ** 2)
     E = np.sqrt(Ex[i] ** 2 + Ey[i] ** 2 + Ez[i] ** 2)
-    De = 0.3341e9 * (E / n) ** 0.54069 * (ve / E)
+    # Guard E == 0 (no field -> no diffusion). The legacy pyccel/C kernel relied
+    # on C's inf semantics here; numba's default error model raises on /0.
+    if E == 0.:
+      De = 0.
+    else:
+      De = 0.3341e9 * (E / n) ** 0.54069 * (ve / E)
     lam = 0.
 
     for j in range(dim + 1):
@@ -162,7 +171,8 @@ def _time_step_ST(u: 'float[:]', v: 'float[:]', w: 'float[:]', Ex: 'float[:]', E
       lam_diff = De * mes ** 2
       lam += lam_diff / cell_volume[i]
 
-    dt = min(dt, cfl * cell_volume[i] / lam)
+    if lam != 0.:
+      dt = min(dt, cfl * cell_volume[i] / lam)
 
   return dt
 

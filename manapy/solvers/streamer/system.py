@@ -69,33 +69,53 @@ class StreamerSolver:
 
     advecdiff_fvm_utils_compute.setup(self.dim)
     fvm_utils_compute.setup(self.dim)
-    if self.dim == 2:
-      self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_2d
-    elif self.dim == 3:
-      self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_3d
 
-    self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative_ST
-    self._explicitscheme_source = fvm_utils_compute.explicitscheme_source_ST
-    self._compute_el_field = fvm_utils_compute.compute_el_field
-    self._compute_velocity = fvm_utils_compute.compute_velocity
-    self._time_step = fvm_utils_compute.time_step_ST
-    self._update_new_value = fvm_utils_compute.update_ST
-    self.update_rhs_glob = fvm_utils_compute.update_rhs_glob
-    self.update_rhs_loc = fvm_utils_compute.update_rhs_loc
+    if self.domain.backend.name == "gpu":
+      if self.dim != 2:
+        raise NotImplementedError("Streamer GPU is implemented for 2D only")
+      # ne drifts like an advection-diffusion scalar -> reuse advecdiff's GPU
+      # convective kernel; the streamer-specific kernels live in cuda_fvm_utils.
+      from manapy.solvers.advecdiff.cuda_fvm_utils import (
+        get_kernel_explicitscheme_convective_2d)
+      from manapy.solvers.streamer.cuda_fvm_utils import (
+        get_kernel_explicitscheme_dissipative_ST,
+        get_kernel_explicitscheme_source_ST, get_kernel_compute_el_field,
+        get_kernel_compute_velocity, get_kernel_time_step_ST,
+        get_kernel_update_ST, get_kernel_update_rhs_loc)
+      self._explicitscheme_convective = get_kernel_explicitscheme_convective_2d()
+      self._explicitscheme_dissipative = get_kernel_explicitscheme_dissipative_ST()
+      self._explicitscheme_source = get_kernel_explicitscheme_source_ST()
+      self._compute_el_field = get_kernel_compute_el_field()
+      self._compute_velocity = get_kernel_compute_velocity()
+      self._time_step = get_kernel_time_step_ST()
+      self._update_new_value = get_kernel_update_ST()
+      self.update_rhs_loc = get_kernel_update_rhs_loc()
+      self.update_rhs_glob = fvm_utils_compute.update_rhs_glob  # unused on GPU
+    else:
+      if self.dim == 2:
+        self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_2d
+      elif self.dim == 3:
+        self._explicitscheme_convective = advecdiff_fvm_utils_compute.explicitscheme_convective_3d
+      self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative_ST
+      self._explicitscheme_source = fvm_utils_compute.explicitscheme_source_ST
+      self._compute_el_field = fvm_utils_compute.compute_el_field
+      self._compute_velocity = fvm_utils_compute.compute_velocity
+      self._time_step = fvm_utils_compute.time_step_ST
+      self._update_new_value = fvm_utils_compute.update_ST
+      self.update_rhs_glob = fvm_utils_compute.update_rhs_glob
+      self.update_rhs_loc = fvm_utils_compute.update_rhs_loc
 
   def update_rhs(self):
-    pass
-    # TODO there is not solver attribute in domain
-    # TODO there is not solver globalsize in domain
-    # if self.domain.solver == "petsc":
-    #   self.rhs_updated = np.zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    #   self.update_rhs_loc(self.ne.cell, self.ni.cell, self.domain.cells.loctoglob, self.rhs_updated)
-    # else:
-    # domain.globalsize
-    # self.rhs_updated = np.zeros(self.domain.globalsize, dtype=FLOAT_TYPE)
-    # self.update_rhs_glob(self.ne.cell, self.ni.cell, self.domain.cells.loctoglob, self.rhs_updated)
-    #
-    # return self.rhs_updated
+    """Poisson source term: the local charge density 1.8096e-8*(ne - ni) for
+    every local cell (owned cells first). The caller passes rhs[:solver.localsize]
+    to the distributed solver (PETSc-style: each rank supplies only its own rows).
+    """
+    be = self.domain.backend
+    rhs = be.zeros(self.domain.nbcells, FLOAT_TYPE)
+    self.update_rhs_loc(self.ne.cell, self.ni.cell, self.domain.cells.loctoglob, rhs)
+    # Return a host array: the distributed solver adds it to the (host-staged) BC
+    # rhs. On CPU to_host is a no-op; on GPU it copies the small vector once.
+    return be.to_host(rhs)
 
   def explicit_convective(self):
     if self.order == 2:
@@ -105,10 +125,10 @@ class StreamerSolver:
                                     self.ne.gradcellz, self.ne.gradhalocellx, self.ne.gradhalocelly,
                                     self.ne.gradhalocellz, self.ne.psi, self.ne.psihalo,
                                     self.domain.cells.center, self.domain.faces.center, self.domain.halos.centvol,
-                                    self.domain.faces.ghostcenter, self.domain.faces.cellid, self.domain.faces.normal,
+                                    self.domain.faces.cellid, self.domain.faces.normal,
                                     self.domain.faces.halofid, self.domain.faces.name,
                                     self.domain.innerfaces, self.domain.halofaces, self.domain.boundaryfaces,
-                                    self.domain.periodicboundaryfaces, self.domain.cells.shift, order=self.order)
+                                    self.domain.periodicboundaryfaces, self.domain.cells.shift, self.order)
 
   def explicit_dissipative(self):
     self.ne.compute_face_gradient()
