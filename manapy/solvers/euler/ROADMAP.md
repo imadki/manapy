@@ -47,7 +47,50 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
 - ⬜ smoothness indicators + nonlinear WENO weights; directional stencils; edge-quadrature
   flux + solver coupling.
 
+## Variable-gamma (multispecies) hydro coupling
+- ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure
+  update (`*_rusanov_vg`, `_update_euler_2d_vg`; `EulerSolver(variable_gamma=True)` +
+  `set_gamma`). Wired into `ReactiveSolver` (gamma tracks composition each step).
+  Validated: exact match to the scalar path for uniform gamma; ~15x lower spurious
+  pressure error at a moving multi-gamma contact (2D rusanov order 1).
+- ⬜ double-flux / quasi-conservative variant to remove the residual contact
+  pressure oscillation; 3D and Roe variable-gamma paths.
+
+## Per-boundary BC dispatch
+- ✅ `EulerSolver(bc={name: type})` applies a different treatment per named boundary
+  (`neumann`, `slipwall`, `nonreflecting`) in one run (`_apply_per_boundary_ghosts`).
+  Validated: all-neumann map matches the scalar `Neumann` exactly; a uniform channel
+  stream with slip walls + non-reflecting in/out stays steady to 1e-18; an acoustic
+  pulse radiates out axially (8.9x less trapped than all-walls). Example
+  `examples/2D/mixed_bc_channel2d.py`. (2D; inflow combines via `TurbulentInflow.apply`.)
+
+## Mixture transport in the viscous path
+- ✅ `viscosity_law="mixture"`: per-cell μ, λ supplied each step (face-averaged into
+  the laminar base via `EulerSolver.set_transport`), wired in `ReactiveSolver` from
+  Cantera `transport_array`. Validated: uniform-μ mixture matches the constant law
+  exactly; in a reacting bomb μ rises x1.94 and λ x1.71 as T goes 1100->2928 K.
+  Composes with the LES SGS (μ_t added on top of the mixture base).
+
+## Double-flux method (Abgrall–Billet) — multi-gamma pressure equilibrium
+- ✅ `EulerSolver(variable_gamma=True, doubleflux=True)`: each cell is updated with its
+  own frozen gamma, the neighbour energy reinterpreted in that frame, and the conserved
+  energy re-synced from pressure each step (`_doubleflux_residual_euler_2d`,
+  `_update_euler_2d_df`). Removes the spurious contact pressure oscillation.
+  Validated: a moving multi-gamma contact keeps P to **machine precision** (2.9e-15 vs
+  2.8e-2 for variable-gamma alone); a strong flame-like contact (density ratio ~7,
+  gamma 1.25/1.40) stays exact (2.3e-15) and stable; uniform gamma reproduces the
+  standard scheme (stable Sod). This unblocks the multi-component flame stability.
+
+## Propagating 1-D flame (capstone) — core unblocked
+The full stack is wired and validated piece-by-piece (convection, diffusion, chemistry,
+mixture transport, variable-gamma, and now the double-flux that keeps the burnt/unburnt
+contact in pressure equilibrium). Remaining to a converged propagating flame:
+- ⬜ in `ReactiveSolver`, carry the **sensible** energy in the hydro (so the double-flux
+  re-sync preserves the chemical/formation energy carried by the advected species),
+  and add the heat release back in the reaction step.
+- ⬜ flame-speed validation vs Cantera `FreeFlame` (S_L ≈ 2.56 m/s, stoich H2/air);
+  needs a flame-resolving mesh (HPC-scale steps for the low-Mach acoustic limit).
+
 ## Cross-cutting refinements (optional)
-- ⬜ per-boundary BC dispatch (mixed inflow / non-reflecting outflow / walls in one run)
-- ⬜ variable-gamma in the hydro fluxes; μ/λ from the mixture transport into the viscous path
-- ⬜ correction velocity for exact sum conservation with unequal D_k; propagating 1-D flame
+- ⬜ correction velocity for exact sum conservation with unequal D_k
+- ⬜ 3D / Roe variable-gamma; per-boundary dispatch in 3D
