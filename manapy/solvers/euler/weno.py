@@ -66,6 +66,49 @@ def _weno_kernel_2d(U: 'float64[:]', coeffs: 'float64[:,:]', st_idx: 'int32[:,:,
 _weno_kernel_2d_compiled = None
 
 
+def _weno_advection_2d(rez: 'float64[:]', u_c: 'float64[:]', u_g: 'float64[:]',
+                       coeffs: 'float64[:,:]', ea: 'int32[:]', eb: 'int32[:]', M0: 'float64[:,:]',
+                       cx: 'float64[:]', cy: 'float64[:]', h: 'float64[:]',
+                       fcx: 'float64[:]', fcy: 'float64[:]',
+                       cellid: 'int32[:,:]', normal: 'float64[:,:]', mesure: 'float64[:]',
+                       name: 'uint32[:]', ax: 'float64', ay: 'float64'):
+    # Linear-advection residual with a WENO-reconstructed upwind face value:
+    # evaluate the WENO polynomial of the upwind cell at the face centre. The
+    # high-order, non-oscillatory reconstruction is what gives WENO its quality.
+    K = coeffs.shape[1]
+    rez[:] = np.zeros(len(rez))
+    nbface = len(cellid)
+    for f in range(nbface):
+        mes = mesure[f]
+        nx = normal[f][0] / mes
+        ny = normal[f][1] / mes
+        un = ax * nx + ay * ny
+        il = cellid[f][0]
+        inner = name[f] == 0
+        # pick the upwind cell and evaluate its reconstruction at the face centre
+        if un >= 0.0:
+            ic = il
+        elif inner:
+            ic = cellid[f][1]
+        else:
+            ic = -1                                 # boundary, use ghost below
+        if ic >= 0:
+            val = u_c[ic]
+            xi = cx[ic]; yi = cy[ic]; hi = h[ic]
+            for k in range(K):
+                val += coeffs[ic, k] * (((fcx[f] - xi) / hi) ** ea[k]
+                                        * ((fcy[f] - yi) / hi) ** eb[k] - M0[ic, k])
+        else:
+            val = u_g[f]
+        flux = un * val * mes
+        rez[il] -= flux
+        if inner:
+            rez[cellid[f][1]] += flux
+
+
+_weno_advection_2d_compiled = None
+
+
 # scaled monomial exponents for order r (2D), excluding the constant term
 _EXPONENTS = {
     1: [(1, 0), (0, 1)],
@@ -199,6 +242,20 @@ class WenoReconstruction:
       _weno_kernel_2d_compiled = compile(_weno_kernel_2d)
     self._kernel = _weno_kernel_2d_compiled
 
+    # packed basis exponents / cell averages / face geometry for the flux kernels
+    self._ea = np.array([a for (a, b) in self.exps], dtype=np.int32)
+    self._eb = np.array([b for (a, b) in self.exps], dtype=np.int32)
+    self._M0_p = np.array(self._M0)
+    fc = np.asarray(self.domain.faces.center)
+    self._fcx = np.ascontiguousarray(fc[:, 0])
+    self._fcy = np.ascontiguousarray(fc[:, 1])
+    self._cx = np.ascontiguousarray(self.center[:, 0])
+    self._cy = np.ascontiguousarray(self.center[:, 1])
+    global _weno_advection_2d_compiled
+    if _weno_advection_2d_compiled is None:
+      _weno_advection_2d_compiled = compile(_weno_advection_2d)
+    self._adv_kernel = _weno_advection_2d_compiled
+
   @staticmethod
   def _select_central(pool, dist, m):
     return pool[np.argsort(dist)[:min(m, len(pool))]]
@@ -270,6 +327,18 @@ class WenoReconstruction:
     self._kernel(U, coeffs, self._st_idx, self._st_cnt, self._pinv_p,
                  self._OI_p, self._lam_arr, self.eps, self.power)
     return coeffs
+
+  def advect_residual(self, u_cell, u_ghost, coeffs, ax, ay):
+    """WENO linear-advection residual d(u*vol)/dt for velocity (ax, ay):
+    upwind flux with the WENO polynomial evaluated at face centres."""
+    rez = np.zeros(self.nbcells)
+    self._adv_kernel(rez, np.ascontiguousarray(u_cell, dtype=float),
+                     np.ascontiguousarray(u_ghost, dtype=float), coeffs,
+                     self._ea, self._eb, self._M0_p, self._cx, self._cy, self.h,
+                     self._fcx, self._fcy, self.domain.faces.cellid,
+                     self.domain.faces.normal, self.domain.faces.mesure,
+                     np.asarray(self.domain.faces.name, dtype=np.uint32), float(ax), float(ay))
+    return rez
 
   def smoothness(self, coeffs):
     """Smoothness indicator SI_i = a_i^T OI_i a_i for every cell (central stencil OI)."""
