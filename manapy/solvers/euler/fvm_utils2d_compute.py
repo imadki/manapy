@@ -1613,6 +1613,81 @@ def _explicitscheme_euler_2d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', 
                 rez_rhov[cellidf[i][0]] -= flux_rhov
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE       
 
+def _explicitscheme_euler_2d_rusanov_o2(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhoE_h: 'float64[:]', rhox: 'float64[:]', rhoy: 'float64[:]', rhoux: 'float64[:]', rhouy: 'float64[:]', rhovx: 'float64[:]', rhovy: 'float64[:]', rhoEx: 'float64[:]', rhoEy: 'float64[:]', rhox_h: 'float64[:]', rhoy_h: 'float64[:]', rhoux_h: 'float64[:]', rhouy_h: 'float64[:]', rhovx_h: 'float64[:]', rhovy_h: 'float64[:]', rhoEx_h: 'float64[:]', rhoEy_h: 'float64[:]', psi_rho: 'float64[:]', psi_rhou: 'float64[:]', psi_rhov: 'float64[:]', psi_rhoE: 'float64[:]', psi_rho_h: 'float64[:]', psi_rhou_h: 'float64[:]', psi_rhov_h: 'float64[:]', psi_rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', centerc: 'float64[:,:]', centerf: 'float64[:,:]', halo_centvol: 'float64[:,:]', gamma: 'float64', order: 'int32'):
+    # Second-order MUSCL: linear reconstruction of the conservative state at the
+    # face with a Barth limiter (psi), then Rusanov flux. P is recomputed from
+    # the reconstructed conservative state via the ideal-gas EOS.
+    nbface = len(cellidf)
+    o = order - 1.0
+
+    rez_rho[:]  = np.zeros(len(rez_rho))
+    rez_rhou[:] = np.zeros(len(rez_rhou))
+    rez_rhov[:] = np.zeros(len(rez_rhov))
+    rez_rhoE[:] = np.zeros(len(rez_rhoE))
+
+    for i in range(nbface):
+        norm = normal[i]/mesurf[i]
+        mesu = mesurf[i]
+
+        L = cellidf[i][0]
+        rlx = centerf[i][0] - centerc[L][0]
+        rly = centerf[i][1] - centerc[L][1]
+        rhol  = rho_c[L]  + o*psi_rho[L] *(rhox[L]*rlx  + rhoy[L]*rly)
+        rhoul = rhou_c[L] + o*psi_rhou[L]*(rhoux[L]*rlx + rhouy[L]*rly)
+        rhovl = rhov_c[L] + o*psi_rhov[L]*(rhovx[L]*rlx + rhovy[L]*rly)
+        rhoEl = rhoE_c[L] + o*psi_rhoE[L]*(rhoEx[L]*rlx + rhoEy[L]*rly)
+        Pl = (gamma-1.0)*(rhoEl - 0.5*(rhoul*rhoul + rhovl*rhovl)/rhol)
+
+        if name[i] == 0:
+            R = cellidf[i][1]
+            rrx = centerf[i][0] - centerc[R][0]
+            rry = centerf[i][1] - centerc[R][1]
+            rhor  = rho_c[R]  + o*psi_rho[R] *(rhox[R]*rrx  + rhoy[R]*rry)
+            rhour = rhou_c[R] + o*psi_rhou[R]*(rhoux[R]*rrx + rhouy[R]*rry)
+            rhovr = rhov_c[R] + o*psi_rhov[R]*(rhovx[R]*rrx + rhovy[R]*rry)
+            rhoEr = rhoE_c[R] + o*psi_rhoE[R]*(rhoEx[R]*rrx + rhoEy[R]*rry)
+            Pr = (gamma-1.0)*(rhoEr - 0.5*(rhour*rhour + rhovr*rhovr)/rhor)
+
+            flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+
+            rez_rho[L]  -= flux_rho;  rez_rho[R]  += flux_rho
+            rez_rhou[L] -= flux_rhou; rez_rhou[R] += flux_rhou
+            rez_rhov[L] -= flux_rhov; rez_rhov[R] += flux_rhov
+            rez_rhoE[L] -= flux_rhoE; rez_rhoE[R] += flux_rhoE
+
+        elif name[i] == 10:
+            h = halofid[i]
+            rrx = centerf[i][0] - halo_centvol[h][0]
+            rry = centerf[i][1] - halo_centvol[h][1]
+            rhor  = rho_h[h]  + o*psi_rho_h[h] *(rhox_h[h]*rrx  + rhoy_h[h]*rry)
+            rhour = rhou_h[h] + o*psi_rhou_h[h]*(rhoux_h[h]*rrx + rhouy_h[h]*rry)
+            rhovr = rhov_h[h] + o*psi_rhov_h[h]*(rhovx_h[h]*rrx + rhovy_h[h]*rry)
+            rhoEr = rhoE_h[h] + o*psi_rhoE_h[h]*(rhoEx_h[h]*rrx + rhoEy_h[h]*rry)
+            Pr = (gamma-1.0)*(rhoEr - 0.5*(rhour*rhour + rhovr*rhovr)/rhor)
+
+            flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+
+            rez_rho[L]  -= flux_rho
+            rez_rhou[L] -= flux_rhou
+            rez_rhov[L] -= flux_rhov
+            rez_rhoE[L] -= flux_rhoE
+
+        else:
+            # physical boundary: ghost state (first order on the ghost side)
+            rhor  = rho_g[i]
+            rhour = rhou_g[i]
+            rhovr = rhov_g[i]
+            rhoEr = rhoE_g[i]
+            Pr = (gamma-1.0)*(rhoEr - 0.5*(rhour*rhour + rhovr*rhovr)/rhor)
+
+            flux_rho,flux_rhou,flux_rhov,flux_rhoE = _compute_flux_euler_2d_rusanov(rhol,Pl,rhoul,rhovl,rhoEl,rhor,Pr,rhour,rhovr,rhoEr,norm, mesu,gamma)
+
+            rez_rho[L]  -= flux_rho
+            rez_rhou[L] -= flux_rhou
+            rez_rhov[L] -= flux_rhov
+            rez_rhoE[L] -= flux_rhoE
+
+
 def _update_euler_2d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhoE_c: 'float64[:]', rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]', gamma: 'float64', dtime: 'float64', vol: 'float64[:]'):
 
     rho_c[:]   += dtime*((rez_rho[:])/vol[:])
@@ -1620,6 +1695,260 @@ def _update_euler_2d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float6
     rhov_c[:]  += dtime*((rez_rhov[:])/vol[:])
     rhoE_c[:]  += dtime*((rez_rhoE[:])/vol[:])
     P_c[:]      = (gamma-1)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:])/rho_c[:])
+
+####################
+# Viscous (Navier-Stokes) fluxes -- mono-species Newtonian model,
+# written in dimensional variables.
+#
+#   tau_xx = 2*mu*u_x - (2/3)*mu*(u_x + v_y)
+#   tau_yy = 2*mu*v_y - (2/3)*mu*(u_x + v_y)
+#   tau_xy = mu*(u_y + v_x)
+#   energy flux  = (u*tau_xx + v*tau_xy + kappa*T_x ,  u*tau_xy + v*tau_yy + kappa*T_y)
+#   kappa = mu*cp/Pr,   cp = gamma*R/(gamma-1),   T = P/(rho*R)
+#
+# The viscous term enters the NS system as +div(F_visc), so it accumulates with
+# the *diffusion* sign convention (rez[left] += G, rez[right] -= G), i.e. the
+# opposite of the inviscid Euler flux. It MUST run AFTER the inviscid scheme,
+# which zeroes the rez_* accumulators; the viscous kernel only adds to them and
+# leaves rez_rho untouched (no viscous mass flux).
+
+def _face_transport_props_2d(mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                             T_c: 'float64[:]', T_g: 'float64[:]', T_h: 'float64[:]',
+                             cellidf: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]',
+                             law: 'int32', mu_const: 'float64', mu_ref: 'float64',
+                             T_ref: 'float64', S_suth: 'float64', cp: 'float64', Pr: 'float64'):
+    # Fill per-face dynamic viscosity mu and conductivity kappa. law==0: constant
+    # mu; law==1: Sutherland mu(T) evaluated at the face temperature.
+    nbface = len(cellidf)
+    for i in range(nbface):
+        if law == 0:
+            muf = mu_const
+        else:
+            if name[i] == 0:
+                Tf = 0.5 * (T_c[cellidf[i][0]] + T_c[cellidf[i][1]])
+            elif name[i] == 10:
+                Tf = 0.5 * (T_c[cellidf[i][0]] + T_h[halofid[i]])
+            else:
+                Tf = 0.5 * (T_c[cellidf[i][0]] + T_g[i])
+            muf = mu_ref * (Tf / T_ref) ** 1.5 * (T_ref + S_suth) / (Tf + S_suth)
+        mu_face[i] = muf
+        kappa_face[i] = muf * cp / Pr
+
+
+def _explicitscheme_euler_2d_viscous(rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhoE: 'float64[:]',
+                                     u_gx: 'float64[:]', u_gy: 'float64[:]', v_gx: 'float64[:]', v_gy: 'float64[:]',
+                                     T_gx: 'float64[:]', T_gy: 'float64[:]',
+                                     u_c: 'float64[:]', u_g: 'float64[:]', u_h: 'float64[:]',
+                                     v_c: 'float64[:]', v_g: 'float64[:]', v_h: 'float64[:]',
+                                     mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                                     cellidf: 'int32[:,:]', halofid: 'int32[:]',
+                                     normal: 'float64[:,:]', name: 'uint32[:]'):
+    twothirds = 2.0 / 3.0
+    nbface = len(cellidf)
+    for i in range(nbface):
+        nx = normal[i][0]
+        ny = normal[i][1]
+        mu = mu_face[i]
+        kap = kappa_face[i]
+
+        # face-centred gradients from the diamond reconstruction (Variable.compute_face_gradient)
+        ux = u_gx[i]; uy = u_gy[i]
+        vx = v_gx[i]; vy = v_gy[i]
+        Tx = T_gx[i]; Ty = T_gy[i]
+
+        div = ux + vy
+        tau_xx = 2.0 * mu * ux - twothirds * mu * div
+        tau_yy = 2.0 * mu * vy - twothirds * mu * div
+        tau_xy = mu * (uy + vx)
+
+        # face velocity for the viscous work term tau.u (= wall value at boundaries)
+        il = cellidf[i][0]
+        if name[i] == 0:
+            ir = cellidf[i][1]
+            uf = 0.5 * (u_c[il] + u_c[ir])
+            vf = 0.5 * (v_c[il] + v_c[ir])
+        elif name[i] == 10:
+            uf = 0.5 * (u_c[il] + u_h[halofid[i]])
+            vf = 0.5 * (v_c[il] + v_h[halofid[i]])
+        else:
+            uf = 0.5 * (u_c[il] + u_g[i])
+            vf = 0.5 * (v_c[il] + v_g[i])
+
+        # F_visc . n  (normal is area-scaled: |normal| = face measure)
+        G_rhou = tau_xx * nx + tau_xy * ny
+        G_rhov = tau_xy * nx + tau_yy * ny
+        qx = uf * tau_xx + vf * tau_xy + kap * Tx
+        qy = uf * tau_xy + vf * tau_yy + kap * Ty
+        G_rhoE = qx * nx + qy * ny
+
+        rez_rhou[il] += G_rhou
+        rez_rhov[il] += G_rhov
+        rez_rhoE[il] += G_rhoE
+        if name[i] == 0:
+            ir = cellidf[i][1]
+            rez_rhou[ir] -= G_rhou
+            rez_rhov[ir] -= G_rhov
+            rez_rhoE[ir] -= G_rhoE
+
+
+def _viscous_time_step_2d(rho: 'float64[:]', mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                          cp: 'float64', cfl: 'float64', mesure: 'float64[:]',
+                          volume: 'float64[:]', faceid: 'int32[:,:]', dt_c: 'float64[:]'):
+    # Diffusive stability limit, mirroring diffusion/_time_step. The effective
+    # diffusivity is the max of momentum (4/3 mu/rho) and thermal (kappa/(rho cp)).
+    nbelement = len(faceid)
+    for i in range(nbelement):
+        lam = 0.0
+        for j in range(faceid[i][-1]):
+            fid = faceid[i][j]
+            mes = mesure[fid]
+            num = (4.0 / 3.0) * mu_face[fid]
+            kth = kappa_face[fid] / cp
+            if kth > num:
+                num = kth
+            nu = num / rho[i]
+            lam += nu * mes * mes / volume[i]
+        if lam != 0.0:
+            dt_c[i] = cfl * volume[i] / lam
+        else:
+            dt_c[i] = 1.e6
+
+def _mu_sgs_smagorinsky_2d(mut: 'float64[:]', rho: 'float64[:]',
+                           ux: 'float64[:]', uy: 'float64[:]', vx: 'float64[:]', vy: 'float64[:]',
+                           delta: 'float64[:]', Cs: 'float64'):
+    # Smagorinsky eddy viscosity per cell: mu_t = rho (Cs delta)^2 |S|,
+    # |S| = sqrt(2 S_ij S_ij), S_ij the resolved strain-rate tensor.
+    n = len(rho)
+    for c in range(n):
+        s11 = ux[c]
+        s22 = vy[c]
+        s12 = 0.5 * (uy[c] + vx[c])
+        ss = s11 * s11 + s22 * s22 + 2.0 * s12 * s12
+        smag = np.sqrt(2.0 * ss)
+        cd = Cs * delta[c]
+        mut[c] = rho[c] * cd * cd * smag
+
+
+def _mu_sgs_wale_2d(mut: 'float64[:]', rho: 'float64[:]',
+                    ux: 'float64[:]', uy: 'float64[:]', vx: 'float64[:]', vy: 'float64[:]',
+                    delta: 'float64[:]', Cw: 'float64'):
+    # WALE eddy viscosity (Nicoud & Ducros 1999):
+    #   mu_t = rho (Cw delta)^2 (Sd:Sd)^{3/2} / [ (S:S)^{5/2} + (Sd:Sd)^{5/4} ]
+    # Sd = traceless symmetric part of the square of the velocity-gradient tensor.
+    onethird = 1.0 / 3.0
+    n = len(rho)
+    for c in range(n):
+        g11 = ux[c]; g12 = uy[c]
+        g21 = vx[c]; g22 = vy[c]
+        # g^2 = g.g
+        h11 = g11 * g11 + g12 * g21
+        h12 = g11 * g12 + g12 * g22
+        h21 = g21 * g11 + g22 * g21
+        h22 = g21 * g12 + g22 * g22
+        tr = onethird * (h11 + h22)
+        sd11 = h11 - tr
+        sd22 = h22 - tr
+        sd12 = 0.5 * (h12 + h21)
+        sdsd = sd11 * sd11 + sd22 * sd22 + 2.0 * sd12 * sd12
+        s11 = g11; s22 = g22; s12 = 0.5 * (g12 + g21)
+        ss = s11 * s11 + s22 * s22 + 2.0 * s12 * s12
+        denom = ss ** 2.5 + sdsd ** 1.25
+        if denom > 0.0:
+            sra = sdsd ** 1.5 / denom
+        else:
+            sra = 0.0
+        cd = Cw * delta[c]
+        mut[c] = rho[c] * cd * cd * sra
+
+
+def _add_sgs_face_props_2d(mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                           mut_c: 'float64[:]', mut_h: 'float64[:]',
+                           cellidf: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]',
+                           cp: 'float64', Prt: 'float64'):
+    # Add the face-averaged turbulent viscosity to the (already laminar) face
+    # transport props. Turbulent conductivity uses the turbulent Prandtl number.
+    cp_Prt = cp / Prt
+    nbface = len(cellidf)
+    for i in range(nbface):
+        il = cellidf[i][0]
+        if name[i] == 0:
+            mutf = 0.5 * (mut_c[il] + mut_c[cellidf[i][1]])
+        elif name[i] == 10:
+            mutf = 0.5 * (mut_c[il] + mut_h[halofid[i]])
+        else:
+            mutf = mut_c[il]
+        mu_face[i] += mutf
+        kappa_face[i] += mutf * cp_Prt
+
+
+def _ghost_value_NonReflecting(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]',
+                               ug: 'float64[:]', vg: 'float64[:]', rhoEg: 'float64[:]',
+                               rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhoEc: 'float64[:]',
+                               cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]',
+                               center: 'float64[:,:]', t: 'float64',
+                               gamma: 'float64', rho_inf: 'float64', u_inf: 'float64', v_inf: 'float64', p_inf: 'float64'):
+    # Characteristic far-field (non-reflecting) ghost state via Riemann invariants.
+    # Characteristic far-field (NSCBC) non-reflecting BC: the outgoing
+    # acoustic invariant is taken from the interior, the incoming one from the
+    # free-stream reference (rho_inf, u_inf, v_inf, p_inf); entropy and the
+    # tangential velocity follow the flow direction. Applied to every physical
+    # boundary face (name >= 1). The downstream Riemann flux then sees a state
+    # that lets outgoing waves leave with minimal reflection.
+    gm1 = gamma - 1.0
+    c_inf = np.sqrt(gamma * p_inf / rho_inf)
+    nbface = len(cellid)
+    for i in range(nbface):
+        if name[i] == 0 or name[i] == 10:
+            continue
+        il = cellid[i][0]
+        mes = mesure[i]
+        nx = normal[i][0] / mes
+        ny = normal[i][1] / mes
+
+        rhoL = rhoc[il]
+        uL = rhouc[il] / rhoL
+        vL = rhovc[il] / rhoL
+        pL = Pc[il]
+        cL = np.sqrt(gamma * pL / rhoL)
+        unL = uL * nx + vL * ny
+
+        un_inf = u_inf * nx + v_inf * ny
+
+        if unL <= -cL:
+            # supersonic inflow: state fully imposed from the free-stream
+            rho_b = rho_inf; u_b = u_inf; v_b = v_inf; p_b = p_inf
+        elif unL >= cL:
+            # supersonic outflow: state fully extrapolated from the interior
+            rho_b = rhoL; u_b = uL; v_b = vL; p_b = pL
+        else:
+            # subsonic: blend the two acoustic Riemann invariants
+            Rp = unL + 2.0 * cL / gm1          # outgoing (un+c branch), interior
+            Rm = un_inf - 2.0 * c_inf / gm1     # incoming (un-c branch), free-stream
+            un_b = 0.5 * (Rp + Rm)
+            c_b = 0.25 * gm1 * (Rp - Rm)
+            if un_b <= 0.0:
+                # inflow: entropy and tangential velocity from the free-stream
+                s_b = p_inf / rho_inf ** gamma
+                utx = u_inf - un_inf * nx
+                uty = v_inf - un_inf * ny
+            else:
+                # outflow: entropy and tangential velocity from the interior
+                s_b = pL / rhoL ** gamma
+                utx = uL - unL * nx
+                uty = vL - unL * ny
+            rho_b = (c_b * c_b / (gamma * s_b)) ** (1.0 / gm1)
+            p_b = rho_b * c_b * c_b / gamma
+            u_b = un_b * nx + utx
+            v_b = un_b * ny + uty
+
+        rhog[i] = rho_b
+        Pg[i] = p_b
+        rhoug[i] = rho_b * u_b
+        rhovg[i] = rho_b * v_b
+        ug[i] = u_b
+        vg[i] = v_b
+        rhoEg[i] = p_b / gm1 + 0.5 * rho_b * (u_b * u_b + v_b * v_b)
+
 
 ############################################################################
 # NOTHING is compiled at import. Call setup() once (uniformly on all MPI ranks)
@@ -1654,7 +1983,11 @@ def setup(dim=2):
   global time_step_euler_2d, departure_euler_2d, predictor_euler_2d
   global compute_flux_euler_2d_fvc, compute_flux_euler_2d_rusanov, compute_flux_euler_2d_Roe
   global explicitscheme_euler_2d_fvc, explicitscheme_euler_2d_rusanov, explicitscheme_euler_2d_Roe
+  global explicitscheme_euler_2d_rusanov_o2
   global update_euler_2d_fvc
+  global explicitscheme_euler_2d_viscous, face_transport_props_2d, viscous_time_step_2d
+  global ghost_value_NonReflecting
+  global mu_sgs_smagorinsky_2d, mu_sgs_wale_2d, add_sgs_face_props_2d
 
   node_for_interpolation_2d = compile(_node_for_interpolation_2d)
   node_value_for_interpolation_2d = compile(_node_value_for_interpolation_2d)
@@ -1678,6 +2011,14 @@ def setup(dim=2):
   explicitscheme_euler_2d_fvc = compile(_explicitscheme_euler_2d_fvc)
   explicitscheme_euler_2d_rusanov = compile(_explicitscheme_euler_2d_rusanov)
   explicitscheme_euler_2d_Roe = compile(_explicitscheme_euler_2d_Roe)
+  explicitscheme_euler_2d_rusanov_o2 = compile(_explicitscheme_euler_2d_rusanov_o2)
   update_euler_2d_fvc = compile(_update_euler_2d_fvc)
+  explicitscheme_euler_2d_viscous = compile(_explicitscheme_euler_2d_viscous)
+  face_transport_props_2d = compile(_face_transport_props_2d)
+  viscous_time_step_2d = compile(_viscous_time_step_2d)
+  ghost_value_NonReflecting = compile(_ghost_value_NonReflecting)
+  mu_sgs_smagorinsky_2d = compile(_mu_sgs_smagorinsky_2d)
+  mu_sgs_wale_2d = compile(_mu_sgs_wale_2d)
+  add_sgs_face_props_2d = compile(_add_sgs_face_props_2d)
 
   _done = True
