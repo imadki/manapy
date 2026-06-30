@@ -1240,6 +1240,276 @@ def _update_euler_3d_fvc(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float6
     rhoE_c[:]   += dtime * ((rez_rhoE[:]) /vol[:])
     P_c[:]       = (gamma-1)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:])
 
+
+def _face_transport_props_3d(mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                             T_c: 'float64[:]', T_g: 'float64[:]', T_h: 'float64[:]',
+                             cellidf: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]',
+                             law: 'int32', mu_const: 'float64', mu_ref: 'float64',
+                             T_ref: 'float64', S_suth: 'float64', cp: 'float64', Pr: 'float64'):
+    # Fill per-face dynamic viscosity mu and conductivity kappa. law==0: constant
+    # mu; law==1: Sutherland mu(T) evaluated at the face temperature. (dimension
+    # independent -- identical to the 2D kernel.)
+    nbface = len(cellidf)
+    for i in range(nbface):
+        if law == 0:
+            muf = mu_const
+        else:
+            if name[i] == 0:
+                Tf = 0.5 * (T_c[cellidf[i][0]] + T_c[cellidf[i][1]])
+            elif name[i] == 10:
+                Tf = 0.5 * (T_c[cellidf[i][0]] + T_h[halofid[i]])
+            else:
+                Tf = 0.5 * (T_c[cellidf[i][0]] + T_g[i])
+            muf = mu_ref * (Tf / T_ref) ** 1.5 * (T_ref + S_suth) / (Tf + S_suth)
+        mu_face[i] = muf
+        kappa_face[i] = muf * cp / Pr
+
+
+def _explicitscheme_euler_3d_viscous(rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]',
+                                     u_gx: 'float64[:]', u_gy: 'float64[:]', u_gz: 'float64[:]',
+                                     v_gx: 'float64[:]', v_gy: 'float64[:]', v_gz: 'float64[:]',
+                                     w_gx: 'float64[:]', w_gy: 'float64[:]', w_gz: 'float64[:]',
+                                     T_gx: 'float64[:]', T_gy: 'float64[:]', T_gz: 'float64[:]',
+                                     u_c: 'float64[:]', u_g: 'float64[:]', u_h: 'float64[:]',
+                                     v_c: 'float64[:]', v_g: 'float64[:]', v_h: 'float64[:]',
+                                     w_c: 'float64[:]', w_g: 'float64[:]', w_h: 'float64[:]',
+                                     mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                                     cellidf: 'int32[:,:]', halofid: 'int32[:]',
+                                     normal: 'float64[:,:]', name: 'uint32[:]'):
+    twothirds = 2.0 / 3.0
+    nbface = len(cellidf)
+    for i in range(nbface):
+        nx = normal[i][0]
+        ny = normal[i][1]
+        nz = normal[i][2]
+        mu = mu_face[i]
+        kap = kappa_face[i]
+
+        # face-centred gradients from the diamond reconstruction (Variable.compute_face_gradient)
+        ux = u_gx[i]; uy = u_gy[i]; uz = u_gz[i]
+        vx = v_gx[i]; vy = v_gy[i]; vz = v_gz[i]
+        wx = w_gx[i]; wy = w_gy[i]; wz = w_gz[i]
+        Tx = T_gx[i]; Ty = T_gy[i]; Tz = T_gz[i]
+
+        div = ux + vy + wz
+        tau_xx = 2.0 * mu * ux - twothirds * mu * div
+        tau_yy = 2.0 * mu * vy - twothirds * mu * div
+        tau_zz = 2.0 * mu * wz - twothirds * mu * div
+        tau_xy = mu * (uy + vx)
+        tau_xz = mu * (uz + wx)
+        tau_yz = mu * (vz + wy)
+
+        # face velocity for the viscous work term tau.u (= wall value at boundaries)
+        il = cellidf[i][0]
+        if name[i] == 0:
+            ir = cellidf[i][1]
+            uf = 0.5 * (u_c[il] + u_c[ir])
+            vf = 0.5 * (v_c[il] + v_c[ir])
+            wf = 0.5 * (w_c[il] + w_c[ir])
+        elif name[i] == 10:
+            uf = 0.5 * (u_c[il] + u_h[halofid[i]])
+            vf = 0.5 * (v_c[il] + v_h[halofid[i]])
+            wf = 0.5 * (w_c[il] + w_h[halofid[i]])
+        else:
+            uf = 0.5 * (u_c[il] + u_g[i])
+            vf = 0.5 * (v_c[il] + v_g[i])
+            wf = 0.5 * (w_c[il] + w_g[i])
+
+        # F_visc . n  (normal is area-scaled: |normal| = face measure)
+        G_rhou = tau_xx * nx + tau_xy * ny + tau_xz * nz
+        G_rhov = tau_xy * nx + tau_yy * ny + tau_yz * nz
+        G_rhow = tau_xz * nx + tau_yz * ny + tau_zz * nz
+        qx = uf * tau_xx + vf * tau_xy + wf * tau_xz + kap * Tx
+        qy = uf * tau_xy + vf * tau_yy + wf * tau_yz + kap * Ty
+        qz = uf * tau_xz + vf * tau_yz + wf * tau_zz + kap * Tz
+        G_rhoE = qx * nx + qy * ny + qz * nz
+
+        rez_rhou[il] += G_rhou
+        rez_rhov[il] += G_rhov
+        rez_rhow[il] += G_rhow
+        rez_rhoE[il] += G_rhoE
+        if name[i] == 0:
+            ir = cellidf[i][1]
+            rez_rhou[ir] -= G_rhou
+            rez_rhov[ir] -= G_rhov
+            rez_rhow[ir] -= G_rhow
+            rez_rhoE[ir] -= G_rhoE
+
+
+def _viscous_time_step_3d(rho: 'float64[:]', mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                          cp: 'float64', cfl: 'float64', mesure: 'float64[:]',
+                          volume: 'float64[:]', faceid: 'int32[:,:]', dt_c: 'float64[:]'):
+    # Diffusive stability limit, mirroring diffusion/_time_step. The effective
+    # diffusivity is the max of momentum (4/3 mu/rho) and thermal (kappa/(rho cp)).
+    nbelement = len(faceid)
+    for i in range(nbelement):
+        lam = 0.0
+        for j in range(faceid[i][-1]):
+            fid = faceid[i][j]
+            mes = mesure[fid]
+            num = (4.0 / 3.0) * mu_face[fid]
+            kth = kappa_face[fid] / cp
+            if kth > num:
+                num = kth
+            nu = num / rho[i]
+            lam += nu * mes * mes / volume[i]
+        if lam != 0.0:
+            dt_c[i] = cfl * volume[i] / lam
+        else:
+            dt_c[i] = 1.e6
+
+def _mu_sgs_smagorinsky_3d(mut: 'float64[:]', rho: 'float64[:]',
+                           ux: 'float64[:]', uy: 'float64[:]', uz: 'float64[:]',
+                           vx: 'float64[:]', vy: 'float64[:]', vz: 'float64[:]',
+                           wx: 'float64[:]', wy: 'float64[:]', wz: 'float64[:]',
+                           delta: 'float64[:]', Cs: 'float64'):
+    # Smagorinsky eddy viscosity per cell: mu_t = rho (Cs delta)^2 |S|,
+    # |S| = sqrt(2 S_ij S_ij).
+    n = len(rho)
+    for c in range(n):
+        s11 = ux[c]; s22 = vy[c]; s33 = wz[c]
+        s12 = 0.5 * (uy[c] + vx[c])
+        s13 = 0.5 * (uz[c] + wx[c])
+        s23 = 0.5 * (vz[c] + wy[c])
+        ss = s11 * s11 + s22 * s22 + s33 * s33 + 2.0 * (s12 * s12 + s13 * s13 + s23 * s23)
+        smag = np.sqrt(2.0 * ss)
+        cd = Cs * delta[c]
+        mut[c] = rho[c] * cd * cd * smag
+
+
+def _mu_sgs_wale_3d(mut: 'float64[:]', rho: 'float64[:]',
+                    ux: 'float64[:]', uy: 'float64[:]', uz: 'float64[:]',
+                    vx: 'float64[:]', vy: 'float64[:]', vz: 'float64[:]',
+                    wx: 'float64[:]', wy: 'float64[:]', wz: 'float64[:]',
+                    delta: 'float64[:]', Cw: 'float64'):
+    # WALE eddy viscosity (Nicoud & Ducros 1999):
+    #   mu_t = rho (Cw delta)^2 (Sd:Sd)^{3/2} / [ (S:S)^{5/2} + (Sd:Sd)^{5/4} ]
+    onethird = 1.0 / 3.0
+    n = len(rho)
+    for c in range(n):
+        g11 = ux[c]; g12 = uy[c]; g13 = uz[c]
+        g21 = vx[c]; g22 = vy[c]; g23 = vz[c]
+        g31 = wx[c]; g32 = wy[c]; g33 = wz[c]
+        # g^2 = g.g
+        h11 = g11 * g11 + g12 * g21 + g13 * g31
+        h12 = g11 * g12 + g12 * g22 + g13 * g32
+        h13 = g11 * g13 + g12 * g23 + g13 * g33
+        h21 = g21 * g11 + g22 * g21 + g23 * g31
+        h22 = g21 * g12 + g22 * g22 + g23 * g32
+        h23 = g21 * g13 + g22 * g23 + g23 * g33
+        h31 = g31 * g11 + g32 * g21 + g33 * g31
+        h32 = g31 * g12 + g32 * g22 + g33 * g32
+        h33 = g31 * g13 + g32 * g23 + g33 * g33
+        tr = onethird * (h11 + h22 + h33)
+        sd11 = h11 - tr
+        sd22 = h22 - tr
+        sd33 = h33 - tr
+        sd12 = 0.5 * (h12 + h21)
+        sd13 = 0.5 * (h13 + h31)
+        sd23 = 0.5 * (h23 + h32)
+        sdsd = sd11 * sd11 + sd22 * sd22 + sd33 * sd33 + 2.0 * (sd12 * sd12 + sd13 * sd13 + sd23 * sd23)
+        s11 = g11; s22 = g22; s33 = g33
+        s12 = 0.5 * (g12 + g21)
+        s13 = 0.5 * (g13 + g31)
+        s23 = 0.5 * (g23 + g32)
+        ss = s11 * s11 + s22 * s22 + s33 * s33 + 2.0 * (s12 * s12 + s13 * s13 + s23 * s23)
+        denom = ss ** 2.5 + sdsd ** 1.25
+        if denom > 0.0:
+            sra = sdsd ** 1.5 / denom
+        else:
+            sra = 0.0
+        cd = Cw * delta[c]
+        mut[c] = rho[c] * cd * cd * sra
+
+
+def _add_sgs_face_props_3d(mu_face: 'float64[:]', kappa_face: 'float64[:]',
+                           mut_c: 'float64[:]', mut_h: 'float64[:]',
+                           cellidf: 'int32[:,:]', halofid: 'int32[:]', name: 'uint32[:]',
+                           cp: 'float64', Prt: 'float64'):
+    # Add the face-averaged turbulent viscosity to the (already laminar) face
+    # transport props. Turbulent conductivity uses the turbulent Prandtl number.
+    cp_Prt = cp / Prt
+    nbface = len(cellidf)
+    for i in range(nbface):
+        il = cellidf[i][0]
+        if name[i] == 0:
+            mutf = 0.5 * (mut_c[il] + mut_c[cellidf[i][1]])
+        elif name[i] == 10:
+            mutf = 0.5 * (mut_c[il] + mut_h[halofid[i]])
+        else:
+            mutf = mut_c[il]
+        mu_face[i] += mutf
+        kappa_face[i] += mutf * cp_Prt
+
+
+def _ghost_value_NonReflecting3D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'float64[:]', rhovg: 'float64[:]', rhowg: 'float64[:]',
+                                 ug: 'float64[:]', vg: 'float64[:]', wg: 'float64[:]', rhoEg: 'float64[:]',
+                                 rhoc: 'float64[:]', Pc: 'float64[:]', rhouc: 'float64[:]', rhovc: 'float64[:]', rhowc: 'float64[:]', rhoEc: 'float64[:]',
+                                 cellid: 'int32[:,:]', name: 'uint32[:]', normal: 'float64[:,:]', mesure: 'float64[:]',
+                                 gamma: 'float64', rho_inf: 'float64', u_inf: 'float64', v_inf: 'float64', w_inf: 'float64', p_inf: 'float64'):
+    # Characteristic far-field (non-reflecting) ghost state via Riemann invariants
+    # -- 3D characteristic far-field (NSCBC) non-reflecting BC. Outgoing acoustic invariant
+    # from the interior, incoming one from the free-stream; entropy and the
+    # tangential velocity vector follow the flow direction. Applied to every
+    # physical boundary face (name >= 1).
+    gm1 = gamma - 1.0
+    c_inf = np.sqrt(gamma * p_inf / rho_inf)
+    nbface = len(cellid)
+    for i in range(nbface):
+        if name[i] == 0 or name[i] == 10:
+            continue
+        il = cellid[i][0]
+        mes = mesure[i]
+        nx = normal[i][0] / mes
+        ny = normal[i][1] / mes
+        nz = normal[i][2] / mes
+
+        rhoL = rhoc[il]
+        uL = rhouc[il] / rhoL
+        vL = rhovc[il] / rhoL
+        wL = rhowc[il] / rhoL
+        pL = Pc[il]
+        cL = np.sqrt(gamma * pL / rhoL)
+        unL = uL * nx + vL * ny + wL * nz
+
+        un_inf = u_inf * nx + v_inf * ny + w_inf * nz
+
+        if unL <= -cL:
+            rho_b = rho_inf; u_b = u_inf; v_b = v_inf; w_b = w_inf; p_b = p_inf
+        elif unL >= cL:
+            rho_b = rhoL; u_b = uL; v_b = vL; w_b = wL; p_b = pL
+        else:
+            Rp = unL + 2.0 * cL / gm1
+            Rm = un_inf - 2.0 * c_inf / gm1
+            un_b = 0.5 * (Rp + Rm)
+            c_b = 0.25 * gm1 * (Rp - Rm)
+            if un_b <= 0.0:
+                s_b = p_inf / rho_inf ** gamma
+                utx = u_inf - un_inf * nx
+                uty = v_inf - un_inf * ny
+                utz = w_inf - un_inf * nz
+            else:
+                s_b = pL / rhoL ** gamma
+                utx = uL - unL * nx
+                uty = vL - unL * ny
+                utz = wL - unL * nz
+            rho_b = (c_b * c_b / (gamma * s_b)) ** (1.0 / gm1)
+            p_b = rho_b * c_b * c_b / gamma
+            u_b = un_b * nx + utx
+            v_b = un_b * ny + uty
+            w_b = un_b * nz + utz
+
+        rhog[i] = rho_b
+        Pg[i] = p_b
+        rhoug[i] = rho_b * u_b
+        rhovg[i] = rho_b * v_b
+        rhowg[i] = rho_b * w_b
+        ug[i] = u_b
+        vg[i] = v_b
+        wg[i] = w_b
+        rhoEg[i] = p_b / gm1 + 0.5 * rho_b * (u_b * u_b + v_b * v_b + w_b * w_b)
+
+
 ############################################################################
 # NOTHING is compiled at import. Call setup() once (uniformly on all MPI ranks)
 # before using any kernel below. This module is dimension-specific (3D), so a
@@ -1274,6 +1544,9 @@ def setup(dim=3):
   global compute_flux_euler_3d_fvc, compute_flux_euler_3d_rusanov, compute_flux_euler_3d_Roe
   global explicitscheme_euler_3d_rusanov, explicitscheme_euler_3d_Roe, explicitscheme_euler_3d_fvc
   global update_euler_3d_fvc
+  global explicitscheme_euler_3d_viscous, face_transport_props_3d, viscous_time_step_3d
+  global ghost_value_NonReflecting3D
+  global mu_sgs_smagorinsky_3d, mu_sgs_wale_3d, add_sgs_face_props_3d
 
   node_for_interpolation_3d = compile(_node_for_interpolation_3d)
   node_value_for_interpolation_3d = compile(_node_value_for_interpolation_3d)
@@ -1297,5 +1570,12 @@ def setup(dim=3):
   explicitscheme_euler_3d_Roe = compile(_explicitscheme_euler_3d_Roe)
   explicitscheme_euler_3d_fvc = compile(_explicitscheme_euler_3d_fvc)
   update_euler_3d_fvc = compile(_update_euler_3d_fvc)
+  explicitscheme_euler_3d_viscous = compile(_explicitscheme_euler_3d_viscous)
+  face_transport_props_3d = compile(_face_transport_props_3d)
+  viscous_time_step_3d = compile(_viscous_time_step_3d)
+  ghost_value_NonReflecting3D = compile(_ghost_value_NonReflecting3D)
+  mu_sgs_smagorinsky_3d = compile(_mu_sgs_smagorinsky_3d)
+  mu_sgs_wale_3d = compile(_mu_sgs_wale_3d)
+  add_sgs_face_props_3d = compile(_add_sgs_face_props_3d)
 
   _done = True
