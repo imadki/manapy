@@ -12,6 +12,7 @@ VTK series written to ./vtk_results/. Cadence: OUTPUT_EVERY (iterations).
 
 Run:
     MESH_DIR=../../../meshes/geo python3 euler_sod_vtk2d.py
+    SCHEME=Roe ENTROPY_FIX=0.15 python3 euler_sod_vtk2d.py   # Harten entropy fix
 """
 from mpi4py import MPI
 import os
@@ -110,7 +111,8 @@ P.cell[:] = np.where(left, pL, pR)
 rhoE.cell[:] = P.cell / (gamma - 1)
 
 solver = EulerSolver(rho, P, rhou, rhov, rhoE, gamma=gamma, cfl=0.4,
-                     scheme=os.environ.get("SCHEME", "Roe"), bc="TubeSchok")
+                     scheme=os.environ.get("SCHEME", "Roe"), bc="TubeSchok",
+                     entropy_fix=float(os.environ.get("ENTROPY_FIX", 0.0)))
 
 output_every = int(os.environ.get('OUTPUT_EVERY', 50))
 
