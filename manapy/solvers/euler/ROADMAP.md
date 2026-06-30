@@ -58,8 +58,12 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   reconstruction + Rusanov Riemann flux at face centres + SSP-RK3, numba kernel.
   Validated on Sod vs exact Riemann: L2 1.78e-2 vs 3.80e-2 for first order (53% better).
   Example `examples/2D/weno_euler_sod2d.py`.
-- ⬜ Shu-Osher (needs a flame/shock-resolving 1-D mesh); edge Gauss quadrature for
-  curved/large cells; characteristic-variable reconstruction.
+- ✅ **Shu-Osher** (Mach-3 shock into a sin density field) on the bundled square mesh
+  (uniform in y, fine in x): WENO keeps the entrained post-shock oscillation
+  (amplitude 0.142) that first-order Rusanov diffuses away (0.061) — 2.3x more
+  resolved structure. Example `examples/2D/weno_euler_shuosher2d.py`.
+- ⬜ edge Gauss quadrature for curved/large cells; characteristic-variable
+  reconstruction.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure
