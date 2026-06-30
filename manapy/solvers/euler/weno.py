@@ -164,13 +164,6 @@ class WenoReconstruction:
     nodeid = np.asarray(cells.nodeid)
     verts = np.asarray(domain.nodes.vertex)[:, :2]
 
-    # per cell, lists indexed by stencil (0 = central, 1.. = directional):
-    self._stencils = []     # list of (list of stencil arrays)
-    self._pinv = []         # list of (list of (K,M) pseudo-inverses)
-    self._OI = []           # list of (list of K,K oscillation matrices)
-    self._lam = []          # list of (linear weights per stencil)
-    self._M0 = []           # cell-i basis averages (shared by all stencils)
-
     # cache cell -> triangles (fan from first vertex)
     cell_tris = []
     for i in range(self.nbcells):
@@ -180,72 +173,93 @@ class WenoReconstruction:
       cell_tris.append(tris)
     self._cell_tris = cell_tris
 
-    # two-ring node-neighbour pool, used to draw central + directional stencils
-    cn = [set(int(cellnid[i][j]) for j in range(cellnid[i][-1])) for i in range(self.nbcells)]
+    # Central moments of each cell about its OWN centre (order <= 2), computed once
+    # (accurate -- small quantities, no cancellation). The average of a monomial of
+    # cell m about any target centre (xi,yi) is then a binomial shift by the
+    # *stencil-local* offset (centre_m - (xi,yi)), which is small -> still accurate,
+    # and avoids the per-(target, cell, monomial) triangle loop (build hot spot).
+    self._cm = np.zeros((self.nbcells, 6))          # [00,10,01,20,11,02] about centre
+    _abs = [(0, 0), (1, 0), (0, 1), (2, 0), (1, 1), (0, 2)]
+    for m in range(self.nbcells):
+      cmx, cmy = self.center[m]
+      for (v0, v1, v2) in cell_tris[m]:
+        sv = ((v0[0] - cmx, v0[1] - cmy), (v1[0] - cmx, v1[1] - cmy), (v2[0] - cmx, v2[1] - cmy))
+        for c, (a, b) in enumerate(_abs):
+          self._cm[m, c] += _tri_moment(sv[0], sv[1], sv[2], a, b)
+
+    nc = self.nbcells
+    ns = 1 + self.ndir
+    self._cm_idx = {(0, 0): 0, (1, 0): 1, (0, 1): 2, (2, 0): 3, (1, 1): 4, (0, 2): 5}
+
+    # ---- stencil selection (per-cell pool logic; cheap, no moments) ----
+    cn = [set(int(cellnid[i][j]) for j in range(cellnid[i][-1])) for i in range(nc)]
     m_central = int(np.ceil(1.8 * self.K))
     m_dir = int(np.ceil(1.5 * self.K))
-
-    for i in range(self.nbcells):
-      xi, yi = self.center[i]
-      hi = self.h[i]
-      M0 = np.array([self._cell_avg_monomial(i, xi, yi, hi, a, b) for (a, b) in self.exps])
-      self._M0.append(M0)
-
+    stencils_all = []
+    for i in range(nc):
       pool = set(cn[i])
-      for m in list(cn[i]):
+      for m in cn[i]:
         pool |= cn[m]
       pool.discard(i)
       pool = np.array(sorted(pool), dtype=np.int32)
       d = self.center[pool] - self.center[i]
       dist = np.hypot(d[:, 0], d[:, 1])
-
-      stencils = [self._select_central(pool, dist, m_central)]
-      lams = [self.lambda_central]
+      sts = [self._select_central(pool, dist, m_central)]
       for k in range(self.ndir):
         ang = 2 * np.pi * k / self.ndir
-        e = np.array([np.cos(ang), np.sin(ang)])
-        stencils.append(self._select_directional(pool, d, dist, e, m_dir))
-        lams.append(1.0)
+        sts.append(self._select_directional(pool, d, dist,
+                                             np.array([np.cos(ang), np.sin(ang)]), m_dir))
+      stencils_all.append(sts)
+    max_m = max(len(st) for sts in stencils_all for st in sts)
 
-      pinvs, ois = [], []
-      for st in stencils:
-        A = np.empty((len(st), self.K))
-        for mloc, m in enumerate(st):
-          for kk, (a, b) in enumerate(self.exps):
-            A[mloc, kk] = self._cell_avg_monomial(m, xi, yi, hi, a, b) - M0[kk]
-        pinvs.append(np.linalg.pinv(A))
-        ois.append(self._oscillation_matrix(i))
-      self._stencils.append(stencils)
-      self._pinv.append(pinvs)
-      self._OI.append(ois)
-      self._lam.append(np.array(lams))
-
-    # ---- pack the mesh-dependent data into padded arrays for the numba kernel ----
-    ns = 1 + self.ndir
-    max_m = max(len(st) for stl in self._stencils for st in stl)
-    nc = self.nbcells
     self._st_idx = np.zeros((nc, ns, max_m), dtype=np.int32)
     self._st_cnt = np.zeros((nc, ns), dtype=np.int32)
-    self._pinv_p = np.zeros((nc, ns, self.K, max_m))
-    self._OI_p = np.zeros((nc, self.K, self.K))
-    self._lam_arr = np.asarray(self._lam[0], dtype=float)   # same weights for all cells
     for i in range(nc):
-      self._OI_p[i] = self._OI[i][0]
       for s in range(ns):
-        st = self._stencils[i][s]
-        m = len(st)
-        self._st_cnt[i, s] = m
-        self._st_idx[i, s, :m] = st
-        self._pinv_p[i, s, :, :m] = self._pinv[i][s]
+        st = stencils_all[i][s]
+        self._st_cnt[i, s] = len(st)
+        self._st_idx[i, s, :len(st)] = st
+
+    # ---- vectorised moments / A-matrix / pseudo-inverse (the build hot path) ----
+    cm = self._cm
+    ctr = self.center
+    M = self._st_idx                                  # (nc, ns, max_m) cell ids
+    dx = ctr[M, 0] - ctr[:, None, None, 0]
+    dy = ctr[M, 1] - ctr[:, None, None, 1]
+    u = cm[M]                                          # (nc, ns, max_m, 6)
+    u00, u10, u01, u20, u11, u02 = (u[..., j] for j in range(6))
+    hI = self.h[:, None, None]
+    volM = self.vol[M]
+    # cell-i basis averages M0 (m = i, zero shift)
+    self._M0_p = np.empty((nc, self.K))
+    A = np.empty((nc, ns, max_m, self.K))
+    for k, (a, b) in enumerate(self.exps):
+      if (a, b) == (1, 0): integ = u10 + dx * u00
+      elif (a, b) == (0, 1): integ = u01 + dy * u00
+      elif (a, b) == (2, 0): integ = u20 + 2 * dx * u10 + dx * dx * u00
+      elif (a, b) == (1, 1): integ = u11 + dx * u01 + dy * u10 + dx * dy * u00
+      elif (a, b) == (0, 2): integ = u02 + 2 * dy * u01 + dy * dy * u00
+      avg_m = integ / (volM * hI ** (a + b))
+      M0k = cm[:, self._cm_idx[(a, b)]] / (self.vol * self.h ** (a + b))
+      self._M0_p[:, k] = M0k
+      A[:, :, :, k] = avg_m - M0k[:, None, None]
+    valid = np.arange(max_m)[None, None, :] < self._st_cnt[:, :, None]
+    A *= valid[..., None]                              # zero the padded rows
+    pinv = np.linalg.pinv(A.reshape(nc * ns, max_m, self.K))   # batched (nc*ns, K, max_m)
+    self._pinv_p = np.ascontiguousarray(pinv.reshape(nc, ns, self.K, max_m))
+
+    # ---- vectorised oscillation matrices OI (one per cell) ----
+    self._OI_p = self._oscillation_matrices()
+    self._lam_arr = np.array([self.lambda_central] + [1.0] * self.ndir)
+
     global _weno_kernel_2d_compiled
     if _weno_kernel_2d_compiled is None:
       _weno_kernel_2d_compiled = compile(_weno_kernel_2d)
     self._kernel = _weno_kernel_2d_compiled
 
-    # packed basis exponents / cell averages / face geometry for the flux kernels
+    # packed basis exponents / face geometry for the flux kernels
     self._ea = np.array([a for (a, b) in self.exps], dtype=np.int32)
     self._eb = np.array([b for (a, b) in self.exps], dtype=np.int32)
-    self._M0_p = np.array(self._M0)
     fc = np.asarray(self.domain.faces.center)
     self._fcx = np.ascontiguousarray(fc[:, 0])
     self._fcy = np.ascontiguousarray(fc[:, 1])
@@ -268,25 +282,44 @@ class WenoReconstruction:
     return pool[np.argsort(-score)[:min(m, len(pool))]]
 
   def _cell_avg_monomial(self, m, xi, yi, hi, a, b):
-    """(1/|S_m|) * integral over cell m of ((x-xi)/hi)^a ((y-yi)/hi)^b."""
-    acc = 0.0
-    for (v0, v1, v2) in self._cell_tris[m]:
-      acc += _tri_moment((v0[0] - xi, v0[1] - yi), (v1[0] - xi, v1[1] - yi),
-                         (v2[0] - xi, v2[1] - yi), a, b)
-    return acc / (self.vol[m] * hi ** (a + b))
+    """(1/|S_m|) * integral over cell m of ((x-xi)/hi)^a ((y-yi)/hi)^b, by binomial
+    shift of cell m's precomputed central moments by the stencil-local offset
+    (centre_m - (xi,yi)). Small shift -> accurate; no triangle loop."""
+    u00, u10, u01, u20, u11, u02 = self._cm[m]
+    dx = self.center[m, 0] - xi
+    dy = self.center[m, 1] - yi
+    if a == 0 and b == 0:
+      integ = u00
+    elif a == 1 and b == 0:
+      integ = u10 + dx * u00
+    elif a == 0 and b == 1:
+      integ = u01 + dy * u00
+    elif a == 2 and b == 0:
+      integ = u20 + 2 * dx * u10 + dx * dx * u00
+    elif a == 0 and b == 2:
+      integ = u02 + 2 * dy * u01 + dy * dy * u00
+    elif a == 1 and b == 1:
+      integ = u11 + dx * u01 + dy * u10 + dx * dy * u00
+    else:
+      raise ValueError("moment order > 2 not implemented")
+    return integ / (self.vol[m] * hi ** (a + b))
 
-  def _oscillation_matrix(self, i):
-    """Per-cell OI_kq = sum over derivative multi-indices beta (1<=|beta|<=r) of
-    the cell-averaged product of the beta-derivatives of the scaled basis
-    monomials phi_k, phi_q (Eq 23). Symmetric positive semidefinite."""
-    def ff(n, k):                                   # falling factorial n!/(n-k)!
+  def _oscillation_matrices(self):
+    """Vectorised oscillation matrices OI_kq for all cells (Eq 23):
+    sum over derivative multi-indices beta (1<=|beta|<=r) of the cell-averaged
+    product of the beta-derivatives of the scaled basis monomials. The (p,q,k,q)
+    recipe is mesh-independent; each term is one array op over all cells."""
+    nc, K = self.nbcells, self.K
+    orders = np.array([0, 1, 1, 2, 2, 2])
+    avgi = self._cm / (self.vol[:, None] * self.h[:, None] ** orders[None, :])  # (nc, 6)
+
+    def ff(n, k):
       r = 1.0
       for j in range(k):
         r *= (n - j)
       return r
-    xi, yi = self.center[i]
-    hi = self.h[i]
-    OI = np.zeros((self.K, self.K))
+
+    OI = np.zeros((nc, K, K))
     for p in range(self.order + 1):
       for q in range(self.order + 1):
         if p + q < 1 or p + q > self.order:
@@ -301,7 +334,7 @@ class WenoReconstruction:
             cq = ff(aq, p) * ff(bq, q)
             A = (ak - p) + (aq - p)
             B = (bk - q) + (bq - q)
-            OI[k, kq] += ck * cq * self._cell_avg_monomial(i, xi, yi, hi, A, B)
+            OI[:, k, kq] += ck * cq * avgi[:, self._cm_idx[(A, B)]]
     return OI
 
   def reconstruct(self, U):
@@ -310,8 +343,9 @@ class WenoReconstruction:
     U = np.asarray(U)
     coeffs = np.zeros((self.nbcells, self.K))
     for i in range(self.nbcells):
-      st = self._stencils[i][0]
-      coeffs[i] = self._pinv[i][0] @ (U[st] - U[i])
+      cnt = self._st_cnt[i, 0]
+      st = self._st_idx[i, 0, :cnt]
+      coeffs[i] = self._pinv_p[i, 0, :, :cnt] @ (U[st] - U[i])
     return coeffs
 
   def weno_reconstruct(self, U):
@@ -341,12 +375,8 @@ class WenoReconstruction:
     return rez
 
   def smoothness(self, coeffs):
-    """Smoothness indicator SI_i = a_i^T OI_i a_i for every cell (central stencil OI)."""
-    si = np.empty(self.nbcells)
-    for i in range(self.nbcells):
-      a = coeffs[i]
-      si[i] = float(a @ (self._OI[i][0] @ a))
-    return si
+    """Smoothness indicator SI_i = a_i^T OI_i a_i for every cell."""
+    return np.einsum('ik,ikq,iq->i', coeffs, self._OI_p, coeffs)
 
   def evaluate(self, U, coeffs, i, x, y):
     """Evaluate the cell-i reconstruction polynomial at physical point (x, y)."""
@@ -354,6 +384,6 @@ class WenoReconstruction:
     hi = self.h[i]
     val = U[i]
     for k, (a, b) in enumerate(self.exps):
-      phi = ((x - xi) / hi) ** a * ((y - yi) / hi) ** b - self._M0[i][k]
+      phi = ((x - xi) / hi) ** a * ((y - yi) / hi) ** b - self._M0_p[i][k]
       val += coeffs[i, k] * phi
     return val
