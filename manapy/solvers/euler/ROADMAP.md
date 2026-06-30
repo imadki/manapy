@@ -54,7 +54,12 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
 - ✅ flux coupling on scalar linear advection (`advect_residual`, upwind WENO face
   value + SSP-RK3): square wave non-oscillatory, Gaussian peak ~0.95 vs ~0.58 for
   first order. Example `examples/2D/weno_advection2d.py`.
-- ⬜ extend to the Euler system (per-variable WENO + Riemann flux); Shu-Osher.
+- ✅ **Euler system coupling** (`weno_euler.py::WenoEulerSolver`): per-variable WENO
+  reconstruction + Rusanov Riemann flux at face centres + SSP-RK3, numba kernel.
+  Validated on Sod vs exact Riemann: L2 1.78e-2 vs 3.80e-2 for first order (53% better).
+  Example `examples/2D/weno_euler_sod2d.py`.
+- ⬜ Shu-Osher (needs a flame/shock-resolving 1-D mesh); edge Gauss quadrature for
+  curved/large cells; characteristic-variable reconstruction.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure
