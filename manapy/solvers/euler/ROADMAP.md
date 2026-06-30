@@ -42,10 +42,15 @@ Legend: ✅ done · ⬜ todo
 
 ## High-order WENO on unstructured meshes (`weno.py`)
 Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
-- ✅ Milestone 1 — k-exact least-squares reconstruction (central vertex-based stencil,
-  exact cell moments, precomputed pseudo-inverse). Validated to 2.5e-13 k-exactness.
-- ⬜ smoothness indicators + nonlinear WENO weights; directional stencils; edge-quadrature
-  flux + solver coupling.
+- ✅ k-exact least-squares reconstruction (central vertex-based stencil, exact cell
+  moments, precomputed pseudo-inverse) -- k-exactness to 2.5e-13.
+- ✅ oscillation matrix OI + smoothness indicator SI=a^T OI a -- ~0 for smooth data,
+  blows up (x1500) at discontinuity cells.
+- ✅ directional (sectoral) stencils from the two-ring node-neighbour pool.
+- ✅ non-linear WENO weighting (`weno_reconstruct`): k-exact in smooth regions
+  (1.6e-11) and non-oscillatory at shocks (Gibbs overshoot 0.65 -> 0).
+- ⬜ evaluate at edge Gauss points + wire into the Euler flux (replace MUSCL o2);
+  Shu-Osher validation.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure
