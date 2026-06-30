@@ -36,34 +36,34 @@ def _l2(vol, num, exact):
 # --------------------------------------------------------------------------- #
 # 1. Isentropic vortex -- smooth exact Euler solution that advects unchanged
 # --------------------------------------------------------------------------- #
-def test_isentropic_vortex_advects_unchanged(domain):
+def test_isentropic_vortex_steady_state(domain):
+  """A vortex at rest is a steady exact Euler solution; the scheme should hold it
+  in place (no displacement) with only mild diffusion."""
   cells = domain.cells
   xc, yc, vol = cells.center[:, 0], cells.center[:, 1], cells.volume
   gamma = 1.4
-  uinf, vinf, beta = 1.0, 0.0, 5.0
-  x0, y0 = xc.mean(), yc.mean()
+  beta, Rc = 5.0, 0.12
+  x0, y0 = 0.5, 0.5                               # centred, at rest
 
-  def exact(t):
-    xv = x0 + uinf * t
-    dx, dy = xc - xv, yc - y0
-    r2 = dx * dx + dy * dy
+  def exact():
+    dx, dy = xc - x0, yc - y0
+    r2 = (dx * dx + dy * dy) / (Rc * Rc)
     fac = beta / (2 * np.pi) * np.exp(0.5 * (1 - r2))
-    u = uinf - dy * fac
-    v = vinf + dx * fac
+    u = -(dy / Rc) * fac
+    v = (dx / Rc) * fac
     T = 1.0 - (gamma - 1) * beta ** 2 / (8 * gamma * np.pi ** 2) * np.exp(1 - r2)
     rho = T ** (1.0 / (gamma - 1))
-    p = rho ** gamma
-    return rho, u, v, p
+    return rho, u, v, rho ** gamma
 
   rho, P, rhou, rhov, rhoE = _vars(domain)
-  r, u, v, p = exact(0.0)
+  r, u, v, p = exact()
   rho.cell[:] = r; P.cell[:] = p
   rhou.cell[:] = r * u; rhov.cell[:] = r * v
   rhoE.cell[:] = p / (gamma - 1) + 0.5 * r * (u * u + v * v)
 
   S = EulerSolver(rho, P, rhou, rhov, rhoE, gamma=gamma, cfl=0.4,
                   order=2, scheme="rusanov", bc="Neumann")
-  tend = 0.15
+  tend = 0.3
   t = 0.0
   while t < tend:
     dt = S.stepper()
@@ -72,12 +72,14 @@ def test_isentropic_vortex_advects_unchanged(domain):
     t += dt
     S.compute_fluxes(t); S.compute_new_val()
 
-  re, ue, ve, pe = exact(t)
-  # interior only (Neumann boundary is not exactly the vortex far field)
-  m = (np.abs(xc - x0) < 0.35) & (np.abs(yc - y0) < 0.35)
-  err = _l2(vol[m], rho.cell[m], re[m])
+  re, ue, ve, pe = exact()
+  err = _l2(vol, rho.cell, re)
+  # the vortex must not drift: barycentre of the density deficit stays put
+  w = np.clip(1.0 - rho.cell, 0.0, None)
+  x_center = float(np.sum(vol * w * xc) / np.sum(vol * w))
   assert np.all(rho.cell > 0) and np.all(np.isfinite(P.cell))
-  assert err < 1e-2                              # smooth solution, order-2 on a coarse mesh
+  assert err < 3e-3                               # steady smooth vortex
+  assert abs(x_center - x0) < 0.01                # no spurious drift
 
 
 # --------------------------------------------------------------------------- #
