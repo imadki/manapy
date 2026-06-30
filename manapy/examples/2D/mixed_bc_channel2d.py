@@ -14,8 +14,12 @@ Here: slip walls on the lateral boundaries (upper/bottom) and a non-reflecting
 inlet/outlet (in/out). A uniform stream stays perfectly steady, and an acoustic
 disturbance leaves axially instead of being trapped.
 
+VTK snapshots (rho, u, v, P) are written to ./vtk_results/ for ParaView; control
+the cadence with OUTPUT_EVERY (iterations; 0 disables).
+
 Run:
     MESH_DIR=../../../meshes/geo python3 mixed_bc_channel2d.py
+    OUTPUT_EVERY=50 python3 mixed_bc_channel2d.py    # finer VTK output
 """
 from mpi4py import MPI
 import os
@@ -54,8 +58,22 @@ solver = EulerSolver(rho, P, rhou, rhov, rhoE, gamma=gamma, cfl=0.4,
 
 e0 = float(np.sum(vol * (P.cell - p0) ** 2))
 tfinal = float(os.environ.get('TFINAL', 1.5))
+output_every = int(os.environ.get('OUTPUT_EVERY', 100))   # 0 disables VTK output
+
+
+def save_vtk(dt, time, niter, miter):
+  """Write a ParaView VTK snapshot of the cell fields (rho, u, v, P)."""
+  u = rhou.cell / rho.cell
+  v = rhov.cell / rho.cell
+  domain.save_on_cell_multi(["rho", "u", "v", "P"], [rho.cell, u, v, P.cell],
+                            dt, time, niter, miter)
+
+
 t = 0.0
 niter = 0
+miter = 0
+if output_every:
+  save_vtk(0.0, 0.0, 0, miter); miter += 1    # initial snapshot
 while t < tfinal:
   dt = solver.stepper()
   if t + dt > tfinal:
@@ -64,6 +82,10 @@ while t < tfinal:
   solver.compute_fluxes(t)
   solver.compute_new_val()
   niter += 1
+  if output_every and niter % output_every == 0:
+    save_vtk(dt, t, niter, miter); miter += 1
+if output_every:
+  save_vtk(dt, t, niter, miter)               # final snapshot
 
 ef = float(np.sum(vol * (P.cell - p0) ** 2))
 if RANK == 0:
@@ -72,3 +94,5 @@ if RANK == 0:
   print(f"  acoustic residual energy {e0:.3e} -> {ef:.3e}  (pulse radiated out axially)")
   u = rhou.cell / rho.cell
   print(f"  mean axial velocity stays {u.mean():.4f} (init {u0})")
+  if output_every:
+    print(f"  wrote {miter + 1} VTK snapshots to ./vtk_results/ (open the .pvtu series in ParaView)")
