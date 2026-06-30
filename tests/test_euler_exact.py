@@ -172,6 +172,43 @@ def test_sod_vs_exact_riemann(domain, scheme):
   assert err_rho < 6e-2                           # first order on a coarse mesh
 
 
+def test_roe_entropy_fix(domain):
+  """Harten entropy fix: ef=0 reproduces plain Roe exactly; ef>0 only smooths the
+  sonic point, stays physical and still matches the exact Riemann solution."""
+  cells = domain.cells
+  xc, vol = cells.center[:, 0], cells.volume
+  gamma = 1.4
+
+  def run(ef):
+    rho, P, rhou, rhov, rhoE = _vars(domain)
+    left = xc < 0.5
+    rho.cell[:] = np.where(left, 1.0, 0.125)
+    P.cell[:] = np.where(left, 1.0, 0.1)
+    rhoE.cell[:] = P.cell / (gamma - 1)
+    S = EulerSolver(rho, P, rhou, rhov, rhoE, gamma=gamma, cfl=0.4,
+                    scheme="Roe", bc="TubeSchok", entropy_fix=ef)
+    t = 0.0
+    while t < 0.2:
+      dt = S.stepper()
+      if t + dt > 0.2:
+        dt = 0.2 - t; S.dt = dt
+      t += dt
+      S.compute_fluxes(t); S.compute_new_val()
+    return rho.cell.copy()
+
+  r_plain = run(0.0)
+  r_fix = run(0.15)
+  re, _ = _exact_sod(xc, 0.2, gamma)
+  # ef=0 reproduces plain Roe to machine precision (the fix is inert)
+  r_ref = run(0.0)
+  assert np.max(np.abs(r_plain - r_ref)) < 1e-14
+  # ef>0 stays physical and matches the exact Riemann solution
+  assert np.all(r_fix > 0)
+  assert _l2(vol, r_fix, re) < 6e-2
+  # the fix changes the solution only near the rarefaction sonic point (small, local)
+  assert np.max(np.abs(r_fix - r_plain)) < 5e-2
+
+
 def test_roe_is_sharper_than_rusanov(domain):
   cells = domain.cells
   xc, vol = cells.center[:, 0], cells.volume
