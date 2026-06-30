@@ -152,6 +152,28 @@ class CanteraChemistry:
         pass                                               # keep frozen on failure
     return Yc, Tn
 
+  def Rspecific(self, Y):
+    """Specific gas constant R = Ru * sum_k Y_k / W_k [J/kg/K], vectorised over a
+    field Y(n, nspec). Lets temperature be recovered exactly from the ideal-gas law
+    T = P / (rho R) without any calorically-perfect assumption."""
+    return self.Ru * (np.asarray(Y) @ (1.0 / self.W))
+
+  def internal_energy_array(self, T, Y):
+    """Vectorised real total specific internal energy u(T, Y) [J/kg] (Cantera
+    reference, includes formation). Internal energy is pressure-independent for an
+    ideal gas, so any reference pressure is fine."""
+    n = np.asarray(T).shape[0]
+    arr = ct.SolutionArray(self.gas, n)
+    arr.TPY = T, ct.one_atm, Y
+    return arr.int_energy_mass.copy()
+
+  def gamma_array(self, T, Y):
+    """Vectorised ratio of specific heats cp/cv from (T(n), Y(n, nspec))."""
+    n = np.asarray(T).shape[0]
+    arr = ct.SolutionArray(self.gas, n)
+    arr.TPY = T, ct.one_atm, Y
+    return (arr.cp_mass / arr.cv_mass)
+
   def equilibrium_T(self, rho, T0, Y0):
     """Constant-UV equilibrium temperature (adiabatic flame T at constant volume)."""
     self.gas.TDY = T0, rho, Y0

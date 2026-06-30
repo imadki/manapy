@@ -309,6 +309,59 @@ def test_doubleflux_contact_pressure_equilibrium(domain):
 
 
 # --------------------------------------------------------------------------- #
+# 4b. Sensible-energy split -- reactive double-flux conserves total energy and
+#     reaches the exact constant-UV adiabatic flame temperature.
+# --------------------------------------------------------------------------- #
+def test_reactive_sensible_energy_double_flux():
+  """With the double-flux update the hydro carries only the *sensible* energy
+  (rhoE = P/(gamma-1)+KE); the chemical/formation energy lives in the composition.
+  A quiescent H2/air bomb must therefore still reach the Cantera constant-UV
+  equilibrium temperature, with the reaction heat release flowing into the
+  sensible energy so the conserved *physical* total energy is preserved -- and the
+  result must match the standard total-energy coupling. Run on a small mesh (the
+  state is uniform, so it is effectively 0-D) to keep the per-cell stiff reactor
+  integrations cheap."""
+  ct = pytest.importorskip("cantera")
+  from manapy.solvers.euler.cantera_backend import CanteraChemistry
+  from manapy.solvers.euler.reactive_solver import ReactiveSolver
+
+  small_mesh = os.path.join(os.path.dirname(__file__), "..", "meshes", "hybrid2d.msh")
+  domain = Domain.create_domain(small_mesh, 2, Partitioning.Par_Nodal, recreate=True)
+  chem = CanteraChemistry("h2o2.yaml")
+  Y = chem.mass_fractions_from(H2=2 * 2.016, O2=32.0, N2=3.76 * 28.0)
+  T0, p0 = 1100.0, ct.one_atm
+  gas = chem.gas
+  gas.TPY = T0, p0, Y
+  rho0, e0 = gas.density, gas.int_energy_mass
+  gamma_rep = gas.cp_mass / gas.cv_mass
+  Teq = chem.equilibrium_T(rho0, T0, Y)
+
+  def run(doubleflux):
+    rho, P, rhou, rhov, rhoE = _vars(domain)
+    rho.cell[:] = rho0; P.cell[:] = p0; rhoE.cell[:] = rho0 * e0
+    S = EulerSolver(rho, P, rhou, rhov, rhoE, gamma=gamma_rep, cfl=0.4,
+                    scheme="rusanov", bc="Neumann",
+                    variable_gamma=doubleflux, doubleflux=doubleflux)
+    rs = ReactiveSolver(S, chem, [Y[k] for k in range(chem.nspec)])
+    assert rs.sensible == doubleflux                 # auto-detected from the solver
+    E0 = float(rs.total_energy().mean())
+    t = 0.0
+    for _ in range(40):
+      t += rs.step(t=t)
+      if rs._temperature().mean() > Teq - 5:
+        break
+    Ef = float(rs.total_energy().mean())
+    return float(rs._temperature().mean()), abs(Ef - E0) / E0
+
+  T_total, dE_total = run(False)
+  T_df, dE_df = run(True)
+  assert abs(T_total - Teq) < 5.0                    # total-energy coupling: equilibrium
+  assert abs(T_df - Teq) < 5.0                       # sensible/double-flux: same equilibrium
+  assert abs(T_df - T_total) < 1.0                   # the two couplings agree
+  assert dE_df < 1e-10                               # heat release conserves physical energy
+
+
+# --------------------------------------------------------------------------- #
 # 5. Passive species advection -- exact conservation
 # --------------------------------------------------------------------------- #
 def test_species_advection_conserves_sum_and_mass(domain):
