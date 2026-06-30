@@ -24,6 +24,46 @@ Remaining: evaluate the WENO polynomial at edge Gauss points and wire it into th
 Euler flux (replacing the MUSCL order-2 reconstruction); Shu-Osher validation.
 """
 import numpy as np
+from manapy.backends.compile_fun import compile
+
+
+def _weno_kernel_2d(U: 'float64[:]', coeffs: 'float64[:,:]', st_idx: 'int32[:,:,:]',
+                    st_cnt: 'int32[:,:]', pinv: 'float64[:,:,:,:]', OI: 'float64[:,:,:]',
+                    lam: 'float64[:]', eps: 'float64', power: 'float64'):
+    # Per-step WENO reconstruction hot loop (compiled). All geometry-dependent
+    # arrays (stencil indices, padded pseudo-inverses, oscillation matrices,
+    # linear weights) are precomputed once on the mesh and passed in; this only
+    # does the data-dependent matvecs, smoothness quadratic forms and weighting.
+    ncells = coeffs.shape[0]
+    K = coeffs.shape[1]
+    ns = lam.shape[0]
+    a_s = np.zeros((ns, K))
+    wbar = np.zeros(ns)
+    for i in range(ncells):
+        ui = U[i]
+        for s in range(ns):
+            cnt = st_cnt[i, s]
+            for k in range(K):
+                acc = 0.0
+                for j in range(cnt):
+                    acc += pinv[i, s, k, j] * (U[st_idx[i, s, j]] - ui)
+                a_s[s, k] = acc
+            si = 0.0
+            for k in range(K):
+                for q in range(K):
+                    si += a_s[s, k] * OI[i, k, q] * a_s[s, q]
+            wbar[s] = lam[s] / (eps + si) ** power
+        wsum = 0.0
+        for s in range(ns):
+            wsum += wbar[s]
+        for k in range(K):
+            v = 0.0
+            for s in range(ns):
+                v += wbar[s] * a_s[s, k]
+            coeffs[i, k] = v / wsum
+
+
+_weno_kernel_2d_compiled = None
 
 
 # scaled monomial exponents for order r (2D), excluding the constant term
@@ -137,6 +177,28 @@ class WenoReconstruction:
       self._OI.append(ois)
       self._lam.append(np.array(lams))
 
+    # ---- pack the mesh-dependent data into padded arrays for the numba kernel ----
+    ns = 1 + self.ndir
+    max_m = max(len(st) for stl in self._stencils for st in stl)
+    nc = self.nbcells
+    self._st_idx = np.zeros((nc, ns, max_m), dtype=np.int32)
+    self._st_cnt = np.zeros((nc, ns), dtype=np.int32)
+    self._pinv_p = np.zeros((nc, ns, self.K, max_m))
+    self._OI_p = np.zeros((nc, self.K, self.K))
+    self._lam_arr = np.asarray(self._lam[0], dtype=float)   # same weights for all cells
+    for i in range(nc):
+      self._OI_p[i] = self._OI[i][0]
+      for s in range(ns):
+        st = self._stencils[i][s]
+        m = len(st)
+        self._st_cnt[i, s] = m
+        self._st_idx[i, s, :m] = st
+        self._pinv_p[i, s, :, :m] = self._pinv[i][s]
+    global _weno_kernel_2d_compiled
+    if _weno_kernel_2d_compiled is None:
+      _weno_kernel_2d_compiled = compile(_weno_kernel_2d)
+    self._kernel = _weno_kernel_2d_compiled
+
   @staticmethod
   def _select_central(pool, dist, m):
     return pool[np.argsort(dist)[:min(m, len(pool))]]
@@ -200,22 +262,13 @@ class WenoReconstruction:
     stencil polynomials with weights w_s = lam_s/(eps+SI_s)^power, normalised. In
     smooth regions the large central linear weight dominates (high order); near a
     discontinuity the stencils that cross it get a large SI and are suppressed, so
-    the reconstruction stays essentially non-oscillatory. Returns coeffs (nbcells, K)."""
-    U = np.asarray(U)
+    the reconstruction stays essentially non-oscillatory. Returns coeffs (nbcells, K).
+
+    Runs the compiled (numba) hot loop over the precomputed mesh-dependent arrays."""
+    U = np.ascontiguousarray(U, dtype=float)
     coeffs = np.zeros((self.nbcells, self.K))
-    for i in range(self.nbcells):
-      lam = self._lam[i]
-      ns = len(lam)
-      a_s = np.empty((ns, self.K))
-      wbar = np.empty(ns)
-      for s in range(ns):
-        st = self._stencils[i][s]
-        a = self._pinv[i][s] @ (U[st] - U[i])
-        a_s[s] = a
-        si = float(a @ (self._OI[i][s] @ a))
-        wbar[s] = lam[s] / (self.eps + si) ** self.power
-      w = wbar / wbar.sum()
-      coeffs[i] = w @ a_s
+    self._kernel(U, coeffs, self._st_idx, self._st_cnt, self._pinv_p,
+                 self._OI_p, self._lam_arr, self.eps, self.power)
     return coeffs
 
   def smoothness(self, coeffs):
