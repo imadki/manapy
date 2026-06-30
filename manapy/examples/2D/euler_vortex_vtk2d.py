@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Isentropic vortex advection with VTK output of the exact AND simulated solution.
+Isentropic vortex with VTK output of the exact AND simulated solution.
 
-The isentropic vortex is a smooth *exact* solution of the 2D Euler equations: a
-vortex superimposed on a uniform stream advects at the stream velocity without
-any change of shape. This example advects it and, at every output step, writes a
-VTK snapshot containing both the simulated fields and the exact fields (plus the
-pointwise error), so the two can be overlaid/compared in ParaView.
+The isentropic vortex is a smooth *exact* solution of the 2D Euler equations.
+By default it is taken at rest (UINF=0): a **steady** exact solution that the
+scheme should simply maintain, so the simulated and exact fields stay at the same
+location and overlap in ParaView (only slight numerical diffusion differs).
 
-VTK series (rho, rho_exact, rho_err, P, P_exact, u, u_exact) are written to
-./vtk_results/. Control the cadence with OUTPUT_EVERY (iterations).
+Set UINF=1 to instead advect the vortex with a uniform stream -- still an exact
+solution, but on a coarse mesh the first-order-in-time Rusanov scheme advects it
+with a visible phase lag, so the simulated vortex trails the exact one. That
+displacement (not amplitude error) is the dispersion of the scheme; it shrinks
+with mesh/time refinement.
+
+At every output step a VTK snapshot is written with both the simulated fields and
+the exact fields (+ pointwise error) to ./vtk_results/. Cadence: OUTPUT_EVERY.
 
 Run:
-    MESH_DIR=../../../meshes/geo python3 euler_vortex_vtk2d.py
+    MESH_DIR=../../../meshes/geo python3 euler_vortex_vtk2d.py     # steady (overlaps)
+    UINF=1 python3 euler_vortex_vtk2d.py                           # advected (shows dispersion)
 """
 from mpi4py import MPI
 import os
@@ -31,19 +37,26 @@ cells = domain.cells
 xc, yc, vol = cells.center[:, 0], cells.center[:, 1], cells.volume
 
 # --- isentropic vortex parameters ---
+# The vortex must be small relative to the domain (here the unit square) so it
+# stays localized and decays to the uniform free stream well before the boundary
+# -- otherwise the boundary cuts the vortex and the "exact" comparison is spoiled.
+# Rc is the core radius (~10 cells); the form below is an exact Euler solution.
 gamma = 1.4
-uinf, vinf, beta = 1.0, 0.0, 5.0
-x0, y0 = xc.mean(), yc.mean()
+uinf = float(os.environ.get('UINF', 0.0))        # 0 -> steady vortex (overlaps exact)
+vinf, beta = 0.0, 5.0
+Rc = 0.12
+# centre left when advecting so the vortex stays interior; centred when steady
+x0, y0 = (0.3 if uinf else 0.5), 0.5
 
 
 def exact(t):
-  """Exact isentropic-vortex state (rho, u, v, p) at time t (periodic advection)."""
+  """Exact isentropic-vortex state (rho, u, v, p) at time t (radius Rc)."""
   xv, yv = x0 + uinf * t, y0 + vinf * t
   dx, dy = xc - xv, yc - yv
-  r2 = dx * dx + dy * dy
+  r2 = (dx * dx + dy * dy) / (Rc * Rc)
   fac = beta / (2 * np.pi) * np.exp(0.5 * (1 - r2))
-  u = uinf - dy * fac
-  v = vinf + dx * fac
+  u = uinf - (dy / Rc) * fac
+  v = vinf + (dx / Rc) * fac
   T = 1.0 - (gamma - 1) * beta ** 2 / (8 * gamma * np.pi ** 2) * np.exp(1 - r2)
   rho = T ** (1.0 / (gamma - 1))
   p = rho ** gamma
@@ -91,13 +104,13 @@ while t < tfinal:
 if output_every:
   save_vtk(t, dt, niter, miter)
 
-# final L2 error vs exact (interior, away from the non-periodic Neumann boundary)
+# final L2 error vs exact over the whole domain (the far field is uniform = exact)
 re, ue, ve, pe = exact(t)
-m = (np.abs(xc - x0) < 0.35) & (np.abs(yc - y0) < 0.35)
-l2_rho = np.sqrt(np.sum(vol[m] * (rho.cell[m] - re[m]) ** 2) / np.sum(vol[m]))
+l2_rho = np.sqrt(np.sum(vol * (rho.cell - re) ** 2) / np.sum(vol))
 if RANK == 0:
-  print(f"isentropic vortex advected to t={t:.3f} (exact: shifted by uinf*t={uinf*t:.3f})")
-  print(f"  L2(rho) vs exact (interior) = {l2_rho:.3e}")
+  kind = "steady (overlaps exact)" if uinf == 0 else f"advected by uinf*t={uinf*t:.3f}"
+  print(f"isentropic vortex (Rc={Rc}, UINF={uinf}) at t={t:.3f} -- {kind}")
+  print(f"  L2(rho) vs exact = {l2_rho:.3e}")
   if output_every:
     print(f"  wrote {miter + 1} VTK snapshots to ./vtk_results/ "
           f"(fields: rho/rho_exact/rho_err, P/P_exact, u/u_exact)")
