@@ -103,9 +103,15 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
 The full stack is wired and validated piece-by-piece (convection, diffusion, chemistry,
 mixture transport, variable-gamma, and now the double-flux that keeps the burnt/unburnt
 contact in pressure equilibrium). Remaining to a converged propagating flame:
-- ⬜ in `ReactiveSolver`, carry the **sensible** energy in the hydro (so the double-flux
-  re-sync preserves the chemical/formation energy carried by the advected species),
-  and add the heat release back in the reaction step.
+- ✅ **sensible-energy split** in `ReactiveSolver(sensible_energy=...)`, auto-on under
+  double-flux. The hydro carries only the sensible energy (rhoE = P/(gamma-1)+KE, the
+  form the double-flux update re-syncs); the chemical/formation energy lives in the
+  composition. Temperature is recovered exactly from the pressure (T = P/(rho R(Y)),
+  ideal-gas law — no calorically-perfect error), the reaction runs through Cantera's
+  exact constant-UV reactor, and the heat release flows back into rhoE via the new
+  pressure. Validated: a quiescent H2/air bomb reaches the same constant-UV equilibrium
+  T (2928 K) as the total-energy coupling while conserving the *physical* total energy
+  to machine precision (dE/E ~ 2.5e-15). Test `test_reactive_sensible_energy_double_flux`.
 - ⬜ flame-speed validation vs Cantera `FreeFlame` (S_L ≈ 2.56 m/s, stoich H2/air);
   needs a flame-resolving mesh (HPC-scale steps for the low-Mach acoustic limit).
 
