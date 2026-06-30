@@ -49,8 +49,12 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
 - ✅ directional (sectoral) stencils from the two-ring node-neighbour pool.
 - ✅ non-linear WENO weighting (`weno_reconstruct`): k-exact in smooth regions
   (1.6e-11) and non-oscillatory at shocks (Gibbs overshoot 0.65 -> 0).
-- ⬜ evaluate at edge Gauss points + wire into the Euler flux (replace MUSCL o2);
-  Shu-Osher validation.
+- ✅ per-step reconstruction compiled with **numba** over the precomputed packed
+  arrays (~81x faster than the Python loop).
+- ✅ flux coupling on scalar linear advection (`advect_residual`, upwind WENO face
+  value + SSP-RK3): square wave non-oscillatory, Gaussian peak ~0.95 vs ~0.58 for
+  first order. Example `examples/2D/weno_advection2d.py`.
+- ⬜ extend to the Euler system (per-variable WENO + Riemann flux); Shu-Osher.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure
