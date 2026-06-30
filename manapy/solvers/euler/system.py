@@ -63,6 +63,7 @@ class EulerSolver:
                temp_values: dict = None,
                variable_gamma: bool = False,
                doubleflux: bool = False,
+               entropy_fix: float = 0.0,
                rho_inf: float = 1.0,
                u_inf: float = 0.0,
                v_inf: float = 0.0,
@@ -152,6 +153,14 @@ class EulerSolver:
       self._explicitscheme = getattr(fvm, f"explicitscheme_euler_{d}d_rusanov")
     else:
       self._explicitscheme = getattr(fvm, f"explicitscheme_euler_{d}d_Roe")
+    # Harten entropy-fix coefficient threaded to the 2D Roe scheme (0 = plain Roe).
+    self.entropy_fix = float(entropy_fix)
+    if self.dim == 2 and scheme == "Roe":
+      self._scheme_tail = (self.entropy_fix,)
+    else:
+      if self.dim == 3 and scheme == "Roe" and self.entropy_fix > 0.0:
+        raise NotImplementedError("entropy_fix is wired for the 2D Roe scheme only")
+      self._scheme_tail = ()
     self._explicitscheme_o2 = getattr(fvm, "explicitscheme_euler_2d_rusanov_o2", None)
     self._update = getattr(fvm, f"update_euler_{d}d_fvc")
 
@@ -479,7 +488,7 @@ class EulerSolver:
                            self.rho.halo, self.P.halo, self.rhou.halo, self.rhov.halo, self.rhoE.halo,
                            self.domain.faces.cellid, self.domain.faces.halofid,
                            self.domain.faces.normal, self.domain.faces.mesure,
-                           self.face_name, self.gamma)
+                           self.face_name, self.gamma, *self._scheme_tail)
     else:
       self._explicitscheme(self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
                            self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhow.cell, self.rhoE.cell,
