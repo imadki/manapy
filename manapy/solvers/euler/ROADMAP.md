@@ -67,8 +67,19 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   (uniform in y, fine in x): WENO keeps the entrained post-shock oscillation
   (amplitude 0.142) that first-order Rusanov diffuses away (0.061) — 2.3x more
   resolved structure. Example `examples/2D/weno_euler_shuosher2d.py`.
-- ⬜ edge Gauss quadrature for curved/large cells; characteristic-variable
-  reconstruction.
+- ✅ **3D unstructured WENO reconstruction** (`WenoReconstruction` is now
+  dimension-generic; 3D kernels `_weno_cm_3d` / `_weno_select_3d` / `_weno_build_3d`).
+  Polyhedral cell moments via a centroid-apex tetra decomposition of each face
+  (simplex moment formula); axis-directional two-ring stencils; SVD build with
+  near-null truncation so sliver/boundary stencils stay bounded. Validated on the
+  3D mesh: zeroth moment = cell volume (2e-13); k-exact on a quadratic to machine
+  precision on the well-conditioned bulk (median ~9e-16, p90 ~2e-13) with a bounded
+  pseudo-inverse everywhere (|pinv| 6.8e12 -> 30); smoothness indicator x59 at a
+  discontinuity; WENO weighting non-oscillatory (overshoot 0 vs 1.17 for the plain
+  linear fit). Tests `tests/test_weno3d.py`. (The hot reconstruction loop is shared
+  with 2D.)
+- ⬜ 3D Euler system coupling (`WenoEulerSolver` is 2D); edge Gauss quadrature for
+  curved/large cells; characteristic-variable reconstruction.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure

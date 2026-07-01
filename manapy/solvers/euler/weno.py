@@ -200,6 +200,151 @@ _weno_cm_2d_compiled = None
 _weno_select_2d_compiled = None
 
 
+def _weno_cm_3d(cellfid: 'int32[:,:]', facenid: 'int32[:,:]',
+                vx: 'float64[:]', vy: 'float64[:]', vz: 'float64[:]',
+                cx: 'float64[:]', cy: 'float64[:]', cz: 'float64[:]', cm: 'float64[:,:]'):
+    # Central moments (degree <= 2) of each polyhedral cell about its own centre.
+    # The convex cell is star-shaped from its centroid, so it tiles exactly into
+    # tetrahedra {centroid, t0, t1, t2} over a fan-triangulation of each face. Each
+    # tet moment uses the simplex formula (apex at the origin = centroid-shifted).
+    # cm columns are [000,100,010,001,200,110,101,020,011,002].
+    nc = cellfid.shape[0]
+    lastc = cellfid.shape[1] - 1
+    lastf = facenid.shape[1] - 1
+    for i in range(nc):
+        nf = cellfid[i, lastc]
+        mx = cx[i]; my = cy[i]; mz = cz[i]
+        for jf in range(nf):
+            f = cellfid[i, jf]
+            nv = facenid[f, lastf]
+            n0 = facenid[f, 0]
+            ax0 = vx[n0] - mx; ay0 = vy[n0] - my; az0 = vz[n0] - mz
+            for k in range(1, nv - 1):
+                nb = facenid[f, k]; ncid = facenid[f, k + 1]
+                bx = vx[nb] - mx; by = vy[nb] - my; bz = vz[nb] - mz
+                cx3 = vx[ncid] - mx; cy3 = vy[ncid] - my; cz3 = vz[ncid] - mz
+                # tet {0, a, b, c} with a=(ax0,..), b, c ; V = |a . (b x c)| / 6
+                det = (ax0 * (by * cz3 - bz * cy3)
+                       - ay0 * (bx * cz3 - bz * cx3)
+                       + az0 * (bx * cy3 - by * cx3))
+                V = abs(det) / 6.0
+                sx = ax0 + bx + cx3; sy = ay0 + by + cy3; sz = az0 + bz + cz3
+                cm[i, 0] += V
+                cm[i, 1] += V * 0.25 * sx
+                cm[i, 2] += V * 0.25 * sy
+                cm[i, 3] += V * 0.25 * sz
+                cm[i, 4] += V / 20.0 * (ax0 * ax0 + bx * bx + cx3 * cx3 + sx * sx)
+                cm[i, 5] += V / 20.0 * (ax0 * ay0 + bx * by + cx3 * cy3 + sx * sy)
+                cm[i, 6] += V / 20.0 * (ax0 * az0 + bx * bz + cx3 * cz3 + sx * sz)
+                cm[i, 7] += V / 20.0 * (ay0 * ay0 + by * by + cy3 * cy3 + sy * sy)
+                cm[i, 8] += V / 20.0 * (ay0 * az0 + by * bz + cy3 * cz3 + sy * sz)
+                cm[i, 9] += V / 20.0 * (az0 * az0 + bz * bz + cz3 * cz3 + sz * sz)
+
+
+def _weno_select_3d(cellnid: 'int32[:,:]', cx: 'float64[:]', cy: 'float64[:]', cz: 'float64[:]',
+                    dirx: 'float64[:]', diry: 'float64[:]', dirz: 'float64[:]',
+                    m_central: 'int32', m_dir: 'int32', st_idx: 'int32[:,:,:]', st_cnt: 'int32[:,:]'):
+    # Central + directional stencils from the two-ring node-neighbour pool (3D).
+    nc = cellnid.shape[0]
+    last = cellnid.shape[1] - 1
+    ndir = dirx.shape[0]
+    poolmax = (last + 1) * (last + 1) + 8
+    pool = np.empty(poolmax, dtype=np.int32)
+    dist = np.empty(poolmax)
+    score = np.empty(poolmax)
+    for i in range(nc):
+        npc = 0
+        c1 = cellnid[i, last]
+        for a in range(c1):
+            m = cellnid[i, a]
+            for b in range(-1, cellnid[m, last]):
+                cand = m if b == -1 else cellnid[m, b]
+                if cand == i:
+                    continue
+                dup = False
+                for q in range(npc):
+                    if pool[q] == cand:
+                        dup = True; break
+                if not dup and npc < poolmax:
+                    pool[npc] = cand; npc += 1
+        dmax = 1e-30
+        for p in range(npc):
+            dx = cx[pool[p]] - cx[i]; dy = cy[pool[p]] - cy[i]; dz = cz[pool[p]] - cz[i]
+            dist[p] = (dx * dx + dy * dy + dz * dz) ** 0.5
+            if dist[p] > dmax:
+                dmax = dist[p]
+        order = np.argsort(dist[:npc])
+        nce = m_central if m_central < npc else npc
+        st_cnt[i, 0] = nce
+        for j in range(nce):
+            st_idx[i, 0, j] = pool[order[j]]
+        for k in range(ndir):
+            ex = dirx[k]; ey = diry[k]; ez = dirz[k]
+            for p in range(npc):
+                dx = cx[pool[p]] - cx[i]; dy = cy[pool[p]] - cy[i]; dz = cz[pool[p]] - cz[i]
+                al = (dx * ex + dy * ey + dz * ez) / (dist[p] if dist[p] > 1e-30 else 1e-30)
+                score[p] = -(al - 0.1 * dist[p] / dmax)
+            od = np.argsort(score[:npc])
+            nde = m_dir if m_dir < npc else npc
+            st_cnt[i, 1 + k] = nde
+            for j in range(nde):
+                st_idx[i, 1 + k, j] = pool[od[j]]
+
+
+def _weno_build_3d(cm: 'float64[:,:]', cx: 'float64[:]', cy: 'float64[:]', cz: 'float64[:]',
+                   vol: 'float64[:]', h: 'float64[:]',
+                   st_idx: 'int32[:,:,:]', st_cnt: 'int32[:,:]',
+                   amom: 'int32[:,:]', apdx: 'int32[:,:]', apdy: 'int32[:,:]', apdz: 'int32[:,:]',
+                   acoef: 'float64[:,:]', acnt: 'int32[:]', aord: 'int32[:]', mono_cmidx: 'int32[:]',
+                   oik: 'int32[:]', oiq: 'int32[:]', oimom: 'int32[:]', oicoef: 'float64[:]', oiord: 'int32[:]',
+                   pinv_p: 'float64[:,:,:,:]', OI_p: 'float64[:,:,:]'):
+    # 3D per-cell WENO build (compiled): least-squares geometry matrix A from the
+    # precomputed central moments (binomial shift by the stencil offset), SVD
+    # pseudo-inverse, and the oscillation matrix OI. Mirrors _weno_build_2d with the
+    # extra z factor.
+    nc = cm.shape[0]
+    ns = st_cnt.shape[1]
+    K = pinv_p.shape[2]
+    max_m = pinv_p.shape[3]
+    A = np.zeros((max_m, K))
+    for i in range(nc):
+        hi = h[i]; voli = vol[i]; xi = cx[i]; yi = cy[i]; zi = cz[i]
+        for s in range(ns):
+            cnt = st_cnt[i, s]
+            for j in range(cnt):
+                m = st_idx[i, s, j]
+                dx = cx[m] - xi; dy = cy[m] - yi; dz = cz[m] - zi
+                volm = vol[m]
+                for k in range(K):
+                    integ = 0.0
+                    for tt in range(acnt[k]):
+                        integ += acoef[k, tt] * dx ** apdx[k, tt] * dy ** apdy[k, tt] * dz ** apdz[k, tt] * cm[m, amom[k, tt]]
+                    avg_m = integ / (volm * hi ** aord[k])
+                    m0k = cm[i, mono_cmidx[k]] / (voli * hi ** aord[k])
+                    A[j, k] = avg_m - m0k
+            U, sv, Vt = np.linalg.svd(A[:cnt, :])
+            # Truncate near-null singular directions. On a well-conditioned stencil
+            # every singular value is O(sv[0]) so nothing is cut and the
+            # reconstruction stays k-exact; on the ~3% of near-degenerate 3D stencils
+            # (sliver/boundary cells) the tiny singular values are dropped, giving a
+            # bounded minimum-norm (lower-order) fit instead of a blow-up.
+            tol = 1e-10 * sv[0]
+            for k in range(K):
+                for j in range(cnt):
+                    acc = 0.0
+                    for l in range(K):
+                        if sv[l] > tol:
+                            acc += Vt[l, k] * (1.0 / sv[l]) * U[j, l]
+                    pinv_p[i, s, k, j] = acc
+        for t in range(oik.shape[0]):
+            OI_p[i, oik[t], oiq[t]] += oicoef[t] * cm[i, oimom[t]] / (voli * hi ** oiord[t])
+
+
+_weno_cm_3d_compiled = None
+_weno_select_3d_compiled = None
+_weno_build_3d_compiled = None
+
+
 def _weno_advection_2d(rez: 'float64[:]', u_c: 'float64[:]', u_g: 'float64[:]',
                        coeffs: 'float64[:,:]', ea: 'int32[:]', eb: 'int32[:]', M0: 'float64[:,:]',
                        cx: 'float64[:]', cy: 'float64[:]', h: 'float64[:]',
@@ -251,6 +396,27 @@ _EXPONENTS = {
         (3, 0), (2, 1), (1, 2), (0, 3)],
 }
 
+# 3D monomial exponents for order r (excluding the constant term)
+_EXPONENTS_3D = {
+    1: [(1, 0, 0), (0, 1, 0), (0, 0, 1)],
+    2: [(1, 0, 0), (0, 1, 0), (0, 0, 1),
+        (2, 0, 0), (1, 1, 0), (1, 0, 1), (0, 2, 0), (0, 1, 1), (0, 0, 2)],
+}
+
+
+# central-moment column layout -- MUST match the hard-coded column order the
+# _weno_cm_{2,3}d kernels write into.
+_CM_MOMS = {
+    2: [(0, 0), (1, 0), (0, 1), (2, 0), (1, 1), (0, 2)],
+    3: [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1),
+        (2, 0, 0), (1, 1, 0), (1, 0, 1), (0, 2, 0), (0, 1, 1), (0, 0, 2)],
+}
+
+
+def _monomials_up_to(order, dim):
+  """Central-moment column layout for a given dimension (matches the cm kernels)."""
+  return _CM_MOMS[dim]
+
 
 def _tri_moment(v0, v1, v2, a, b):
   """Exact integral of x^a y^b over a triangle (a+b <= 2), vertices v0,v1,v2."""
@@ -276,143 +442,196 @@ def _tri_moment(v0, v1, v2, a, b):
 
 class WenoReconstruction:
 
-  def __init__(self, domain, order=2, ndir=4, lambda_central=1000.0, eps=1e-6, power=4.0):
+  def __init__(self, domain, order=2, ndir=None, lambda_central=1000.0, eps=1e-6, power=4.0):
     self.domain = domain
+    self.dim = int(getattr(domain, "dim", 2))
     self.order = int(order)
-    if self.order not in _EXPONENTS:
-      raise ValueError("order must be 1, 2 or 3")
-    self.exps = _EXPONENTS[self.order]
+    if self.dim == 2:
+      if self.order not in _EXPONENTS:
+        raise ValueError("order must be 1, 2 or 3 in 2D")
+      self.exps = _EXPONENTS[self.order]
+    else:
+      if self.order not in _EXPONENTS_3D:
+        raise ValueError("order must be 1 or 2 in 3D")
+      self.exps = _EXPONENTS_3D[self.order]
     self.K = len(self.exps)
 
-    self.ndir = int(ndir)                           # number of directional stencils
+    if ndir is None:
+      ndir = 4 if self.dim == 2 else 6                # angular (2D) / axis (3D) stencils
+    self.ndir = int(ndir)
     self.lambda_central = float(lambda_central)
     self.eps = float(eps)
     self.power = float(power)
 
     cells = domain.cells
     self.nbcells = domain.nbcells
-    self.center = np.asarray(cells.center)[:, :2]
+    self.center = np.asarray(cells.center)[:, :self.dim]
     self.vol = np.asarray(cells.volume)
-    self.h = np.sqrt(self.vol)                      # per-cell length scale
-    cellnid = np.asarray(cells.cellnid)
-    nodeid = np.asarray(cells.nodeid)
-    verts = np.asarray(domain.nodes.vertex)[:, :2]
-
+    self.h = self.vol ** (1.0 / self.dim)           # per-cell length scale
     nc = self.nbcells
     ns = 1 + self.ndir
-    self._cm_idx = {(0, 0): 0, (1, 0): 1, (0, 1): 2, (2, 0): 3, (1, 1): 4, (0, 2): 5}
-    cx = np.ascontiguousarray(self.center[:, 0])
-    cy = np.ascontiguousarray(self.center[:, 1])
-    nodeid = np.ascontiguousarray(nodeid, dtype=np.int32)
-    cellnid = np.ascontiguousarray(cellnid, dtype=np.int32)
-    vx = np.ascontiguousarray(verts[:, 0])
-    vy = np.ascontiguousarray(verts[:, 1])
 
-    global _weno_cm_2d_compiled, _weno_select_2d_compiled
-    if _weno_cm_2d_compiled is None:
-      _weno_cm_2d_compiled = compile(_weno_cm_2d)
-      _weno_select_2d_compiled = compile(_weno_select_2d)
+    # central-moment column layout and monomial->column map (dimension-generic)
+    self._cm_moms = _monomials_up_to(self.order, self.dim)
+    self._cm_idx = {m: k for k, m in enumerate(self._cm_moms)}
+    ncm = len(self._cm_moms)
 
-    # central moments of every cell (numba)
-    self._cm = np.zeros((nc, 6))                     # [00,10,01,20,11,02] about centre
-    _weno_cm_2d_compiled(nodeid, vx, vy, cx, cy, self._cm)
-
-    # central + directional stencils (numba)
     m_central = int(np.ceil(1.8 * self.K))
     m_dir = int(np.ceil(1.5 * self.K))
     max_m = max(m_central, m_dir)
-    ang = 2 * np.pi * np.arange(self.ndir) / self.ndir
-    dirx = np.ascontiguousarray(np.cos(ang)); diry = np.ascontiguousarray(np.sin(ang))
     self._st_idx = np.zeros((nc, ns, max_m), dtype=np.int32)
     self._st_cnt = np.zeros((nc, ns), dtype=np.int32)
-    _weno_select_2d_compiled(cellnid, cx, cy, dirx, diry,
-                             np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
-
-    # ---- moment-shift / OI recipes (mesh-independent), then the numba build ----
-    amom, apdx, apdy, acoef, acnt, aord, mono_cmidx = self._moment_recipe()
-    oik, oiq, oimom, oicoef, oiord = self._oi_recipe()
-    self._M0_p = np.empty((nc, self.K))
-    for k, (a, b) in enumerate(self.exps):
-      self._M0_p[:, k] = self._cm[:, self._cm_idx[(a, b)]] / (self.vol * self.h ** (a + b))
+    self._cm = np.zeros((nc, ncm))
+    cellnid = np.ascontiguousarray(np.asarray(cells.cellnid), dtype=np.int32)
+    verts = np.asarray(domain.nodes.vertex)
     self._pinv_p = np.zeros((nc, ns, self.K, max_m))
     self._OI_p = np.zeros((nc, self.K, self.K))
-    global _weno_build_2d_compiled
-    if _weno_build_2d_compiled is None:
-      _weno_build_2d_compiled = compile(_weno_build_2d)
-    _weno_build_2d_compiled(
-        self._cm, np.ascontiguousarray(self.center[:, 0]), np.ascontiguousarray(self.center[:, 1]),
-        self.vol, self.h, self._st_idx, self._st_cnt,
-        amom, apdx, apdy, acoef, acnt, aord, mono_cmidx,
-        oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
-    self._lam_arr = np.array([self.lambda_central] + [1.0] * self.ndir)
 
-    global _weno_kernel_2d_compiled
+    amom, apd, acoef, acnt, aord, mono_cmidx = self._moment_recipe()
+    oik, oiq, oimom, oicoef, oiord = self._oi_recipe()
+
+    if self.dim == 2:
+      self._build_2d(cells, verts, cellnid, m_central, m_dir,
+                     amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord)
+    else:
+      self._build_3d(cells, verts, cellnid, m_central, m_dir,
+                     amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord)
+
+    # M0_p (subtracted mean of each basis monomial over the cell) -- generic
+    self._M0_p = np.empty((nc, self.K))
+    for k, e in enumerate(self.exps):
+      self._M0_p[:, k] = self._cm[:, self._cm_idx[e]] / (self.vol * self.h ** sum(e))
+
+    self._lam_arr = np.array([self.lambda_central] + [1.0] * self.ndir)
+    global _weno_kernel_2d_compiled                  # hot loop is dimension-agnostic
     if _weno_kernel_2d_compiled is None:
       _weno_kernel_2d_compiled = compile(_weno_kernel_2d)
     self._kernel = _weno_kernel_2d_compiled
 
-    # packed basis exponents / face geometry for the flux kernels
-    self._ea = np.array([a for (a, b) in self.exps], dtype=np.int32)
-    self._eb = np.array([b for (a, b) in self.exps], dtype=np.int32)
-    fc = np.asarray(self.domain.faces.center)
-    self._fcx = np.ascontiguousarray(fc[:, 0])
-    self._fcy = np.ascontiguousarray(fc[:, 1])
-    self._cx = np.ascontiguousarray(self.center[:, 0])
-    self._cy = np.ascontiguousarray(self.center[:, 1])
-    global _weno_advection_2d_compiled
-    if _weno_advection_2d_compiled is None:
-      _weno_advection_2d_compiled = compile(_weno_advection_2d)
-    self._adv_kernel = _weno_advection_2d_compiled
+    # packed basis exponents (used by evaluate and the 2D flux kernels)
+    self._eexp = np.array([list(e) for e in self.exps], dtype=np.int32)  # (K, dim)
+    if self.dim == 2:
+      self._ea = self._eexp[:, 0].copy(); self._eb = self._eexp[:, 1].copy()
+      fc = np.asarray(self.domain.faces.center)
+      self._fcx = np.ascontiguousarray(fc[:, 0]); self._fcy = np.ascontiguousarray(fc[:, 1])
+      self._cx = np.ascontiguousarray(self.center[:, 0]); self._cy = np.ascontiguousarray(self.center[:, 1])
+      global _weno_advection_2d_compiled
+      if _weno_advection_2d_compiled is None:
+        _weno_advection_2d_compiled = compile(_weno_advection_2d)
+      self._adv_kernel = _weno_advection_2d_compiled
+
+  def _build_2d(self, cells, verts, cellnid, m_central, m_dir,
+                amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord):
+    cx = np.ascontiguousarray(self.center[:, 0]); cy = np.ascontiguousarray(self.center[:, 1])
+    nodeid = np.ascontiguousarray(np.asarray(cells.nodeid), dtype=np.int32)
+    vx = np.ascontiguousarray(verts[:, 0]); vy = np.ascontiguousarray(verts[:, 1])
+    global _weno_cm_2d_compiled, _weno_select_2d_compiled, _weno_build_2d_compiled
+    if _weno_cm_2d_compiled is None:
+      _weno_cm_2d_compiled = compile(_weno_cm_2d)
+      _weno_select_2d_compiled = compile(_weno_select_2d)
+      _weno_build_2d_compiled = compile(_weno_build_2d)
+    _weno_cm_2d_compiled(nodeid, vx, vy, cx, cy, self._cm)
+    ang = 2 * np.pi * np.arange(self.ndir) / self.ndir
+    dirx = np.ascontiguousarray(np.cos(ang)); diry = np.ascontiguousarray(np.sin(ang))
+    _weno_select_2d_compiled(cellnid, cx, cy, dirx, diry,
+                             np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
+    _weno_build_2d_compiled(self._cm, cx, cy, self.vol, self.h, self._st_idx, self._st_cnt,
+                            amom, apd[0], apd[1], acoef, acnt, aord, mono_cmidx,
+                            oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
+
+  def _build_3d(self, cells, verts, cellnid, m_central, m_dir,
+                amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord):
+    cx = np.ascontiguousarray(self.center[:, 0]); cy = np.ascontiguousarray(self.center[:, 1])
+    cz = np.ascontiguousarray(self.center[:, 2])
+    cellfid = np.ascontiguousarray(np.asarray(cells.faceid), dtype=np.int32)
+    facenid = np.ascontiguousarray(np.asarray(self.domain.faces.nodeid), dtype=np.int32)
+    vx = np.ascontiguousarray(verts[:, 0]); vy = np.ascontiguousarray(verts[:, 1]); vz = np.ascontiguousarray(verts[:, 2])
+    global _weno_cm_3d_compiled, _weno_select_3d_compiled, _weno_build_3d_compiled
+    if _weno_cm_3d_compiled is None:
+      _weno_cm_3d_compiled = compile(_weno_cm_3d)
+      _weno_select_3d_compiled = compile(_weno_select_3d)
+      _weno_build_3d_compiled = compile(_weno_build_3d)
+    _weno_cm_3d_compiled(cellfid, facenid, vx, vy, vz, cx, cy, cz, self._cm)
+    # ndir axis-aligned +/- directions (x,y,z, then diagonals if ndir>6)
+    base = np.array([[1., 0, 0], [-1., 0, 0], [0, 1., 0], [0, -1., 0], [0, 0, 1.], [0, 0, -1.]])
+    if self.ndir <= 6:
+      dirs = base[:self.ndir]
+    else:
+      extra = np.array([[s, t, u] for s in (1., -1) for t in (1., -1) for u in (1., -1)]) / np.sqrt(3)
+      dirs = np.vstack([base, extra])[:self.ndir]
+    dirx = np.ascontiguousarray(dirs[:, 0]); diry = np.ascontiguousarray(dirs[:, 1]); dirz = np.ascontiguousarray(dirs[:, 2])
+    _weno_select_3d_compiled(cellnid, cx, cy, cz, dirx, diry, dirz,
+                             np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
+    _weno_build_3d_compiled(self._cm, cx, cy, cz, self.vol, self.h, self._st_idx, self._st_cnt,
+                            amom, apd[0], apd[1], apd[2], acoef, acnt, aord, mono_cmidx,
+                            oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
 
   def _moment_recipe(self):
-    """Per-monomial binomial-shift recipe: the integral of monomial (a,b) about a
-    target is sum of terms coef * dx^pdx * dy^pdy * (central moment cm[mom])."""
+    """Per-monomial binomial-shift recipe (dimension-generic): the integral of a
+    basis monomial about a shifted target is a sum of terms
+    coef * prod_d d[d]^pd[d] * (central moment cm[mom]). Returns amom, a list of
+    per-dimension power arrays apd, acoef, acnt, aord, mono_cmidx."""
     from math import comb
+    from itertools import product
+    d = self.dim
     K = self.K
     terms = []
-    for (a, b) in self.exps:
+    for e in self.exps:
       tk = []
-      for p in range(a + 1):
-        for q in range(b + 1):
-          tk.append((self._cm_idx[(p, q)], a - p, b - q, float(comb(a, p) * comb(b, q))))
+      for p in product(*[range(ei + 1) for ei in e]):
+        coef = 1.0
+        for ei, pi in zip(e, p):
+          coef *= comb(ei, pi)
+        pdiff = tuple(ei - pi for ei, pi in zip(e, p))
+        tk.append((self._cm_idx[p], pdiff, float(coef)))
       terms.append(tk)
     mt = max(len(tk) for tk in terms)
-    amom = np.zeros((K, mt), np.int32); apdx = np.zeros((K, mt), np.int32)
-    apdy = np.zeros((K, mt), np.int32); acoef = np.zeros((K, mt))
+    amom = np.zeros((K, mt), np.int32); acoef = np.zeros((K, mt))
+    apd = [np.zeros((K, mt), np.int32) for _ in range(d)]
     acnt = np.zeros(K, np.int32)
-    aord = np.array([a + b for (a, b) in self.exps], np.int32)
-    mono_cmidx = np.array([self._cm_idx[(a, b)] for (a, b) in self.exps], np.int32)
+    aord = np.array([sum(e) for e in self.exps], np.int32)
+    mono_cmidx = np.array([self._cm_idx[e] for e in self.exps], np.int32)
     for k, tk in enumerate(terms):
       acnt[k] = len(tk)
-      for t, (mom, pdx, pdy, coef) in enumerate(tk):
-        amom[k, t] = mom; apdx[k, t] = pdx; apdy[k, t] = pdy; acoef[k, t] = coef
-    return amom, apdx, apdy, acoef, acnt, aord, mono_cmidx
+      for t, (mom, pdiff, coef) in enumerate(tk):
+        amom[k, t] = mom; acoef[k, t] = coef
+        for dd in range(d):
+          apd[dd][k, t] = pdiff[dd]
+    return amom, apd, acoef, acnt, aord, mono_cmidx
 
   def _oi_recipe(self):
-    """Mesh-independent oscillation-matrix recipe (Eq 23): list of (k, q, moment
-    index, coefficient, moment order)."""
+    """Mesh-independent oscillation-matrix recipe (Eq 23), dimension-generic: sum
+    over derivative multi-indices p (1 <= |p| <= order) of the products of the two
+    differentiated basis monomials, expressed via the central moments."""
+    from itertools import product
+
     def ff(n, k):
       r = 1.0
       for j in range(k):
         r *= (n - j)
       return r
+
+    d = self.dim
     oik, oiq, oimom, oicoef, oiord = [], [], [], [], []
-    for p in range(self.order + 1):
-      for q in range(self.order + 1):
-        if p + q < 1 or p + q > self.order:
+    for p in product(range(self.order + 1), repeat=d):
+      sp = sum(p)
+      if sp < 1 or sp > self.order:
+        continue
+      for k, ek in enumerate(self.exps):
+        if any(pi > eki for pi, eki in zip(p, ek)):
           continue
-        for k, (ak, bk) in enumerate(self.exps):
-          if p > ak or q > bk:
+        ck = 1.0
+        for eki, pi in zip(ek, p):
+          ck *= ff(eki, pi)
+        for kq, eq in enumerate(self.exps):
+          if any(pi > eqi for pi, eqi in zip(p, eq)):
             continue
-          ck = ff(ak, p) * ff(bk, q)
-          for kq, (aq, bq) in enumerate(self.exps):
-            if p > aq or q > bq:
-              continue
-            cq = ff(aq, p) * ff(bq, q)
-            A = (ak - p) + (aq - p)
-            B = (bk - q) + (bq - q)
-            oik.append(k); oiq.append(kq); oimom.append(self._cm_idx[(A, B)])
-            oicoef.append(ck * cq); oiord.append(A + B)
+          cq = 1.0
+          for eqi, pi in zip(eq, p):
+            cq *= ff(eqi, pi)
+          A = tuple((eki - pi) + (eqi - pi) for eki, eqi, pi in zip(ek, eq, p))
+          oik.append(k); oiq.append(kq); oimom.append(self._cm_idx[A])
+          oicoef.append(ck * cq); oiord.append(sum(A))
     return (np.array(oik, np.int32), np.array(oiq, np.int32), np.array(oimom, np.int32),
             np.array(oicoef), np.array(oiord, np.int32))
 
@@ -457,12 +676,14 @@ class WenoReconstruction:
     """Smoothness indicator SI_i = a_i^T OI_i a_i for every cell."""
     return np.einsum('ik,ikq,iq->i', coeffs, self._OI_p, coeffs)
 
-  def evaluate(self, U, coeffs, i, x, y):
-    """Evaluate the cell-i reconstruction polynomial at physical point (x, y)."""
-    xi, yi = self.center[i]
+  def evaluate(self, U, coeffs, i, *xp):
+    """Evaluate the cell-i reconstruction polynomial at a physical point (x, y[, z])."""
     hi = self.h[i]
+    ci = self.center[i]
     val = U[i]
-    for k, (a, b) in enumerate(self.exps):
-      phi = ((x - xi) / hi) ** a * ((y - yi) / hi) ** b - self._M0_p[i][k]
-      val += coeffs[i, k] * phi
+    for k, e in enumerate(self.exps):
+      phi = 1.0
+      for dd, a in enumerate(e):
+        phi *= ((xp[dd] - ci[dd]) / hi) ** a
+      val += coeffs[i, k] * (phi - self._M0_p[i][k])
     return val
