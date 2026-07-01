@@ -228,6 +228,14 @@ class WenoEulerSolver:
     for bname, spec in self.bc.items():
       code = domain.BCs[bname][1]
       self._bmask[bname] = np.nonzero(self.face_name == code)[0]
+    # MPI: partition-boundary faces (name==10) take the halo neighbour's state. The
+    # interior reconstruction already spans the halo (WenoReconstruction), so only
+    # the flux across a partition face is first order (a one-cell-thick interface).
+    self.nh = int(getattr(domain, "nbhalos", 0))
+    self.halofid = np.asarray(domain.faces.halofid, dtype=np.int32)
+    self._hmask = np.nonzero(self.face_name == 10)[0]
+    self.rho_h = np.zeros(self.nh); self.rhou_h = np.zeros(self.nh)
+    self.rhov_h = np.zeros(self.nh); self.rhow_h = np.zeros(self.nh); self.rhoE_h = np.zeros(self.nh)
     global _weno_euler_compiled, _weno_euler_3d_compiled
     if self.dim == 2:
       if _weno_euler_compiled is None:
@@ -244,6 +252,19 @@ class WenoEulerSolver:
     il = self.cellid[:, 0]
     rho, rhou, rhov, rhoE = self.rho_arr(), self.rhou_arr(), self.rhov_arr(), self.rhoE_arr()
     rhow = self.rhow_arr()
+    if self.nh > 0 and self._hmask.size:             # partition-boundary faces (MPI)
+      hc = self.domain.halo_comm
+      hc.exchange(np.ascontiguousarray(rho), recv_buffer=self.rho_h)
+      hc.exchange(np.ascontiguousarray(rhou), recv_buffer=self.rhou_h)
+      hc.exchange(np.ascontiguousarray(rhov), recv_buffer=self.rhov_h)
+      hc.exchange(np.ascontiguousarray(rhoE), recv_buffer=self.rhoE_h)
+      if self.dim == 3:
+        hc.exchange(np.ascontiguousarray(rhow), recv_buffer=self.rhow_h)
+      hf = self.halofid[self._hmask]
+      self.rho_g[self._hmask] = self.rho_h[hf]; self.rhou_g[self._hmask] = self.rhou_h[hf]
+      self.rhov_g[self._hmask] = self.rhov_h[hf]; self.rhoE_g[self._hmask] = self.rhoE_h[hf]
+      if self.dim == 3:
+        self.rhow_g[self._hmask] = self.rhow_h[hf]
     for bname, spec in self.bc.items():
       f = self._bmask[bname]
       if spec == "outflow":
