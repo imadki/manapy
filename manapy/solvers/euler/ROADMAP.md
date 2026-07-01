@@ -7,7 +7,9 @@ a composable module and validated against analytic / reference solutions.
 Legend: ✅ done · ⬜ todo
 
 ## Core (`system.py`, `fvm_utils{2,3}d_compute.py`)
-- ✅ Compressible Euler/NS, Rusanov + Roe fluxes, MUSCL order 2 (2D)
+- ✅ Compressible Euler/NS, Rusanov + Roe fluxes, MUSCL order 2 (2D & 3D). 3D MUSCL
+  validated positive/non-oscillatory and more accurate than order 1 vs exact Sod
+  (`test_muscl_order2_3d_sharper_than_order1`).
 - ✅ Viscous NS (Newtonian stress + Fourier conduction), constant/Sutherland — 2D & 3D
 - ✅ Non-reflecting characteristic far-field BC (NSCBC, Riemann-invariant) — 2D & 3D
 - ✅ Roe scheme with Harten entropy fix (`entropy_fix`) on the acoustic waves — 2D & 3D.
@@ -91,7 +93,11 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   Validated: all-neumann map matches the scalar `Neumann` exactly; a uniform channel
   stream with slip walls + non-reflecting in/out stays steady to 1e-18; an acoustic
   pulse radiates out axially (8.9x less trapped than all-walls). Example
-  `examples/2D/mixed_bc_channel2d.py`. (2D; inflow combines via `TurbulentInflow.apply`.)
+  `examples/2D/mixed_bc_channel2d.py`. (inflow combines via `TurbulentInflow.apply`.)
+- ✅ **3D** per-boundary dispatch (`_apply_per_boundary_ghosts_3d`, adds the
+  z-momentum/w-velocity to neumann/slipwall/nonreflecting). Validated: a uniform 3D
+  stream with slip lateral walls + non-reflecting in/out stays steady to ~1e-13
+  (`test_per_boundary_dispatch_3d`).
 
 ## Mixture transport in the viscous path
 - ✅ `viscosity_law="mixture"`: per-cell μ, λ supplied each step (face-averaged into
@@ -128,4 +134,4 @@ contact in pressure equilibrium). Remaining to a converged propagating flame:
 
 ## Cross-cutting refinements (optional)
 - ⬜ correction velocity for exact sum conservation with unequal D_k
-- ⬜ Roe variable-gamma (rusanov-only for now); per-boundary BC dispatch in 3D
+- ⬜ Roe variable-gamma (rusanov-only for now)
