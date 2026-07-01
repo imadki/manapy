@@ -209,6 +209,67 @@ def test_roe_entropy_fix(domain):
   assert np.max(np.abs(r_fix - r_plain)) < 5e-2
 
 
+def test_per_boundary_dispatch_3d():
+  """3D per-boundary BC dispatch: a uniform stream with slip lateral walls and
+  non-reflecting inflow/outflow is an exact steady state and must be preserved to
+  machine precision (each named boundary gets its own treatment in one run)."""
+  mesh3d = os.path.join(os.path.dirname(__file__), "..", "meshes", "hybrid3d.msh")
+  dom = Domain.create_domain(mesh3d, 3, Partitioning.Par_Nodal, recreate=True)
+  gamma, rho0, u0, p0 = 1.4, 1.0, 0.5, 1.0
+  rho, P, rhou, rhov, rhoE = (Variable(domain=dom) for _ in range(5))
+  rhow = Variable(domain=dom)
+  rho.cell[:] = rho0; P.cell[:] = p0; rhou.cell[:] = rho0 * u0
+  rhoE.cell[:] = p0 / (gamma - 1) + 0.5 * rho0 * u0 ** 2
+  bc = {"in": "nonreflecting", "out": "nonreflecting", "upper": "slipwall",
+        "bottom": "slipwall", "front": "slipwall", "back": "slipwall"}
+  S = EulerSolver(rho, P, rhou, rhov, rhoE, rhow=rhow, gamma=gamma, cfl=0.4,
+                  scheme="rusanov", bc=bc,
+                  rho_inf=rho0, u_inf=u0, v_inf=0.0, w_inf=0.0, p_inf=p0)
+  t = 0.0
+  for _ in range(50):
+    dt = S.stepper(); t += dt
+    S.compute_fluxes(t); S.compute_new_val()
+  assert np.max(np.abs(rho.cell - rho0)) < 1e-10
+  assert np.max(np.abs(rhou.cell / rho.cell - u0)) < 1e-10
+  assert np.max(np.abs(P.cell - p0)) < 1e-10
+
+
+def test_muscl_order2_3d_sharper_than_order1():
+  """3D MUSCL (order 2): a Sod shock tube must stay positive/non-oscillatory and be
+  more accurate than first order against the exact Riemann solution."""
+  mesh3d = os.path.join(os.path.dirname(__file__), "..", "meshes", "hybrid3d.msh")
+  dom = Domain.create_domain(mesh3d, 3, Partitioning.Par_Nodal, recreate=True)
+  xc, vol = dom.cells.center[:, 0], dom.cells.volume
+  gamma = 1.4
+  xm = 0.5 * (xc.min() + xc.max())
+  tf = 0.1
+
+  def run(order):
+    rho, P, rhou, rhov, rhoE = (Variable(domain=dom) for _ in range(5))
+    rhow = Variable(domain=dom)
+    left = xc < xm
+    rho.cell[:] = np.where(left, 1.0, 0.125)
+    P.cell[:] = np.where(left, 1.0, 0.1)
+    rhoE.cell[:] = P.cell / (gamma - 1)
+    S = EulerSolver(rho, P, rhou, rhov, rhoE, rhow=rhow, gamma=gamma, cfl=0.4,
+                    order=order, scheme="rusanov", bc="TubeSchok")
+    t = 0.0
+    while t < tf:
+      dt = S.stepper()
+      if t + dt > tf:
+        dt = tf - t; S.dt = dt
+      t += dt
+      S.compute_fluxes(t); S.compute_new_val()
+    return rho.cell.copy()
+
+  r1 = run(1)
+  r2 = run(2)
+  re, _ = _exact_sod(xc, tf, gamma, x0=xm)
+  assert np.all(r2 > 0)                               # positive
+  assert r2.min() > 0.125 - 0.02 and r2.max() < 1.0 + 0.02   # essentially non-oscillatory
+  assert _l2(vol, r2, re) < _l2(vol, r1, re)          # order 2 is more accurate
+
+
 def test_roe_entropy_fix_3d():
   """3D Harten entropy fix: ef>0 keeps the Roe solution positive and physical, and
   changes it only locally near the sonic point (like the validated 2D fix)."""
