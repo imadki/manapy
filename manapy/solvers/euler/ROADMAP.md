@@ -78,8 +78,14 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   discontinuity; WENO weighting non-oscillatory (overshoot 0 vs 1.17 for the plain
   linear fit). Tests `tests/test_weno3d.py`. (The hot reconstruction loop is shared
   with 2D.)
-- ⬜ 3D Euler system coupling (`WenoEulerSolver` is 2D); edge Gauss quadrature for
-  curved/large cells; characteristic-variable reconstruction.
+- ✅ **3D WENO Euler system coupling** (`WenoEulerSolver` is now dimension-generic;
+  numba kernel `_weno_euler_rusanov_3d`): per-variable WENO reconstruction of
+  (rho, rho*u, rho*v, rho*w, rho*E) + Rusanov flux at face centres + SSP-RK3.
+  Validated on a 3D Sod: positive (rho, P > 0), essentially non-oscillatory (rho in
+  [0.125, 1] up to a ~1e-4 WENO overshoot). Test `test_weno3d_euler_sod_...`; example
+  `examples/3D/weno_euler_sod3d.py`. 2D coupling unchanged (Sod L2 1.78e-2).
+- ⬜ edge Gauss quadrature for curved/large cells; characteristic-variable
+  reconstruction.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure

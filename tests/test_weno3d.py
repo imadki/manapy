@@ -84,6 +84,34 @@ def test_weno3d_k_exact_quadratic(weno):
   assert np.max(errs) < 1.0                          # degenerate cells stay bounded
 
 
+def test_weno3d_euler_sod_stable_nonoscillatory():
+  """3D WENO-Euler coupling on a Sod shock tube: the SSP-RK3 run stays positive
+  (rho, P > 0) and essentially non-oscillatory (rho within the initial [0.125, 1]
+  bounds up to a tiny WENO overshoot)."""
+  from manapy.core.Variable import Variable
+  from manapy.solvers.euler.weno_euler import WenoEulerSolver
+  dom = Domain.create_domain(MESH3D, 3, Partitioning.Par_Nodal, recreate=True)
+  xc = np.asarray(dom.cells.center)[:, 0]
+  gamma = 1.4
+  xm = 0.5 * (xc.min() + xc.max())
+  rho, rhou, rhov, rhow, rhoE = (Variable(domain=dom) for _ in range(5))
+  left = xc < xm
+  rho.cell[:] = np.where(left, 1.0, 0.125)
+  rhoE.cell[:] = np.where(left, 1.0, 0.1) / (gamma - 1)
+  bc = {k: "outflow" for k in ("in", "out", "upper", "bottom", "front", "back")}
+  W = WenoEulerSolver(dom, rho.cell, rhou.cell, rhov.cell, rhoE.cell, rhow=rhow.cell,
+                      gamma=gamma, cfl=0.3, bc=bc)
+  t = 0.0
+  while t < 0.1:
+    dt = W.stepper()
+    if t + dt > 0.1:
+      dt = 0.1 - t
+    W.step(dt); t += dt
+  P = (gamma - 1) * (rhoE.cell - 0.5 * (rhou.cell ** 2 + rhov.cell ** 2 + rhow.cell ** 2) / rho.cell)
+  assert np.all(rho.cell > 0) and np.all(P > 0)
+  assert rho.cell.min() > 0.125 - 0.02 and rho.cell.max() < 1.0 + 0.02
+
+
 def test_weno3d_non_oscillatory(weno):
   dom = weno.domain
   xc = np.asarray(dom.cells.center)[:, 0]
