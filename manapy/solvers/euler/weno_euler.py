@@ -252,7 +252,7 @@ class WenoEulerSolver:
     il = self.cellid[:, 0]
     rho, rhou, rhov, rhoE = self.rho_arr(), self.rhou_arr(), self.rhov_arr(), self.rhoE_arr()
     rhow = self.rhow_arr()
-    if self.nh > 0 and self._hmask.size:             # partition-boundary faces (MPI)
+    if self.nh > 0 and self._hmask.size:             # exchange cell values to the halo (MPI)
       hc = self.domain.halo_comm
       hc.exchange(np.ascontiguousarray(rho), recv_buffer=self.rho_h)
       hc.exchange(np.ascontiguousarray(rhou), recv_buffer=self.rhou_h)
@@ -260,11 +260,6 @@ class WenoEulerSolver:
       hc.exchange(np.ascontiguousarray(rhoE), recv_buffer=self.rhoE_h)
       if self.dim == 3:
         hc.exchange(np.ascontiguousarray(rhow), recv_buffer=self.rhow_h)
-      hf = self.halofid[self._hmask]
-      self.rho_g[self._hmask] = self.rho_h[hf]; self.rhou_g[self._hmask] = self.rhou_h[hf]
-      self.rhov_g[self._hmask] = self.rhov_h[hf]; self.rhoE_g[self._hmask] = self.rhoE_h[hf]
-      if self.dim == 3:
-        self.rhow_g[self._hmask] = self.rhow_h[hf]
     for bname, spec in self.bc.items():
       f = self._bmask[bname]
       if spec == "outflow":
@@ -277,15 +272,34 @@ class WenoEulerSolver:
         self.rho_g[f] = r; self.rhou_g[f] = r * u; self.rhov_g[f] = r * v; self.rhow_g[f] = r * w
         self.rhoE_g[f] = p / (self.gamma - 1.0) + 0.5 * r * (u * u + v * v + w * w)
 
+  def _fill_halo_weno(self, c_rho, c_rhou, c_rhov, c_rhoE, c_rhow=None):
+    """Full-order flux at partition faces (name==10): fill the ghost with the halo
+    neighbour's WENO polynomial evaluated at the face centre (its coefficients are
+    exchanged from the owning rank), not just the halo cell value."""
+    W = self.W
+    f = self._hmask; hf = self.halofid[f]
+    fcx = W._fcx[f]; fcy = W._fcy[f]; fcz = W._fcz[f] if self.dim == 3 else None
+    self.rho_g[f] = W.halo_face_values(W.exchange_coeffs(c_rho), self.rho_h, hf, fcx, fcy, fcz)
+    self.rhou_g[f] = W.halo_face_values(W.exchange_coeffs(c_rhou), self.rhou_h, hf, fcx, fcy, fcz)
+    self.rhov_g[f] = W.halo_face_values(W.exchange_coeffs(c_rhov), self.rhov_h, hf, fcx, fcy, fcz)
+    self.rhoE_g[f] = W.halo_face_values(W.exchange_coeffs(c_rhoE), self.rhoE_h, hf, fcx, fcy, fcz)
+    if self.dim == 3:
+      self.rhow_g[f] = W.halo_face_values(W.exchange_coeffs(c_rhow), self.rhow_h, hf, fcx, fcy, fcz)
+
   def residual(self):
     """d(U*vol)/dt for the conservative variables (WENO + Rusanov)."""
-    self._fill_ghosts()
     W = self.W
     rz = self._rez
     rho, rhou, rhov, rhoE = self.rho_arr(), self.rhou_arr(), self.rhov_arr(), self.rhoE_arr()
     c_rho = W.weno_reconstruct(rho); c_rhou = W.weno_reconstruct(rhou)
     c_rhov = W.weno_reconstruct(rhov); c_rhoE = W.weno_reconstruct(rhoE)
+    rhow = self.rhow_arr()
+    c_rhow = W.weno_reconstruct(rhow) if self.dim == 3 else None
+    self._fill_ghosts()
+    do_halo = self.nh > 0 and self._hmask.size
     if self.dim == 2:
+      if do_halo:
+        self._fill_halo_weno(c_rho, c_rhou, c_rhov, c_rhoE)
       self._kernel(rz[0], rz[1], rz[2], rz[3],
                    np.ascontiguousarray(rho), np.ascontiguousarray(rhou),
                    np.ascontiguousarray(rhov), np.ascontiguousarray(rhoE),
@@ -294,8 +308,8 @@ class WenoEulerSolver:
                    W._ea, W._eb, W._M0_p, W._cx, W._cy, W.h, W._fcx, W._fcy,
                    self.cellid, self.normal, self.mesure, self.face_name, self.gamma)
     else:
-      rhow = self.rhow_arr()
-      c_rhow = W.weno_reconstruct(rhow)
+      if do_halo:
+        self._fill_halo_weno(c_rho, c_rhou, c_rhov, c_rhoE, c_rhow)
       self._kernel(rz[0], rz[1], rz[2], rz[3], rz[4],
                    np.ascontiguousarray(rho), np.ascontiguousarray(rhou),
                    np.ascontiguousarray(rhov), np.ascontiguousarray(rhow), np.ascontiguousarray(rhoE),
