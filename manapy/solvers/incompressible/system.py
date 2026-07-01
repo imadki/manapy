@@ -45,10 +45,13 @@ class IncompressibleSolver:
     self.ncorr = int(ncorr)                            # PISO-style pressure correctors
 
     self.cellid = np.asarray(dom.faces.cellid, dtype=np.int64)
+    self.halofid = np.asarray(dom.faces.halofid, dtype=np.int64)
     self.fname = np.asarray(dom.faces.name, dtype=np.int64)
     self.normal = np.ascontiguousarray(np.asarray(dom.faces.normal)[:, :2])
     self.vol = np.asarray(dom.cells.volume)
     self.nc = dom.nbcells; self.nf = len(self.cellid)
+    self.nh = int(getattr(dom, "nbhalos", 0))
+    self._uh = np.zeros(self.nh); self._vh = np.zeros(self.nh)
     codes = {k: dom.BCs[k][1] for k in dom.BCs}
 
     # reuse manapy's FV face coefficient (fv_coeff = |Sf|^2/|Sf.d|); it is exactly the
@@ -95,8 +98,13 @@ class IncompressibleSolver:
     return d
 
   def _cell_divergence(self, u, v):
-    """Per-cell velocity divergence (1/vol) sum_f phi_f from the face fluxes."""
-    self._face_flux(u, v, self.uw, self.vw, self.normal, self.cellid, self.fname, self._phi)
+    """Per-cell velocity divergence (1/vol) sum_f phi_f from the face fluxes. Exchanges
+    the velocity to the halo so partition faces use the neighbour-rank value."""
+    if self.nh:
+      self.domain.halo_comm.exchange(np.ascontiguousarray(u), recv_buffer=self._uh)
+      self.domain.halo_comm.exchange(np.ascontiguousarray(v), recv_buffer=self._vh)
+    self._face_flux(u, v, self._uh, self._vh, self.uw, self.vw, self.normal,
+                    self.cellid, self.halofid, self.fname, self._phi)
     d = np.zeros(self.nc)
     np.add.at(d, self.cellid[self._is_int, 0], self._phi[self._is_int])
     np.add.at(d, self.cellid[self._is_int, 1], -self._phi[self._is_int])
@@ -109,9 +117,11 @@ class IncompressibleSolver:
     ff, mom, gg = self._face_flux, self._mom_rhs, self._gg_grad
 
     # 1-2. predictor (momentum convection by the div-free face flux + diffusion)
-    ff(u, v, self.uw, self.vw, self.normal, self.cellid, self.fname, self._phi)
-    mom(u, v, self._phi, self.af, self.uw, self.vw, self.cellid, self.fname, self.vol,
-        self.nu, self._du, self._dv)
+    self.u.update_halo_value(); self.v.update_halo_value()
+    ff(u, v, self.u.halo, self.v.halo, self.uw, self.vw, self.normal,
+       self.cellid, self.halofid, self.fname, self._phi)
+    mom(u, v, self.u.halo, self.v.halo, self._phi, self.af, self.uw, self.vw,
+        self.cellid, self.halofid, self.fname, self.vol, self.nu, self._du, self._dv)
     uc = u + dt * self._du; vc = v + dt * self._dv
 
     # 3-4. PISO-style correctors: each solves a pressure (correction) from the current
@@ -123,7 +133,8 @@ class IncompressibleSolver:
       self.L(rhs=self._psign * (self.rho / dt) * div)  # solves into P.cell
       self.P.update_halo_value(); self.P.update_ghost_value()
       Ptot += self.P.cell
-      gg(self.P.cell, self.normal, self.cellid, self.fname, self.vol, self._gx, self._gy)
+      gg(self.P.cell, self.P.halo, self.normal, self.cellid, self.halofid, self.fname,
+         self.vol, self._gx, self._gy)
       uc = uc - (dt / self.rho) * self._gx
       vc = vc - (dt / self.rho) * self._gy
     u[:] = uc; v[:] = vc; self.P.cell[:] = Ptot

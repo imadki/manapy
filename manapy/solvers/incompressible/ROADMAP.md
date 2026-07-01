@@ -35,9 +35,11 @@ Legend: ✅ done & validated · 🟡 done, refinement pending · ⬜ todo
   face-flux correction, `compute_face_gradient`, to stay consistent -- a future option.)
   Only the collocated-specific pieces (momentum convection by the divergence-free face
   flux, the cell divergence) are new numba kernels, since manapy has no such operator.
-- 🟡 the pressure solve is MPI-ready; the momentum/divergence kernels still treat
-  partition faces (name==10) as walls -- adding halo handling (as done for WENO) makes
-  the whole step MPI-correct. Serial-validated for now.
+- ✅ **MPI**: the pressure Poisson is distributed (fv scheme couples the halos in the
+  matrix); the momentum/divergence/gradient kernels exchange the velocity/pressure to
+  the halo and treat partition faces (name==10) with the neighbour-rank value. Validated:
+  a 2-rank cavity matches the serial run to ~1% on a transient (converges at steady),
+  stable and finite.
 - ✅ **PISO-style pressure correctors** (`ncorr`, default 2): the predictor is followed
   by a loop of {divergence -> pressure solve -> velocity correction}; iterating drives
   the residual collocated cell divergence down (0.20 -> 0.13 -> 0.10 at nCorr 1/2/4 on
