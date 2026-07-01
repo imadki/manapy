@@ -51,6 +51,35 @@ Legend: ✅ done & validated · 🟡 done, refinement pending · ⬜ todo
   in the two-point face gradient (currently the orthogonal approximation).
 - ⬜ 3D.
 
+## True PISO (implicit momentum) — implementation plan for the next session
+The current solver is already PISO with `a_P = rho*V/dt` (explicit momentum). "True"
+PISO makes the momentum implicit -> larger stable `dt` (implicit convection) and
+faithfulness to icoFoam. Inventory already done (do NOT re-investigate):
+- manapy has **no** implicit convection/momentum matrix assembly (only explicit
+  `advecdiff`) and **no** variable-coefficient Laplacian (the `fv` scheme uses a fixed
+  `faces.fv_coeff`). All LS backends expose `set_matrix(row,col,data)` + `with_mtx=True`
+  (0-based global indices via `cells.loctoglob`; halo column = `halos.halosext[h,0]`).
+
+Steps:
+1. **Momentum matrix** `M = (rho*V/dt) I + C(implicit upwind conv) + nu*L_fv`, assembled
+   as global triplets (reuse `fv_coeff` for the diffusion two-point part; upwind conv
+   from the current face flux). Start **semi-implicit** (implicit diffusion, deferred
+   convection) to de-risk, then add implicit convection. Solve u,v via a chosen manapy
+   LS (`set_matrix`, backend a free choice). Extract `a_P` = diagonal of M.
+2. **Predictor**: solve `M u = (rho*V/dt) u^n - grad(p^n) [+ deferred conv]`.
+3. **PISO correctors** (`ncorr`): pseudo-velocity `H/a_P` (H = off-diagonal action +
+   sources); pressure eq `div( (1/a_P)_face grad p ) = div( (H/a_P)_face )` -- a
+   **variable-coefficient** Laplacian = `(1/a_P)_face * fv_coeff`, so assemble it each
+   step via `set_matrix` (matrix changes as `a_P` changes; no `reuse_mtx`). Correct the
+   face flux `phi -= (1/a_P)_face (grad p . S)` and the cell velocity `u = H/a_P -
+   (1/a_P) grad p`.
+4. **Validate** vs OpenFOAM `icoFoam` (same cavity setup already scripted) and check a
+   large-`dt` run stays stable (the point of implicit momentum). Compare u(y) at x=0.5.
+
+Files: `system.py` (predictor + PISO loop + a_P/H), a new momentum-matrix assembly
+(triplets), reuse `fvm_utils_compute.py` face flux / gg_grad. Keep `scheme`/backend a
+user choice. The current explicit-momentum path stays as the default/simple mode.
+
 ## Phase 2 (interFoam-style VOF, on top of this)
 - ⬜ phase fraction `alpha` transport with bounded interface compression (MULES-like)
 - ⬜ variable density/viscosity `rho(alpha), mu(alpha)`
