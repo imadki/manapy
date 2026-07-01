@@ -10,6 +10,9 @@ Legend: ✅ done · ⬜ todo
 - ✅ Compressible Euler/NS, Rusanov + Roe fluxes, MUSCL order 2 (2D)
 - ✅ Viscous NS (Newtonian stress + Fourier conduction), constant/Sutherland — 2D & 3D
 - ✅ Non-reflecting characteristic far-field BC (NSCBC, Riemann-invariant) — 2D & 3D
+- ✅ Roe scheme with Harten entropy fix (`entropy_fix`) on the acoustic waves — 2D & 3D.
+  Validated: ef=0 reproduces plain Roe; ef>0 stays positive and only smooths the
+  sonic point locally (`test_roe_entropy_fix{,_3d}`).
 - Validated: **exact Sod Riemann solution** (Roe < Rusanov), viscous decay (analytic).
 
 ## LES / subgrid-scale turbulence
