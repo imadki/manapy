@@ -28,9 +28,16 @@ Legend: ✅ done & validated · 🟡 done, refinement pending · ⬜ todo
   `examples/2D/lid_driven_cavity2d.py`.
 
 ## Known limitations / next steps
-- 🟡 **serial only**: the two-point Laplacian is assembled and factorised with SciPy
-  (`splu`). Next: assemble the same operator through the distributed linear solvers
-  (`solvers/ls/`, PETSc) so the projection runs under MPI like the rest of manapy.
+- ✅ the pressure Poisson **reuses manapy's `LinearSolver(scheme='fv')`** (the two-point
+  cell Laplacian, `fv_coeff = |Sf|^2/|Sf.d|`, halo/MPI coupling built in) -- no bespoke
+  matrix, and the **backend is a free choice** (PETSc / MUMPS / Ginkgo), like the darcy
+  example. (`scheme='diamond'` is the wider vertex-based Laplacian; it needs its own
+  face-flux correction, `compute_face_gradient`, to stay consistent -- a future option.)
+  Only the collocated-specific pieces (momentum convection by the divergence-free face
+  flux, the cell divergence) are new numba kernels, since manapy has no such operator.
+- 🟡 the pressure solve is MPI-ready; the momentum/divergence kernels still treat
+  partition faces (name==10) as walls -- adding halo handling (as done for WENO) makes
+  the whole step MPI-correct. Serial-validated for now.
 - ⬜ this is a single-corrector Chorin projection, **not PISO**. icoFoam is PISO
   (momentum predictor + `nCorrectors` pressure loops with the a_P coefficients and
   Rhie-Chow). A PISO restructuring would tighten the pressure-velocity coupling.
