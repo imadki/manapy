@@ -508,13 +508,17 @@ class WenoReconstruction:
       _weno_kernel_2d_compiled = compile(_weno_kernel_2d)
     self._kernel = _weno_kernel_2d_compiled
 
-    # packed basis exponents (used by evaluate and the 2D flux kernels)
+    # packed basis exponents / face geometry (used by evaluate and the flux kernels)
     self._eexp = np.array([list(e) for e in self.exps], dtype=np.int32)  # (K, dim)
+    fc = np.asarray(self.domain.faces.center)
+    self._ea = np.ascontiguousarray(self._eexp[:, 0]); self._eb = np.ascontiguousarray(self._eexp[:, 1])
+    self._fcx = np.ascontiguousarray(fc[:, 0]); self._fcy = np.ascontiguousarray(fc[:, 1])
+    self._cx = np.ascontiguousarray(self.center[:, 0]); self._cy = np.ascontiguousarray(self.center[:, 1])
+    if self.dim == 3:
+      self._ec = np.ascontiguousarray(self._eexp[:, 2])
+      self._fcz = np.ascontiguousarray(fc[:, 2])
+      self._cz = np.ascontiguousarray(self.center[:, 2])
     if self.dim == 2:
-      self._ea = self._eexp[:, 0].copy(); self._eb = self._eexp[:, 1].copy()
-      fc = np.asarray(self.domain.faces.center)
-      self._fcx = np.ascontiguousarray(fc[:, 0]); self._fcy = np.ascontiguousarray(fc[:, 1])
-      self._cx = np.ascontiguousarray(self.center[:, 0]); self._cy = np.ascontiguousarray(self.center[:, 1])
       global _weno_advection_2d_compiled
       if _weno_advection_2d_compiled is None:
         _weno_advection_2d_compiled = compile(_weno_advection_2d)
