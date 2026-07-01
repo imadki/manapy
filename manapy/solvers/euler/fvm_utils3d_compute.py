@@ -1518,6 +1518,139 @@ def _ghost_value_NonReflecting3D(rhog: 'float64[:]', Pg: 'float64[:]', rhoug: 'f
 # their module globals before their callers, so numba can resolve njit->njit calls.
 _done = False
 
+def _compute_flux_euler_3d_rusanov_vg(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhowl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhowr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gammal: 'float64', gammar: 'float64'):
+    # Variable-gamma Rusanov flux: each side carries its own ratio of specific
+    # heats so the acoustic wave speed and the (already pressure-based) flux are
+    # consistent across a multi-gamma contact. Rotationally invariant -> no
+    # tangent/binormal needed.
+    ql = (rhoul*normal[0] + rhovl*normal[1] + rhowl*normal[2])
+    qr = (rhour*normal[0] + rhovr*normal[1] + rhowr*normal[2])
+    cl = np.sqrt(gammal*Pl/rhol)
+    cr = np.sqrt(gammar*Pr/rhor)
+
+    fl_rho  = ql
+    fl_rhou = (rhoul*ql/rhol + Pl*normal[0])
+    fl_rhov = (rhovl*ql/rhol + Pl*normal[1])
+    fl_rhow = (rhowl*ql/rhol + Pl*normal[2])
+    fl_rhoE = (ql/rhol*(rhoEl+Pl))
+
+    fr_rho  = qr
+    fr_rhou = (rhour*qr/rhor + Pr*normal[0])
+    fr_rhov = (rhovr*qr/rhor + Pr*normal[1])
+    fr_rhow = (rhowr*qr/rhor + Pr*normal[2])
+    fr_rhoE = (qr/rhor*(rhoEr+Pr))
+
+    Ll = max(np.fabs(ql/rhol - cl), np.fabs(ql/rhol), np.fabs(ql/rhol + cl))
+    Lr = max(np.fabs(qr/rhor - cr), np.fabs(qr/rhor), np.fabs(qr/rhor + cr))
+    S = Ll if Ll > Lr else Lr
+
+    flux_rho  = (0.5*(fl_rho + fr_rho)   - 0.5*S*(rhor - rhol))*mesure
+    flux_rhou = (0.5*(fl_rhou + fr_rhou) - 0.5*S*(rhour - rhoul))*mesure
+    flux_rhov = (0.5*(fl_rhov + fr_rhov) - 0.5*S*(rhovr - rhovl))*mesure
+    flux_rhow = (0.5*(fl_rhow + fr_rhow) - 0.5*S*(rhowr - rhowl))*mesure
+    flux_rhoE = (0.5*(fl_rhoE + fr_rhoE) - 0.5*S*(rhoEr - rhoEl))*mesure
+    return flux_rho, flux_rhou, flux_rhov, flux_rhow, flux_rhoE
+
+
+def _explicitscheme_euler_3d_rusanov_vg(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma_c: 'float64[:]', gamma_g: 'float64[:]', gamma_h: 'float64[:]'):
+    nbface = len(cellidf)
+    rez_rho[:]  = np.zeros(len(rez_rho))
+    rez_rhou[:] = np.zeros(len(rez_rhou))
+    rez_rhov[:] = np.zeros(len(rez_rhov))
+    rez_rhow[:] = np.zeros(len(rez_rhow))
+    rez_rhoE[:] = np.zeros(len(rez_rhoE))
+    for i in range(nbface):
+        norm = normal[i]/mesurf[i]
+        mesu = mesurf[i]
+        il = cellidf[i][0]
+        rhol = rho_c[il]; Pl = P_c[il]; rhoul = rhou_c[il]; rhovl = rhov_c[il]; rhowl = rhow_c[il]; rhoEl = rhoE_c[il]
+        gl = gamma_c[il]
+        if name[i] == 0:
+            ir = cellidf[i][1]
+            rhor = rho_c[ir]; Pr = P_c[ir]; rhour = rhou_c[ir]; rhovr = rhov_c[ir]; rhowr = rhow_c[ir]; rhoEr = rhoE_c[ir]; gr = gamma_c[ir]
+            fr, fru, frv, frw, frE = _compute_flux_euler_3d_rusanov_vg(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm,mesu,gl,gr)
+            rez_rho[il] -= fr; rez_rho[ir] += fr
+            rez_rhou[il] -= fru; rez_rhou[ir] += fru
+            rez_rhov[il] -= frv; rez_rhov[ir] += frv
+            rez_rhow[il] -= frw; rez_rhow[ir] += frw
+            rez_rhoE[il] -= frE; rez_rhoE[ir] += frE
+        elif name[i] == 10:
+            h = halofid[i]
+            rhor = rho_h[h]; Pr = P_h[h]; rhour = rhou_h[h]; rhovr = rhov_h[h]; rhowr = rhow_h[h]; rhoEr = rhoE_h[h]; gr = gamma_h[h]
+            fr, fru, frv, frw, frE = _compute_flux_euler_3d_rusanov_vg(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm,mesu,gl,gr)
+            rez_rho[il] -= fr; rez_rhou[il] -= fru; rez_rhov[il] -= frv; rez_rhow[il] -= frw; rez_rhoE[il] -= frE
+        else:
+            rhor = rho_g[i]; Pr = P_g[i]; rhour = rhou_g[i]; rhovr = rhov_g[i]; rhowr = rhow_g[i]; rhoEr = rhoE_g[i]; gr = gamma_g[i]
+            fr, fru, frv, frw, frE = _compute_flux_euler_3d_rusanov_vg(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm,mesu,gl,gr)
+            rez_rho[il] -= fr; rez_rhou[il] -= fru; rez_rhov[il] -= frv; rez_rhow[il] -= frw; rez_rhoE[il] -= frE
+
+
+def _doubleflux_residual_euler_3d(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', gamma_c: 'float64[:]', cellfaceid: 'int32[:,:]', facecellid: 'int32[:,:]', facehalofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]'):
+    # Double-flux method (Abgrall-Billet) in 3D: cell i is updated with its OWN
+    # frozen gamma_i; the neighbour energy is reinterpreted in cell i's gamma frame
+    # (rhoE_j = p_j/(gamma_i-1)+KE_j) so a uniform-pressure contact stays in exact
+    # pressure equilibrium. Per-cell loop; flux computed once per (cell, face).
+    nbcell = len(cellfaceid)
+    rez_rho[:] = np.zeros(len(rez_rho))
+    rez_rhou[:] = np.zeros(len(rez_rhou))
+    rez_rhov[:] = np.zeros(len(rez_rhov))
+    rez_rhow[:] = np.zeros(len(rez_rhow))
+    rez_rhoE[:] = np.zeros(len(rez_rhoE))
+    norm = np.zeros(3)
+    for i in range(nbcell):
+        gi = gamma_c[i]
+        rli = rho_c[i]; uli = rhou_c[i] / rli; vli = rhov_c[i] / rli; wli = rhow_c[i] / rli; pli = P_c[i]
+        KEi = 0.5 * rli * (uli * uli + vli * vli + wli * wli)
+        rhoEi = pli / (gi - 1.0) + KEi
+        nf = cellfaceid[i][-1]
+        for jf in range(nf):
+            f = cellfaceid[i][jf]
+            mesu = mesurf[f]
+            nx = normal[f][0] / mesu; ny = normal[f][1] / mesu; nz = normal[f][2] / mesu
+            if facecellid[f][0] == i:
+                sgn = 1.0
+                if name[f] == 0:
+                    j = facecellid[f][1]
+                    rj = rho_c[j]; uj = rhou_c[j] / rj; vj = rhov_c[j] / rj; wj = rhow_c[j] / rj; pj = P_c[j]
+                elif name[f] == 10:
+                    hh = facehalofid[f]
+                    rj = rho_h[hh]; uj = rhou_h[hh] / rj; vj = rhov_h[hh] / rj; wj = rhow_h[hh] / rj; pj = P_h[hh]
+                else:
+                    rj = rho_g[f]; uj = rhou_g[f] / rj; vj = rhov_g[f] / rj; wj = rhow_g[f] / rj; pj = P_g[f]
+            else:
+                sgn = -1.0
+                j = facecellid[f][0]
+                rj = rho_c[j]; uj = rhou_c[j] / rj; vj = rhov_c[j] / rj; wj = rhow_c[j] / rj; pj = P_c[j]
+            norm[0] = sgn * nx; norm[1] = sgn * ny; norm[2] = sgn * nz
+            rhoEj = pj / (gi - 1.0) + 0.5 * rj * (uj * uj + vj * vj + wj * wj)
+            fr, fru, frv, frw, frE = _compute_flux_euler_3d_rusanov_vg(
+                rli, pli, rli * uli, rli * vli, rli * wli, rhoEi,
+                rj, pj, rj * uj, rj * vj, rj * wj, rhoEj, norm, mesu, gi, gi)
+            rez_rho[i] -= fr; rez_rhou[i] -= fru; rez_rhov[i] -= frv; rez_rhow[i] -= frw; rez_rhoE[i] -= frE
+
+
+def _update_euler_3d_vg(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', gamma_c: 'float64[:]', dtime: 'float64', vol: 'float64[:]'):
+    rho_c[:]  += dtime*(rez_rho[:]/vol[:])
+    rhou_c[:] += dtime*(rez_rhou[:]/vol[:])
+    rhov_c[:] += dtime*(rez_rhov[:]/vol[:])
+    rhow_c[:] += dtime*(rez_rhow[:]/vol[:])
+    rhoE_c[:] += dtime*(rez_rhoE[:]/vol[:])
+    P_c[:]     = (gamma_c[:]-1.0)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:])
+
+
+def _update_euler_3d_df(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', gamma_c: 'float64[:]', dtime: 'float64', vol: 'float64[:]'):
+    # Double-flux update: re-derive the conserved energy from the current pressure
+    # and frozen gamma (rhoE = p/(gamma-1)+KE) before adding the residual.
+    ke_old = 0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:]
+    rhoE_c[:] = P_c[:]/(gamma_c[:]-1.0) + ke_old
+    rho_c[:]  += dtime*(rez_rho[:]/vol[:])
+    rhou_c[:] += dtime*(rez_rhou[:]/vol[:])
+    rhov_c[:] += dtime*(rez_rhov[:]/vol[:])
+    rhow_c[:] += dtime*(rez_rhow[:]/vol[:])
+    rhoE_c[:] += dtime*(rez_rhoE[:]/vol[:])
+    P_c[:]     = (gamma_c[:]-1.0)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:])
+
+
 def setup(dim=3):
   global _done
   if dim != 3:
@@ -1528,11 +1661,13 @@ def setup(dim=3):
   # Nested helpers first (rebind the underscore globals used inside the kernels).
   global _weight_parameters_carac_3d, _set_carac_field_3d
   global _compute_flux_euler_3d_fvc, _compute_flux_euler_3d_rusanov, _compute_flux_euler_3d_Roe
+  global _compute_flux_euler_3d_rusanov_vg
   _weight_parameters_carac_3d = compile(_weight_parameters_carac_3d)
   _set_carac_field_3d = compile(_set_carac_field_3d)
   _compute_flux_euler_3d_fvc = compile(_compute_flux_euler_3d_fvc)
   _compute_flux_euler_3d_rusanov = compile(_compute_flux_euler_3d_rusanov)
   _compute_flux_euler_3d_Roe = compile(_compute_flux_euler_3d_Roe)
+  _compute_flux_euler_3d_rusanov_vg = compile(_compute_flux_euler_3d_rusanov_vg)
 
   # Public entry points (helpers are re-exported under their public names).
   global node_for_interpolation_3d, node_value_for_interpolation_3d
@@ -1547,6 +1682,8 @@ def setup(dim=3):
   global explicitscheme_euler_3d_viscous, face_transport_props_3d, viscous_time_step_3d
   global ghost_value_NonReflecting3D
   global mu_sgs_smagorinsky_3d, mu_sgs_wale_3d, add_sgs_face_props_3d
+  global compute_flux_euler_3d_rusanov_vg, explicitscheme_euler_3d_rusanov_vg, update_euler_3d_vg
+  global doubleflux_residual_euler_3d, update_euler_3d_df
 
   node_for_interpolation_3d = compile(_node_for_interpolation_3d)
   node_value_for_interpolation_3d = compile(_node_value_for_interpolation_3d)
@@ -1577,5 +1714,10 @@ def setup(dim=3):
   mu_sgs_smagorinsky_3d = compile(_mu_sgs_smagorinsky_3d)
   mu_sgs_wale_3d = compile(_mu_sgs_wale_3d)
   add_sgs_face_props_3d = compile(_add_sgs_face_props_3d)
+  compute_flux_euler_3d_rusanov_vg = _compute_flux_euler_3d_rusanov_vg
+  explicitscheme_euler_3d_rusanov_vg = compile(_explicitscheme_euler_3d_rusanov_vg)
+  update_euler_3d_vg = compile(_update_euler_3d_vg)
+  doubleflux_residual_euler_3d = compile(_doubleflux_residual_euler_3d)
+  update_euler_3d_df = compile(_update_euler_3d_df)
 
   _done = True

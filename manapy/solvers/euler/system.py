@@ -169,10 +169,11 @@ class EulerSolver:
     # the composition); the Rusanov wave speed and the pressure update use it.
     self.variable_gamma = bool(variable_gamma)
     if self.variable_gamma:
-      if self.dim != 2 or scheme != "rusanov" or self.order != 1:
-        raise NotImplementedError("variable_gamma is wired for 2D rusanov order 1")
-      self._explicitscheme_vg = fvm.explicitscheme_euler_2d_rusanov_vg
-      self._update_vg = fvm.update_euler_2d_vg
+      if scheme != "rusanov" or self.order != 1:
+        raise NotImplementedError("variable_gamma is wired for rusanov order 1 (2D & 3D)")
+      d = self.dim
+      self._explicitscheme_vg = getattr(fvm, f"explicitscheme_euler_{d}d_rusanov_vg")
+      self._update_vg = getattr(fvm, f"update_euler_{d}d_vg")
       self.gamma_cell = np.full(nbcells, self.gamma, dtype=dtype)
       self.gamma_ghost = np.full(nbfaces, self.gamma, dtype=dtype)
       self._gamma_var = Variable(domain=self.domain)   # to halo-exchange gamma
@@ -181,8 +182,8 @@ class EulerSolver:
       # contacts (needed for flames). Uses a per-cell frozen-gamma residual.
       self._doubleflux = bool(doubleflux)
       if self._doubleflux:
-        self._doubleflux_residual = fvm.doubleflux_residual_euler_2d
-        self._update_df = fvm.update_euler_2d_df
+        self._doubleflux_residual = getattr(fvm, f"doubleflux_residual_euler_{d}d")
+        self._update_df = getattr(fvm, f"update_euler_{d}d_df")
         self._cell_faceid = np.asarray(self.domain.cells.faceid, dtype=np.int32)
     else:
       self._doubleflux = False
@@ -465,7 +466,7 @@ class EulerSolver:
 
     if self.order >= 2:
       self._explicit_o2()
-    elif self.variable_gamma and self._doubleflux:
+    elif self.variable_gamma and self._doubleflux and self.dim == 2:
       self._doubleflux_residual(self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhoE,
                                 self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell,
                                 self.rho.ghost, self.P.ghost, self.rhou.ghost, self.rhov.ghost,
@@ -473,11 +474,27 @@ class EulerSolver:
                                 self.gamma_cell, self._cell_faceid,
                                 self.domain.faces.cellid, self.domain.faces.halofid,
                                 self.domain.faces.normal, self.domain.faces.mesure, self.face_name)
-    elif self.variable_gamma:
+    elif self.variable_gamma and self._doubleflux:
+      self._doubleflux_residual(self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
+                                self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhow.cell,
+                                self.rho.ghost, self.P.ghost, self.rhou.ghost, self.rhov.ghost, self.rhow.ghost,
+                                self.rho.halo, self.P.halo, self.rhou.halo, self.rhov.halo, self.rhow.halo,
+                                self.gamma_cell, self._cell_faceid,
+                                self.domain.faces.cellid, self.domain.faces.halofid,
+                                self.domain.faces.normal, self.domain.faces.mesure, self.face_name)
+    elif self.variable_gamma and self.dim == 2:
       self._explicitscheme_vg(self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhoE,
                               self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhoE.cell,
                               self.rho.ghost, self.P.ghost, self.rhou.ghost, self.rhov.ghost, self.rhoE.ghost,
                               self.rho.halo, self.P.halo, self.rhou.halo, self.rhov.halo, self.rhoE.halo,
+                              self.domain.faces.cellid, self.domain.faces.halofid,
+                              self.domain.faces.normal, self.domain.faces.mesure,
+                              self.face_name, self.gamma_cell, self.gamma_ghost, self.gamma_halo)
+    elif self.variable_gamma:
+      self._explicitscheme_vg(self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
+                              self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhow.cell, self.rhoE.cell,
+                              self.rho.ghost, self.P.ghost, self.rhou.ghost, self.rhov.ghost, self.rhow.ghost, self.rhoE.ghost,
+                              self.rho.halo, self.P.halo, self.rhou.halo, self.rhov.halo, self.rhow.halo, self.rhoE.halo,
                               self.domain.faces.cellid, self.domain.faces.halofid,
                               self.domain.faces.normal, self.domain.faces.mesure,
                               self.face_name, self.gamma_cell, self.gamma_ghost, self.gamma_halo)
@@ -623,13 +640,21 @@ class EulerSolver:
         self.gamma, self.order)
 
   def compute_new_val(self):
-    if self.variable_gamma and self._doubleflux:
+    if self.variable_gamma and self._doubleflux and self.dim == 2:
       self._update_df(self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhoE.cell,
                       self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhoE,
                       self.gamma_cell, self.dt, self.domain.cells.volume)
-    elif self.variable_gamma:
+    elif self.variable_gamma and self._doubleflux:
+      self._update_df(self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhow.cell, self.rhoE.cell,
+                      self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
+                      self.gamma_cell, self.dt, self.domain.cells.volume)
+    elif self.variable_gamma and self.dim == 2:
       self._update_vg(self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhoE.cell,
                       self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhoE,
+                      self.gamma_cell, self.dt, self.domain.cells.volume)
+    elif self.variable_gamma:
+      self._update_vg(self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhow.cell, self.rhoE.cell,
+                      self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
                       self.gamma_cell, self.dt, self.domain.cells.volume)
     elif self.dim == 2:
       self._update(self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhoE.cell,
