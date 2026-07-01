@@ -584,6 +584,11 @@ class WenoReconstruction:
       self._M0_ext[:, k] = cm_e[:, self._cm_idx[e]] / (vol_e * h_e ** sum(e))
     self._M0_p = np.ascontiguousarray(self._M0_ext[:nc])
     self._cx_ext = cx_e; self._cy_ext = cy_e; self._cz_ext = cz_e; self._h_ext = h_e
+    # halo-only geometry slices (for evaluating a halo neighbour's WENO polynomial
+    # at a partition face, giving a full-order flux there under MPI)
+    self._cx_h = np.ascontiguousarray(cx_e[nc:]); self._cy_h = np.ascontiguousarray(cy_e[nc:])
+    self._cz_h = np.ascontiguousarray(cz_e[nc:]); self._h_h = np.ascontiguousarray(h_e[nc:])
+    self._M0_h = np.ascontiguousarray(self._M0_ext[nc:])
 
     self._lam_arr = np.array([self.lambda_central] + [1.0] * self.ndir)
     global _weno_kernel_2d_compiled                  # hot loop is dimension-agnostic
@@ -731,6 +736,32 @@ class WenoReconstruction:
     Ue[:self.nb] = U
     Ue[self.nb:] = self._uhalo
     return Ue
+
+  def exchange_coeffs(self, coeffs):
+    """Exchange per-cell reconstruction coefficients (nb, K) to this rank's halo,
+    returning (nh, K). Used to evaluate a halo neighbour's WENO polynomial at a
+    partition face for a full-order flux there. Empty in serial."""
+    out = np.zeros((self.nh, self.K))
+    if self.nh == 0:
+      return out
+    buf = np.zeros(self.nh)
+    for k in range(self.K):
+      self.domain.halo_comm.exchange(np.ascontiguousarray(coeffs[:, k]), recv_buffer=buf)
+      out[:, k] = buf
+    return out
+
+  def halo_face_values(self, coeffs_h, Uh, hf, fcx, fcy, fcz=None):
+    """Evaluate the halo neighbours' WENO polynomials at partition-face centres.
+    coeffs_h (nh,K), Uh (nh,) halo cell values, hf face->halo ids, fcx/fcy(/fcz)
+    the face centres of those faces. Returns the reconstructed face values."""
+    hxr = (fcx - self._cx_h[hf]) / self._h_h[hf]
+    hyr = (fcy - self._cy_h[hf]) / self._h_h[hf]
+    phi = hxr[:, None] ** self._ea[None, :] * hyr[:, None] ** self._eb[None, :]
+    if self.dim == 3:
+      hzr = (fcz - self._cz_h[hf]) / self._h_h[hf]
+      phi = phi * hzr[:, None] ** self._ec[None, :]
+    phi = phi - self._M0_h[hf]
+    return Uh[hf] + np.einsum('fk,fk->f', coeffs_h[hf], phi)
 
   def reconstruct(self, U):
     """k-exact reconstruction on the **central** stencil only (linear; high order

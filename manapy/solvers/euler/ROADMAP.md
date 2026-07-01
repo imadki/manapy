@@ -91,10 +91,11 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   node-neighbours (encoded `nb+halo_id`) and the SVD build truncates near-null
   directions (`1e-10`) so partial-halo boundary stencils stay bounded. Each RK
   stage exchanges the field to the halo (`_extend_field`) before reconstruction.
-  `WenoEulerSolver` takes the halo neighbour state at partition faces (name==10),
-  so the interior is full WENO and only the one-cell partition interface is first
-  order. Validated: build no longer crashes under MPI; a 2-rank Sod matches the
-  serial run (rho min identical, max/mass to ~5 digits); near-linear speedup
+  At partition faces (name==10) `WenoEulerSolver` evaluates the halo neighbour's
+  **WENO polynomial** at the face centre (its coefficients are exchanged via
+  `exchange_coeffs`/`halo_face_values`), so the flux is full order there too, not
+  just the interior. Validated: build no longer crashes under MPI; a 2-rank Sod
+  matches the serial run (rho min AND max identical, total mass to ~1e-5); near-linear speedup
   (453→223→105 ms/step at 1/2/4 ranks on 92k cells).
 - ⬜ edge Gauss quadrature for curved/large cells; characteristic-variable
   reconstruction; full-order (exchanged-coefficient) flux at partition faces.
