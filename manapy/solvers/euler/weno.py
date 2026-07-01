@@ -83,7 +83,7 @@ def _weno_build_2d(cm: 'float64[:,:]', cx: 'float64[:]', cy: 'float64[:]',
     # geometry matrix A from the precomputed central moments (binomial shift by the
     # stencil-local offset), then its pseudo-inverse via SVD (robust to ill-
     # conditioning); also assemble the oscillation matrix OI. No O(ncells) temporaries.
-    nc = cm.shape[0]
+    nc = pinv_p.shape[0]   # reconstruct local cells only (cm may be extended with halo rows)
     ns = st_cnt.shape[1]
     K = pinv_p.shape[2]
     max_m = pinv_p.shape[3]
@@ -103,9 +103,12 @@ def _weno_build_2d(cm: 'float64[:,:]', cx: 'float64[:]', cy: 'float64[:]',
                     avg_m = integ / (volm * hi ** aord[k])
                     m0k = cm[i, mono_cmidx[k]] / (voli * hi ** aord[k])
                     A[j, k] = avg_m - m0k
-            # pseudo-inverse of A[:cnt, :K] via SVD: pinv = V diag(1/s) U^T
+            # pseudo-inverse of A[:cnt, :K] via SVD: pinv = V diag(1/s) U^T. The
+            # near-null truncation (1e-10*s0) keeps full k-exactness on well-
+            # conditioned stencils and bounds the ~degenerate ones (sliver cells, or
+            # partition-boundary cells whose halo pool is only partial under MPI).
             U, sv, Vt = np.linalg.svd(A[:cnt, :])
-            tol = 1e-14 * sv[0]                       # ~numpy pinv rcond; keeps k-exactness
+            tol = 1e-10 * sv[0]
             for k in range(K):
                 for j in range(cnt):
                     acc = 0.0
@@ -144,14 +147,20 @@ def _weno_cm_2d(nodeid: 'int32[:,:]', vx: 'float64[:]', vy: 'float64[:]',
             cm[i, 5] += area / 6.0 * (y0 * y0 + y1 * y1 + y2 * y2 + y0 * y1 + y1 * y2 + y2 * y0)
 
 
-def _weno_select_2d(cellnid: 'int32[:,:]', cx: 'float64[:]', cy: 'float64[:]',
+def _weno_select_2d(cellnid: 'int32[:,:]', halonid: 'int32[:,:]', nb: 'int32',
+                    cx: 'float64[:]', cy: 'float64[:]',
                     dirx: 'float64[:]', diry: 'float64[:]', m_central: 'int32', m_dir: 'int32',
                     st_idx: 'int32[:,:,:]', st_cnt: 'int32[:,:]'):
     # Build the central + directional stencils from the two-ring node-neighbour pool.
+    # Halo (other-rank) node-neighbours from `halonid` are added to the pool, encoded
+    # as nb + halo_id so the build/reconstruct kernels read them from the extended
+    # geometry / field arrays. In serial (all halonid counts 0) this is a no-op and
+    # reproduces the local-only stencils exactly. cx, cy are the EXTENDED positions.
     nc = cellnid.shape[0]
     last = cellnid.shape[1] - 1
+    lasth = halonid.shape[1] - 1
     ndir = dirx.shape[0]
-    poolmax = (last + 1) * (last + 1) + 4
+    poolmax = (last + 1) * (last + 1) + (last + 2) * (lasth + 1) + 8
     pool = np.empty(poolmax, dtype=np.int32)
     dist = np.empty(poolmax)
     score = np.empty(poolmax)
@@ -164,6 +173,17 @@ def _weno_select_2d(cellnid: 'int32[:,:]', cx: 'float64[:]', cy: 'float64[:]',
                 cand = m if b == -1 else cellnid[m, b]
                 if cand == i:
                     continue
+                dup = False
+                for q in range(npc):
+                    if pool[q] == cand:
+                        dup = True; break
+                if not dup and npc < poolmax:
+                    pool[npc] = cand; npc += 1
+        # halo node-neighbours of cell i and of its local one-ring (encoded nb+h)
+        for a in range(-1, c1):
+            m = i if a == -1 else cellnid[i, a]
+            for b in range(halonid[m, lasth]):
+                cand = nb + halonid[m, b]
                 dup = False
                 for q in range(npc):
                     if pool[q] == cand:
@@ -241,14 +261,18 @@ def _weno_cm_3d(cellfid: 'int32[:,:]', facenid: 'int32[:,:]',
                 cm[i, 9] += V / 20.0 * (az0 * az0 + bz * bz + cz3 * cz3 + sz * sz)
 
 
-def _weno_select_3d(cellnid: 'int32[:,:]', cx: 'float64[:]', cy: 'float64[:]', cz: 'float64[:]',
+def _weno_select_3d(cellnid: 'int32[:,:]', halonid: 'int32[:,:]', nb: 'int32',
+                    cx: 'float64[:]', cy: 'float64[:]', cz: 'float64[:]',
                     dirx: 'float64[:]', diry: 'float64[:]', dirz: 'float64[:]',
                     m_central: 'int32', m_dir: 'int32', st_idx: 'int32[:,:,:]', st_cnt: 'int32[:,:]'):
     # Central + directional stencils from the two-ring node-neighbour pool (3D).
+    # Halo node-neighbours from `halonid` are added, encoded nb+halo_id (a no-op in
+    # serial). cx, cy, cz are the EXTENDED positions.
     nc = cellnid.shape[0]
     last = cellnid.shape[1] - 1
+    lasth = halonid.shape[1] - 1
     ndir = dirx.shape[0]
-    poolmax = (last + 1) * (last + 1) + 8
+    poolmax = (last + 1) * (last + 1) + (last + 2) * (lasth + 1) + 8
     pool = np.empty(poolmax, dtype=np.int32)
     dist = np.empty(poolmax)
     score = np.empty(poolmax)
@@ -261,6 +285,16 @@ def _weno_select_3d(cellnid: 'int32[:,:]', cx: 'float64[:]', cy: 'float64[:]', c
                 cand = m if b == -1 else cellnid[m, b]
                 if cand == i:
                     continue
+                dup = False
+                for q in range(npc):
+                    if pool[q] == cand:
+                        dup = True; break
+                if not dup and npc < poolmax:
+                    pool[npc] = cand; npc += 1
+        for a in range(-1, c1):
+            m = i if a == -1 else cellnid[i, a]
+            for b in range(halonid[m, lasth]):
+                cand = nb + halonid[m, b]
                 dup = False
                 for q in range(npc):
                     if pool[q] == cand:
@@ -302,7 +336,7 @@ def _weno_build_3d(cm: 'float64[:,:]', cx: 'float64[:]', cy: 'float64[:]', cz: '
     # precomputed central moments (binomial shift by the stencil offset), SVD
     # pseudo-inverse, and the oscillation matrix OI. Mirrors _weno_build_2d with the
     # extra z factor.
-    nc = cm.shape[0]
+    nc = pinv_p.shape[0]   # reconstruct local cells only (cm may be extended with halo rows)
     ns = st_cnt.shape[1]
     K = pinv_p.shape[2]
     max_m = pinv_p.shape[3]
@@ -490,17 +524,66 @@ class WenoReconstruction:
     amom, apd, acoef, acnt, aord, mono_cmidx = self._moment_recipe()
     oik, oiq, oimom, oicoef, oiord = self._oi_recipe()
 
+    # local central moments + the directional unit vectors (dim-specific)
     if self.dim == 2:
-      self._build_2d(cells, verts, cellnid, m_central, m_dir,
-                     amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord)
+      dirx, diry, dirz = self._cm_and_dirs_2d(cells, verts)
     else:
-      self._build_3d(cells, verts, cellnid, m_central, m_dir,
-                     amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord)
+      dirx, diry, dirz = self._cm_and_dirs_3d(cells, verts)
 
-    # M0_p (subtracted mean of each basis monomial over the cell) -- generic
-    self._M0_p = np.empty((nc, self.K))
+    # --- extended [local | halo] geometry: halo (other-rank) cells are appended so
+    # a stencil that crosses a partition boundary is complete under MPI. Their
+    # positions/volumes come from halos.centvol and their central moments are
+    # exchanged once here (mesh-only, so a single exchange at build time). ---
+    self.nb = nb = nc
+    self.nh = nh = int(getattr(domain, "nbhalos", 0))
+    halonid = np.asarray(getattr(cells, "halonid", np.zeros((nc, 1))), dtype=np.int32)
+    if halonid.ndim != 2 or halonid.shape[1] < 1:
+      halonid = np.zeros((nc, 1), dtype=np.int32)
+    halonid = np.ascontiguousarray(halonid)
+    cxl = np.ascontiguousarray(self.center[:, 0]); cyl = np.ascontiguousarray(self.center[:, 1])
+    czl = np.ascontiguousarray(self.center[:, 2]) if self.dim == 3 else np.zeros(nc)
+    if nh > 0:
+      centvol = np.asarray(domain.halos.centvol)          # [x, y, z, vol] per halo cell
+      hvol = np.ascontiguousarray(centvol[:, 3])
+      hh = hvol ** (1.0 / self.dim)
+      halo_cm = np.zeros((nh, ncm))
+      buf = np.zeros(nh)
+      for col in range(ncm):
+        domain.halo_comm.exchange(np.ascontiguousarray(self._cm[:, col]), recv_buffer=buf)
+        halo_cm[:, col] = buf
+      cx_e = np.concatenate([cxl, np.ascontiguousarray(centvol[:, 0])])
+      cy_e = np.concatenate([cyl, np.ascontiguousarray(centvol[:, 1])])
+      cz_e = np.concatenate([czl, np.ascontiguousarray(centvol[:, 2])])
+      vol_e = np.concatenate([self.vol, hvol])
+      h_e = np.concatenate([self.h, hh])
+      cm_e = np.vstack([self._cm, halo_cm])
+    else:
+      cx_e, cy_e, cz_e = cxl, cyl, czl
+      vol_e, h_e, cm_e = self.vol, self.h, self._cm
+    self._uhalo = np.zeros(nh)
+
+    # stencil selection (halo-aware) + per-cell build, over the extended geometry
+    if self.dim == 2:
+      self._weno_select(cellnid, halonid, np.int32(nb), cx_e, cy_e, dirx, diry,
+                        np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
+      self._weno_build(cm_e, cx_e, cy_e, vol_e, h_e, self._st_idx, self._st_cnt,
+                       amom, apd[0], apd[1], acoef, acnt, aord, mono_cmidx,
+                       oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
+    else:
+      self._weno_select(cellnid, halonid, np.int32(nb), cx_e, cy_e, cz_e, dirx, diry, dirz,
+                        np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
+      self._weno_build(cm_e, cx_e, cy_e, cz_e, vol_e, h_e, self._st_idx, self._st_cnt,
+                       amom, apd[0], apd[1], apd[2], acoef, acnt, aord, mono_cmidx,
+                       oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
+
+    # M0 (subtracted mean of each basis monomial) for local + halo cells; the flux
+    # kernels evaluate a halo neighbour's polynomial with the extended M0.
+    nce = cm_e.shape[0]
+    self._M0_ext = np.empty((nce, self.K))
     for k, e in enumerate(self.exps):
-      self._M0_p[:, k] = self._cm[:, self._cm_idx[e]] / (self.vol * self.h ** sum(e))
+      self._M0_ext[:, k] = cm_e[:, self._cm_idx[e]] / (vol_e * h_e ** sum(e))
+    self._M0_p = np.ascontiguousarray(self._M0_ext[:nc])
+    self._cx_ext = cx_e; self._cy_ext = cy_e; self._cz_ext = cz_e; self._h_ext = h_e
 
     self._lam_arr = np.array([self.lambda_central] + [1.0] * self.ndir)
     global _weno_kernel_2d_compiled                  # hot loop is dimension-agnostic
@@ -524,8 +607,9 @@ class WenoReconstruction:
         _weno_advection_2d_compiled = compile(_weno_advection_2d)
       self._adv_kernel = _weno_advection_2d_compiled
 
-  def _build_2d(self, cells, verts, cellnid, m_central, m_dir,
-                amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord):
+  def _cm_and_dirs_2d(self, cells, verts):
+    """Compute the local cells' central moments (self._cm) and bind the compiled
+    2D select/build kernels; return the ndir angular unit-direction vectors."""
     cx = np.ascontiguousarray(self.center[:, 0]); cy = np.ascontiguousarray(self.center[:, 1])
     nodeid = np.ascontiguousarray(np.asarray(cells.nodeid), dtype=np.int32)
     vx = np.ascontiguousarray(verts[:, 0]); vy = np.ascontiguousarray(verts[:, 1])
@@ -535,16 +619,14 @@ class WenoReconstruction:
       _weno_select_2d_compiled = compile(_weno_select_2d)
       _weno_build_2d_compiled = compile(_weno_build_2d)
     _weno_cm_2d_compiled(nodeid, vx, vy, cx, cy, self._cm)
+    self._weno_select = _weno_select_2d_compiled
+    self._weno_build = _weno_build_2d_compiled
     ang = 2 * np.pi * np.arange(self.ndir) / self.ndir
-    dirx = np.ascontiguousarray(np.cos(ang)); diry = np.ascontiguousarray(np.sin(ang))
-    _weno_select_2d_compiled(cellnid, cx, cy, dirx, diry,
-                             np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
-    _weno_build_2d_compiled(self._cm, cx, cy, self.vol, self.h, self._st_idx, self._st_cnt,
-                            amom, apd[0], apd[1], acoef, acnt, aord, mono_cmidx,
-                            oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
+    return np.ascontiguousarray(np.cos(ang)), np.ascontiguousarray(np.sin(ang)), None
 
-  def _build_3d(self, cells, verts, cellnid, m_central, m_dir,
-                amom, apd, acoef, acnt, aord, mono_cmidx, oik, oiq, oimom, oicoef, oiord):
+  def _cm_and_dirs_3d(self, cells, verts):
+    """Compute the local cells' central moments (self._cm) and bind the compiled
+    3D select/build kernels; return the ndir axis-aligned unit-direction vectors."""
     cx = np.ascontiguousarray(self.center[:, 0]); cy = np.ascontiguousarray(self.center[:, 1])
     cz = np.ascontiguousarray(self.center[:, 2])
     cellfid = np.ascontiguousarray(np.asarray(cells.faceid), dtype=np.int32)
@@ -556,19 +638,16 @@ class WenoReconstruction:
       _weno_select_3d_compiled = compile(_weno_select_3d)
       _weno_build_3d_compiled = compile(_weno_build_3d)
     _weno_cm_3d_compiled(cellfid, facenid, vx, vy, vz, cx, cy, cz, self._cm)
-    # ndir axis-aligned +/- directions (x,y,z, then diagonals if ndir>6)
+    self._weno_select = _weno_select_3d_compiled
+    self._weno_build = _weno_build_3d_compiled
     base = np.array([[1., 0, 0], [-1., 0, 0], [0, 1., 0], [0, -1., 0], [0, 0, 1.], [0, 0, -1.]])
     if self.ndir <= 6:
       dirs = base[:self.ndir]
     else:
       extra = np.array([[s, t, u] for s in (1., -1) for t in (1., -1) for u in (1., -1)]) / np.sqrt(3)
       dirs = np.vstack([base, extra])[:self.ndir]
-    dirx = np.ascontiguousarray(dirs[:, 0]); diry = np.ascontiguousarray(dirs[:, 1]); dirz = np.ascontiguousarray(dirs[:, 2])
-    _weno_select_3d_compiled(cellnid, cx, cy, cz, dirx, diry, dirz,
-                             np.int32(m_central), np.int32(m_dir), self._st_idx, self._st_cnt)
-    _weno_build_3d_compiled(self._cm, cx, cy, cz, self.vol, self.h, self._st_idx, self._st_cnt,
-                            amom, apd[0], apd[1], apd[2], acoef, acnt, aord, mono_cmidx,
-                            oik, oiq, oimom, oicoef, oiord, self._pinv_p, self._OI_p)
+    return (np.ascontiguousarray(dirs[:, 0]), np.ascontiguousarray(dirs[:, 1]),
+            np.ascontiguousarray(dirs[:, 2]))
 
   def _moment_recipe(self):
     """Per-monomial binomial-shift recipe (dimension-generic): the integral of a
@@ -639,15 +718,29 @@ class WenoReconstruction:
     return (np.array(oik, np.int32), np.array(oiq, np.int32), np.array(oimom, np.int32),
             np.array(oicoef), np.array(oiord, np.int32))
 
+  def _extend_field(self, U):
+    """Return U extended with the halo (other-rank) cell values, so the compiled
+    kernels can index the halo neighbours that a partition-crossing stencil selects.
+    In serial (nh == 0) it returns U unchanged. The halo values are exchanged from
+    the *current* U each call, so it is always up to date within an RK stage."""
+    U = np.ascontiguousarray(U, dtype=float)
+    if self.nh == 0:
+      return U
+    self.domain.halo_comm.exchange(U, recv_buffer=self._uhalo)
+    Ue = np.empty(self.nb + self.nh)
+    Ue[:self.nb] = U
+    Ue[self.nb:] = self._uhalo
+    return Ue
+
   def reconstruct(self, U):
     """k-exact reconstruction on the **central** stencil only (linear; high order
     in smooth regions, oscillatory at discontinuities). Returns coeffs (nbcells, K)."""
-    U = np.asarray(U)
+    Ue = self._extend_field(U)
     coeffs = np.zeros((self.nbcells, self.K))
     for i in range(self.nbcells):
       cnt = self._st_cnt[i, 0]
       st = self._st_idx[i, 0, :cnt]
-      coeffs[i] = self._pinv_p[i, 0, :, :cnt] @ (U[st] - U[i])
+      coeffs[i] = self._pinv_p[i, 0, :, :cnt] @ (Ue[st] - Ue[i])
     return coeffs
 
   def weno_reconstruct(self, U):
@@ -658,9 +751,9 @@ class WenoReconstruction:
     the reconstruction stays essentially non-oscillatory. Returns coeffs (nbcells, K).
 
     Runs the compiled (numba) hot loop over the precomputed mesh-dependent arrays."""
-    U = np.ascontiguousarray(U, dtype=float)
+    Ue = self._extend_field(U)
     coeffs = np.zeros((self.nbcells, self.K))
-    self._kernel(U, coeffs, self._st_idx, self._st_cnt, self._pinv_p,
+    self._kernel(Ue, coeffs, self._st_idx, self._st_cnt, self._pinv_p,
                  self._OI_p, self._lam_arr, self.eps, self.power)
     return coeffs
 
