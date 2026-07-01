@@ -120,8 +120,6 @@ class EulerSolver:
 
     if self.order == 2 and scheme != "rusanov":
       raise NotImplementedError("order 2 (MUSCL) is wired for the rusanov flux only")
-    if self.dim == 3 and self.order >= 2:
-      raise NotImplementedError("3D Euler is wired at order 1 only (no MUSCL kernel in 3D)")
 
     # Pick the dimension-specific kernel module and compile once on every rank.
     fvm = _fvm2d if self.dim == 2 else _fvm3d
@@ -160,7 +158,7 @@ class EulerSolver:
       self._scheme_tail = (self.entropy_fix,)
     else:
       self._scheme_tail = ()
-    self._explicitscheme_o2 = getattr(fvm, "explicitscheme_euler_2d_rusanov_o2", None)
+    self._explicitscheme_o2 = getattr(fvm, f"explicitscheme_euler_{d}d_rusanov_o2", None)
     self._update = getattr(fvm, f"update_euler_{d}d_fvc")
 
     # ---- variable-gamma (multispecies) coupling -------------------------
@@ -187,8 +185,6 @@ class EulerSolver:
     else:
       self._doubleflux = False
     if self._per_boundary:
-      if self.dim != 2:
-        raise NotImplementedError("per-boundary BC dispatch is wired in 2D only")
       self._setup_per_boundary()
     elif self.dim == 2:
       self._ghost_value = getattr(fvm, f"ghost_value_{bc}")
@@ -317,7 +313,7 @@ class EulerSolver:
 
   def _setup_per_boundary(self):
     """Precompute, per BC type, the boundary face indices, owner cells and unit
-    outward normals (2D). Several named boundaries can share a type."""
+    outward normals (2D & 3D). Several named boundaries can share a type."""
     dom = self.domain
     name = self.face_name
     fn = np.asarray(dom.faces.normal)
@@ -329,7 +325,7 @@ class EulerSolver:
       f = np.nonzero(name == code)[0]
       if f.size == 0:
         continue
-      n = fn[f][:, :2] / mesure[f][:, None]
+      n = fn[f][:, :self.dim] / mesure[f][:, None]
       groups.setdefault(btype, []).append((f, cellid[f, 0], n))
     self._bnd = {t: (np.concatenate([g[0] for g in lst]),
                      np.concatenate([g[1] for g in lst]),
@@ -340,6 +336,9 @@ class EulerSolver:
     """Fill the ghost state on each boundary according to its per-boundary type:
     'neumann' (zero-gradient), 'slipwall' (reflect the normal velocity) or
     'nonreflecting' (characteristic far-field, Riemann invariants)."""
+    if self.dim == 3:
+      self._apply_per_boundary_ghosts_3d(t)
+      return
     rho, P, rhou, rhov, rhoE = self.rho, self.P, self.rhou, self.rhov, self.rhoE
     g = self.gamma
     for btype, (f, il, n) in self._bnd.items():
@@ -385,6 +384,56 @@ class EulerSolver:
         rhou.ghost[f] = rho_b * u_b; rhov.ghost[f] = rho_b * v_b
         rhoE.ghost[f] = p_b / (g - 1.0) + 0.5 * rho_b * (u_b * u_b + v_b * v_b)
         self.ug[f] = u_b; self.vg[f] = v_b
+
+  def _apply_per_boundary_ghosts_3d(self, t: float = 0.0):
+    """3D analogue of _apply_per_boundary_ghosts (adds the z-momentum / w-velocity)."""
+    rho, P = self.rho, self.P
+    rhou, rhov, rhow, rhoE = self.rhou, self.rhov, self.rhow, self.rhoE
+    g = self.gamma
+    for btype, (f, il, n) in self._bnd.items():
+      rl = rho.cell[il]; pl = P.cell[il]
+      ul = rhou.cell[il] / rl; vl = rhov.cell[il] / rl; wl = rhow.cell[il] / rl
+      nx = n[:, 0]; ny = n[:, 1]; nz = n[:, 2]
+      if btype == "neumann":
+        rho.ghost[f] = rl; P.ghost[f] = pl
+        rhou.ghost[f] = rhou.cell[il]; rhov.ghost[f] = rhov.cell[il]; rhow.ghost[f] = rhow.cell[il]
+        rhoE.ghost[f] = rhoE.cell[il]
+        self.ug[f] = ul; self.vg[f] = vl; self.wg[f] = wl
+      elif btype == "slipwall":
+        un = ul * nx + vl * ny + wl * nz
+        ug = ul - 2.0 * un * nx; vg = vl - 2.0 * un * ny; wg = wl - 2.0 * un * nz
+        rho.ghost[f] = rl; P.ghost[f] = pl
+        rhou.ghost[f] = rl * ug; rhov.ghost[f] = rl * vg; rhow.ghost[f] = rl * wg
+        rhoE.ghost[f] = pl / (g - 1.0) + 0.5 * rl * (ug * ug + vg * vg + wg * wg)
+        self.ug[f] = ug; self.vg[f] = vg; self.wg[f] = wg
+      else:  # nonreflecting: characteristic far-field via Riemann invariants
+        cl = np.sqrt(g * pl / rl)
+        unl = ul * nx + vl * ny + wl * nz
+        c_inf = np.sqrt(g * self.p_inf / self.rho_inf)
+        un_inf = self.u_inf * nx + self.v_inf * ny + self.w_inf * nz
+        Rp = unl + 2.0 * cl / (g - 1.0)
+        Rm = un_inf - 2.0 * c_inf / (g - 1.0)
+        un_b = 0.5 * (Rp + Rm)
+        c_b = 0.25 * (g - 1.0) * (Rp - Rm)
+        inflow = un_b <= 0.0
+        s_b = np.where(inflow, self.p_inf / self.rho_inf ** g, pl / rl ** g)
+        utx = np.where(inflow, self.u_inf - un_inf * nx, ul - unl * nx)
+        uty = np.where(inflow, self.v_inf - un_inf * ny, vl - unl * ny)
+        utz = np.where(inflow, self.w_inf - un_inf * nz, wl - unl * nz)
+        rho_b = (c_b * c_b / (g * s_b)) ** (1.0 / (g - 1.0))
+        p_b = rho_b * c_b * c_b / g
+        suproff = unl >= cl
+        supinf = unl <= -cl
+        u_b = un_b * nx + utx; v_b = un_b * ny + uty; w_b = un_b * nz + utz
+        rho_b = np.where(suproff, rl, np.where(supinf, self.rho_inf, rho_b))
+        p_b = np.where(suproff, pl, np.where(supinf, self.p_inf, p_b))
+        u_b = np.where(suproff, ul, np.where(supinf, self.u_inf, u_b))
+        v_b = np.where(suproff, vl, np.where(supinf, self.v_inf, v_b))
+        w_b = np.where(suproff, wl, np.where(supinf, self.w_inf, w_b))
+        rho.ghost[f] = rho_b; P.ghost[f] = p_b
+        rhou.ghost[f] = rho_b * u_b; rhov.ghost[f] = rho_b * v_b; rhow.ghost[f] = rho_b * w_b
+        rhoE.ghost[f] = p_b / (g - 1.0) + 0.5 * rho_b * (u_b * u_b + v_b * v_b + w_b * w_b)
+        self.ug[f] = u_b; self.vg[f] = v_b; self.wg[f] = w_b
 
   def _face_avg(self, cellarr, haloarr):
     """Average a per-cell array to faces (owner at boundaries, halo-aware)."""
@@ -622,22 +671,46 @@ class EulerSolver:
     for var in self._cons:
       var.compute_cell_gradient()
 
-    rho, rhou, rhov, rhoE = self._cons
-    self._explicitscheme_o2(
-        self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhoE,
-        rho.cell, rhou.cell, rhov.cell, rhoE.cell,
-        rho.ghost, rhou.ghost, rhov.ghost, rhoE.ghost,
-        rho.halo, rhou.halo, rhov.halo, rhoE.halo,
-        rho.gradcellx, rho.gradcelly, rhou.gradcellx, rhou.gradcelly,
-        rhov.gradcellx, rhov.gradcelly, rhoE.gradcellx, rhoE.gradcelly,
-        rho.gradhalocellx, rho.gradhalocelly, rhou.gradhalocellx, rhou.gradhalocelly,
-        rhov.gradhalocellx, rhov.gradhalocelly, rhoE.gradhalocellx, rhoE.gradhalocelly,
-        rho.psi, rhou.psi, rhov.psi, rhoE.psi,
-        rho.psihalo, rhou.psihalo, rhov.psihalo, rhoE.psihalo,
-        self.domain.faces.cellid, self.domain.faces.halofid,
-        self.domain.faces.normal, self.domain.faces.mesure, self.face_name,
-        self.domain.cells.center, self.domain.faces.center, self.domain.halos.centvol,
-        self.gamma, self.order)
+    if self.dim == 2:
+      rho, rhou, rhov, rhoE = self._cons
+      self._explicitscheme_o2(
+          self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhoE,
+          rho.cell, rhou.cell, rhov.cell, rhoE.cell,
+          rho.ghost, rhou.ghost, rhov.ghost, rhoE.ghost,
+          rho.halo, rhou.halo, rhov.halo, rhoE.halo,
+          rho.gradcellx, rho.gradcelly, rhou.gradcellx, rhou.gradcelly,
+          rhov.gradcellx, rhov.gradcelly, rhoE.gradcellx, rhoE.gradcelly,
+          rho.gradhalocellx, rho.gradhalocelly, rhou.gradhalocellx, rhou.gradhalocelly,
+          rhov.gradhalocellx, rhov.gradhalocelly, rhoE.gradhalocellx, rhoE.gradhalocelly,
+          rho.psi, rhou.psi, rhov.psi, rhoE.psi,
+          rho.psihalo, rhou.psihalo, rhov.psihalo, rhoE.psihalo,
+          self.domain.faces.cellid, self.domain.faces.halofid,
+          self.domain.faces.normal, self.domain.faces.mesure, self.face_name,
+          self.domain.cells.center, self.domain.faces.center, self.domain.halos.centvol,
+          self.gamma, self.order)
+    else:
+      rho, rhou, rhov, rhow, rhoE = self._cons
+      self._explicitscheme_o2(
+          self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
+          rho.cell, rhou.cell, rhov.cell, rhow.cell, rhoE.cell,
+          rho.ghost, rhou.ghost, rhov.ghost, rhow.ghost, rhoE.ghost,
+          rho.halo, rhou.halo, rhov.halo, rhow.halo, rhoE.halo,
+          rho.gradcellx, rho.gradcelly, rho.gradcellz,
+          rhou.gradcellx, rhou.gradcelly, rhou.gradcellz,
+          rhov.gradcellx, rhov.gradcelly, rhov.gradcellz,
+          rhow.gradcellx, rhow.gradcelly, rhow.gradcellz,
+          rhoE.gradcellx, rhoE.gradcelly, rhoE.gradcellz,
+          rho.gradhalocellx, rho.gradhalocelly, rho.gradhalocellz,
+          rhou.gradhalocellx, rhou.gradhalocelly, rhou.gradhalocellz,
+          rhov.gradhalocellx, rhov.gradhalocelly, rhov.gradhalocellz,
+          rhow.gradhalocellx, rhow.gradhalocelly, rhow.gradhalocellz,
+          rhoE.gradhalocellx, rhoE.gradhalocelly, rhoE.gradhalocellz,
+          rho.psi, rhou.psi, rhov.psi, rhow.psi, rhoE.psi,
+          rho.psihalo, rhou.psihalo, rhov.psihalo, rhow.psihalo, rhoE.psihalo,
+          self.domain.faces.cellid, self.domain.faces.halofid,
+          self.domain.faces.normal, self.domain.faces.mesure, self.face_name,
+          self.domain.cells.center, self.domain.faces.center, self.domain.halos.centvol,
+          self.gamma, self.order)
 
   def compute_new_val(self):
     if self.variable_gamma and self._doubleflux and self.dim == 2:

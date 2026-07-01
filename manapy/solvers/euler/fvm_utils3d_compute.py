@@ -1663,6 +1663,68 @@ def _update_euler_3d_df(rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64
     P_c[:]     = (gamma_c[:]-1.0)*(rhoE_c[:]-0.5*(rhou_c[:]*rhou_c[:] + rhov_c[:]*rhov_c[:] + rhow_c[:]*rhow_c[:])/rho_c[:])
 
 
+def _explicitscheme_euler_3d_rusanov_o2(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', rhoE_h: 'float64[:]', rhox: 'float64[:]', rhoy: 'float64[:]', rhoz: 'float64[:]', rhoux: 'float64[:]', rhouy: 'float64[:]', rhouz: 'float64[:]', rhovx: 'float64[:]', rhovy: 'float64[:]', rhovz: 'float64[:]', rhowx: 'float64[:]', rhowy: 'float64[:]', rhowz: 'float64[:]', rhoEx: 'float64[:]', rhoEy: 'float64[:]', rhoEz: 'float64[:]', rhox_h: 'float64[:]', rhoy_h: 'float64[:]', rhoz_h: 'float64[:]', rhoux_h: 'float64[:]', rhouy_h: 'float64[:]', rhouz_h: 'float64[:]', rhovx_h: 'float64[:]', rhovy_h: 'float64[:]', rhovz_h: 'float64[:]', rhowx_h: 'float64[:]', rhowy_h: 'float64[:]', rhowz_h: 'float64[:]', rhoEx_h: 'float64[:]', rhoEy_h: 'float64[:]', rhoEz_h: 'float64[:]', psi_rho: 'float64[:]', psi_rhou: 'float64[:]', psi_rhov: 'float64[:]', psi_rhow: 'float64[:]', psi_rhoE: 'float64[:]', psi_rho_h: 'float64[:]', psi_rhou_h: 'float64[:]', psi_rhov_h: 'float64[:]', psi_rhow_h: 'float64[:]', psi_rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', centerc: 'float64[:,:]', centerf: 'float64[:,:]', halo_centvol: 'float64[:,:]', gamma: 'float64', order: 'int32'):
+    # Second-order MUSCL (3D): limited linear reconstruction of the conservative
+    # state at the face centre (Barth limiter psi), then Rusanov flux. P recomputed
+    # from the reconstructed conservative state via the ideal-gas EOS.
+    nbface = len(cellidf)
+    o = order - 1.0
+    rez_rho[:]  = np.zeros(len(rez_rho))
+    rez_rhou[:] = np.zeros(len(rez_rhou))
+    rez_rhov[:] = np.zeros(len(rez_rhov))
+    rez_rhow[:] = np.zeros(len(rez_rhow))
+    rez_rhoE[:] = np.zeros(len(rez_rhoE))
+    for i in range(nbface):
+        norm = normal[i]/mesurf[i]
+        mesu = mesurf[i]
+        L = cellidf[i][0]
+        rlx = centerf[i][0] - centerc[L][0]
+        rly = centerf[i][1] - centerc[L][1]
+        rlz = centerf[i][2] - centerc[L][2]
+        rhol  = rho_c[L]  + o*psi_rho[L] *(rhox[L]*rlx  + rhoy[L]*rly  + rhoz[L]*rlz)
+        rhoul = rhou_c[L] + o*psi_rhou[L]*(rhoux[L]*rlx + rhouy[L]*rly + rhouz[L]*rlz)
+        rhovl = rhov_c[L] + o*psi_rhov[L]*(rhovx[L]*rlx + rhovy[L]*rly + rhovz[L]*rlz)
+        rhowl = rhow_c[L] + o*psi_rhow[L]*(rhowx[L]*rlx + rhowy[L]*rly + rhowz[L]*rlz)
+        rhoEl = rhoE_c[L] + o*psi_rhoE[L]*(rhoEx[L]*rlx + rhoEy[L]*rly + rhoEz[L]*rlz)
+        Pl = (gamma-1.0)*(rhoEl - 0.5*(rhoul*rhoul + rhovl*rhovl + rhowl*rhowl)/rhol)
+
+        if name[i] == 0:
+            R = cellidf[i][1]
+            rrx = centerf[i][0] - centerc[R][0]
+            rry = centerf[i][1] - centerc[R][1]
+            rrz = centerf[i][2] - centerc[R][2]
+            rhor  = rho_c[R]  + o*psi_rho[R] *(rhox[R]*rrx  + rhoy[R]*rry  + rhoz[R]*rrz)
+            rhour = rhou_c[R] + o*psi_rhou[R]*(rhoux[R]*rrx + rhouy[R]*rry + rhouz[R]*rrz)
+            rhovr = rhov_c[R] + o*psi_rhov[R]*(rhovx[R]*rrx + rhovy[R]*rry + rhovz[R]*rrz)
+            rhowr = rhow_c[R] + o*psi_rhow[R]*(rhowx[R]*rrx + rhowy[R]*rry + rhowz[R]*rrz)
+            rhoEr = rhoE_c[R] + o*psi_rhoE[R]*(rhoEx[R]*rrx + rhoEy[R]*rry + rhoEz[R]*rrz)
+            Pr = (gamma-1.0)*(rhoEr - 0.5*(rhour*rhour + rhovr*rhovr + rhowr*rhowr)/rhor)
+            fr,fru,frv,frw,frE = _compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm,mesu,gamma)
+            rez_rho[L] -= fr; rez_rho[R] += fr
+            rez_rhou[L] -= fru; rez_rhou[R] += fru
+            rez_rhov[L] -= frv; rez_rhov[R] += frv
+            rez_rhow[L] -= frw; rez_rhow[R] += frw
+            rez_rhoE[L] -= frE; rez_rhoE[R] += frE
+        elif name[i] == 10:
+            h = halofid[i]
+            rrx = centerf[i][0] - halo_centvol[h][0]
+            rry = centerf[i][1] - halo_centvol[h][1]
+            rrz = centerf[i][2] - halo_centvol[h][2]
+            rhor  = rho_h[h]  + o*psi_rho_h[h] *(rhox_h[h]*rrx  + rhoy_h[h]*rry  + rhoz_h[h]*rrz)
+            rhour = rhou_h[h] + o*psi_rhou_h[h]*(rhoux_h[h]*rrx + rhouy_h[h]*rry + rhouz_h[h]*rrz)
+            rhovr = rhov_h[h] + o*psi_rhov_h[h]*(rhovx_h[h]*rrx + rhovy_h[h]*rry + rhovz_h[h]*rrz)
+            rhowr = rhow_h[h] + o*psi_rhow_h[h]*(rhowx_h[h]*rrx + rhowy_h[h]*rry + rhowz_h[h]*rrz)
+            rhoEr = rhoE_h[h] + o*psi_rhoE_h[h]*(rhoEx_h[h]*rrx + rhoEy_h[h]*rry + rhoEz_h[h]*rrz)
+            Pr = (gamma-1.0)*(rhoEr - 0.5*(rhour*rhour + rhovr*rhovr + rhowr*rhowr)/rhor)
+            fr,fru,frv,frw,frE = _compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm,mesu,gamma)
+            rez_rho[L] -= fr; rez_rhou[L] -= fru; rez_rhov[L] -= frv; rez_rhow[L] -= frw; rez_rhoE[L] -= frE
+        else:
+            rhor  = rho_g[i]; rhour = rhou_g[i]; rhovr = rhov_g[i]; rhowr = rhow_g[i]; rhoEr = rhoE_g[i]
+            Pr = (gamma-1.0)*(rhoEr - 0.5*(rhour*rhour + rhovr*rhovr + rhowr*rhowr)/rhor)
+            fr,fru,frv,frw,frE = _compute_flux_euler_3d_rusanov(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm,mesu,gamma)
+            rez_rho[L] -= fr; rez_rhou[L] -= fru; rez_rhov[L] -= frv; rez_rhow[L] -= frw; rez_rhoE[L] -= frE
+
+
 def setup(dim=3):
   global _done
   if dim != 3:
@@ -1696,6 +1758,7 @@ def setup(dim=3):
   global mu_sgs_smagorinsky_3d, mu_sgs_wale_3d, add_sgs_face_props_3d
   global compute_flux_euler_3d_rusanov_vg, explicitscheme_euler_3d_rusanov_vg, update_euler_3d_vg
   global doubleflux_residual_euler_3d, update_euler_3d_df
+  global explicitscheme_euler_3d_rusanov_o2
 
   node_for_interpolation_3d = compile(_node_for_interpolation_3d)
   node_value_for_interpolation_3d = compile(_node_value_for_interpolation_3d)
@@ -1731,5 +1794,6 @@ def setup(dim=3):
   update_euler_3d_vg = compile(_update_euler_3d_vg)
   doubleflux_residual_euler_3d = compile(_doubleflux_residual_euler_3d)
   update_euler_3d_df = compile(_update_euler_3d_df)
+  explicitscheme_euler_3d_rusanov_o2 = compile(_explicitscheme_euler_3d_rusanov_o2)
 
   _done = True
