@@ -84,8 +84,20 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   Validated on a 3D Sod: positive (rho, P > 0), essentially non-oscillatory (rho in
   [0.125, 1] up to a ~1e-4 WENO overshoot). Test `test_weno3d_euler_sod_...`; example
   `examples/3D/weno_euler_sod3d.py`. 2D coupling unchanged (Sod L2 1.78e-2).
+- ✅ **MPI / distributed WENO**: the reconstruction stencils span partition
+  boundaries via the halo (`cells.halonid`). At build time the halo cells are
+  appended to an extended `[local|halo]` geometry (positions/volumes from
+  `halos.centvol`, central moments exchanged once); the stencil pool adds the halo
+  node-neighbours (encoded `nb+halo_id`) and the SVD build truncates near-null
+  directions (`1e-10`) so partial-halo boundary stencils stay bounded. Each RK
+  stage exchanges the field to the halo (`_extend_field`) before reconstruction.
+  `WenoEulerSolver` takes the halo neighbour state at partition faces (name==10),
+  so the interior is full WENO and only the one-cell partition interface is first
+  order. Validated: build no longer crashes under MPI; a 2-rank Sod matches the
+  serial run (rho min identical, max/mass to ~5 digits); near-linear speedup
+  (453→223→105 ms/step at 1/2/4 ranks on 92k cells).
 - ⬜ edge Gauss quadrature for curved/large cells; characteristic-variable
-  reconstruction.
+  reconstruction; full-order (exchanged-coefficient) flux at partition faces.
 
 ## Variable-gamma (multispecies) hydro coupling
 - ✅ per-cell ratio of specific heats in the Rusanov wave speed and the pressure
