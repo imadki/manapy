@@ -25,7 +25,7 @@ from manapy.solvers.incompressible.fvm_utils_compute import get_kernels
 
 class IncompressibleSolver:
 
-  def __init__(self, u, v, P, nu=1e-2, rho=1.0, cfl=0.4, u_bc=None, v_bc=None, poisson=None):
+  def __init__(self, u, v, P, nu=1e-2, rho=1.0, cfl=0.4, ncorr=2, u_bc=None, v_bc=None, poisson=None):
     """
     u, v, P : cell velocity / pressure Variables. P must carry BCs (Neumann on the
               walls + one Dirichlet reference so the pure-Neumann system is regular),
@@ -42,6 +42,7 @@ class IncompressibleSolver:
     if u.dim != 2:
       raise NotImplementedError("IncompressibleSolver is wired for 2D")
     self.nu = float(nu); self.rho = float(rho); self.cfl = float(cfl)
+    self.ncorr = int(ncorr)                            # PISO-style pressure correctors
 
     self.cellid = np.asarray(dom.faces.cellid, dtype=np.int64)
     self.fname = np.asarray(dom.faces.name, dtype=np.int64)
@@ -111,18 +112,21 @@ class IncompressibleSolver:
     ff(u, v, self.uw, self.vw, self.normal, self.cellid, self.fname, self._phi)
     mom(u, v, self._phi, self.af, self.uw, self.vw, self.cellid, self.fname, self.vol,
         self.nu, self._du, self._dv)
-    us = u + dt * self._du; vs = v + dt * self._dv
+    uc = u + dt * self._du; vc = v + dt * self._dv
 
-    # 3. pressure Poisson via the chosen manapy solver (scheme='fv' two-point Laplacian);
-    #    the RHS is the per-cell divergence of the predicted velocity.
-    div = self._cell_divergence(us, vs)
-    self.L(rhs=self._psign * (self.rho / dt) * div)    # solves into P.cell
-    self.P.update_halo_value(); self.P.update_ghost_value()
-
-    # 4. correct the cell velocity with the pressure gradient
-    gg(self.P.cell, self.normal, self.cellid, self.fname, self.vol, self._gx, self._gy)
-    u[:] = us - (dt / self.rho) * self._gx
-    v[:] = vs - (dt / self.rho) * self._gy
+    # 3-4. PISO-style correctors: each solves a pressure (correction) from the current
+    #      velocity divergence and applies the gradient correction. Iterating drives
+    #      the residual collocated cell divergence down; the pressures accumulate.
+    Ptot = np.zeros(self.nc)
+    for _ in range(self.ncorr):
+      div = self._cell_divergence(uc, vc)
+      self.L(rhs=self._psign * (self.rho / dt) * div)  # solves into P.cell
+      self.P.update_halo_value(); self.P.update_ghost_value()
+      Ptot += self.P.cell
+      gg(self.P.cell, self.normal, self.cellid, self.fname, self.vol, self._gx, self._gy)
+      uc = uc - (dt / self.rho) * self._gx
+      vc = vc - (dt / self.rho) * self._gy
+    u[:] = uc; v[:] = vc; self.P.cell[:] = Ptot
     return dt
 
   def divergence_norm(self):

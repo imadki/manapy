@@ -38,9 +38,13 @@ Legend: ✅ done & validated · 🟡 done, refinement pending · ⬜ todo
 - 🟡 the pressure solve is MPI-ready; the momentum/divergence kernels still treat
   partition faces (name==10) as walls -- adding halo handling (as done for WENO) makes
   the whole step MPI-correct. Serial-validated for now.
-- ⬜ this is a single-corrector Chorin projection, **not PISO**. icoFoam is PISO
-  (momentum predictor + `nCorrectors` pressure loops with the a_P coefficients and
-  Rhie-Chow). A PISO restructuring would tighten the pressure-velocity coupling.
+- ✅ **PISO-style pressure correctors** (`ncorr`, default 2): the predictor is followed
+  by a loop of {divergence -> pressure solve -> velocity correction}; iterating drives
+  the residual collocated cell divergence down (0.20 -> 0.13 -> 0.10 at nCorr 1/2/4 on
+  the cavity) while the steady solution is unchanged. This is the PISO outer loop.
+  🟡 the momentum predictor is still **explicit**, so the correctors are an iterated
+  projection rather than icoFoam's implicit-momentum PISO (a_P/H split + Rhie-Chow);
+  an implicit momentum solve is the remaining step to faithful icoFoam.
 - ⬜ higher-order convection (currently first-order upwind); non-orthogonal correction
   in the two-point face gradient (currently the orthogonal approximation).
 - ⬜ 3D.
