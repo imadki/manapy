@@ -33,11 +33,19 @@ domain = Domain.create_domain(mesh, 2, Partitioning.Par_Nodal, recreate=True)
 Re = float(os.environ.get('RE', 100.0)); U = 1.0; L = 1.0
 nu = U * L / Re
 
-u = Variable(domain=domain); v = Variable(domain=domain); P = Variable(domain=domain)
+u = Variable(domain=domain); v = Variable(domain=domain)
+# pressure: Neumann walls + one Dirichlet reference (bottom) to fix the constant.
+P = Variable(domain=domain,
+             BC={"upper": "neumann", "in": "neumann", "out": "neumann", "bottom": "dirichlet"},
+             values_dict={"bottom": 0.0})
+
+# The pressure Poisson solver (scheme='fv') is a free choice of backend -- swap in
+# MUMPSSolver / GinkgoDistributedSolver here; PETSc CG is the default.
+# from manapy.solvers.ls import MUMPSSolver
+# poisson = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='fv')
 solver = IncompressibleSolver(u, v, P, nu=nu, rho=1.0, cfl=0.4,
                               u_bc={"upper": U, "bottom": 0.0, "in": 0.0, "out": 0.0},
-                              v_bc={"upper": 0.0, "bottom": 0.0, "in": 0.0, "out": 0.0},
-                              p_ref="bottom")
+                              v_bc={"upper": 0.0, "bottom": 0.0, "in": 0.0, "out": 0.0})
 
 nmax = int(os.environ.get('NSTEP', 20000))
 uold = u.cell.copy()
