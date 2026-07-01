@@ -71,8 +71,16 @@ Following Tsoutsanis, J. Comput. Phys. 475 (2023) 108840.
   `set_gamma`). Wired into `ReactiveSolver` (gamma tracks composition each step).
   Validated: exact match to the scalar path for uniform gamma; ~15x lower spurious
   pressure error at a moving multi-gamma contact (2D rusanov order 1).
-- ⬜ double-flux / quasi-conservative variant to remove the residual contact
-  pressure oscillation; 3D and Roe variable-gamma paths.
+- ✅ **3D variable-gamma + double-flux** (`fvm_utils3d`: `*_rusanov_vg`,
+  `doubleflux_residual_euler_3d`, `update_euler_3d_{vg,df}`; `EulerSolver` now wires
+  rusanov order-1 variable_gamma/doubleflux in 2D **and** 3D). The `ReactiveSolver`
+  (dimension-agnostic) + sensible-energy split therefore run in 3D unchanged.
+  Validated: a moving 3D multi-gamma contact keeps P to **machine precision**
+  (L2 1.6e-14 vs 1.2e-2 for variable-gamma alone), and a 3D reactive double-flux
+  bomb conserves the physical total energy to 4.7e-15. Test
+  `test_doubleflux_contact_pressure_equilibrium_3d`; example
+  `examples/3D/multigamma_contact3d.py`.
+- ⬜ Roe variable-gamma path (2D & 3D currently rusanov-only).
 
 ## Per-boundary BC dispatch
 - ✅ `EulerSolver(bc={name: type})` applies a different treatment per named boundary
@@ -117,4 +125,4 @@ contact in pressure equilibrium). Remaining to a converged propagating flame:
 
 ## Cross-cutting refinements (optional)
 - ⬜ correction velocity for exact sum conservation with unequal D_k
-- ⬜ 3D / Roe variable-gamma; per-boundary dispatch in 3D
+- ⬜ Roe variable-gamma (rusanov-only for now); per-boundary BC dispatch in 3D

@@ -308,6 +308,46 @@ def test_doubleflux_contact_pressure_equilibrium(domain):
   assert l2_df < l2_vg / 100.0                    # and far better than variable-gamma alone
 
 
+def test_doubleflux_contact_pressure_equilibrium_3d():
+  """3D analogue: a moving multi-gamma contact (uniform in y,z) must stay in
+  pressure equilibrium with the 3D double-flux update, machine-precision and far
+  better than 3D variable-gamma alone."""
+  from manapy.solvers.euler.species import SpeciesTransport
+  mesh3d = os.path.join(os.path.dirname(__file__), "..", "meshes", "hybrid3d.msh")
+  dom = Domain.create_domain(mesh3d, 3, Partitioning.Par_Nodal, recreate=True)
+  cells = dom.cells
+  xc, vol = cells.center[:, 0], cells.volume
+  L = xc.max() - xc.min()
+  gL, gR, P0, u0 = 1.6, 1.2, 1.0, 0.5
+  Y0 = 0.5 * (1 + np.tanh((xc - (xc.min() + 0.4 * L)) / (0.05 * L)))
+
+  def gamma_of(Y):
+    return 1.0 + 1.0 / ((1 - Y) / (gL - 1) + Y / (gR - 1))
+
+  def run(doubleflux):
+    g_init = gamma_of(Y0)
+    rhoc = 1.0 + Y0
+    rho, P, rhou, rhov, rhoE = (Variable(domain=dom) for _ in range(5))
+    rhow = Variable(domain=dom)
+    rho.cell[:] = rhoc; P.cell[:] = P0
+    rhou.cell[:] = rhoc * u0
+    rhoE.cell[:] = P0 / (g_init - 1) + 0.5 * rhoc * u0 ** 2
+    S = EulerSolver(rho, P, rhou, rhov, rhoE, rhow=rhow, gamma=1.4, cfl=0.3,
+                    scheme="rusanov", bc="Neumann", variable_gamma=True, doubleflux=doubleflux)
+    sp = SpeciesTransport(S, [1 - Y0, Y0], renormalize=True)
+    S.set_gamma(gamma_of(sp.q[1].cell / rho.cell))
+    for _ in range(60):
+      dt = S.stepper()
+      S.compute_fluxes(dt); S.compute_new_val(); sp.advance(dt)
+      S.set_gamma(gamma_of(sp.q[1].cell / rho.cell))
+    return _l2(vol, P.cell, np.full_like(P.cell, P0))
+
+  l2_df = run(True)
+  l2_vg = run(False)
+  assert l2_df < 1e-10                            # 3D double-flux: machine-precision equilibrium
+  assert l2_df < l2_vg / 100.0                    # and far better than 3D variable-gamma alone
+
+
 # --------------------------------------------------------------------------- #
 # 4b. Sensible-energy split -- reactive double-flux conserves total energy and
 #     reaches the exact constant-UV adiabatic flame temperature.
