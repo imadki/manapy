@@ -824,7 +824,7 @@ def _compute_flux_euler_3d_rusanov(rhol: 'float64', Pl: 'float64', rhoul: 'float
 
     return flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE 
 ######################
-def _compute_flux_euler_3d_Roe(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhowl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhowr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gamma: 'float64', tangent: 'float64[:]', binormal: 'float64[:]'):
+def _compute_flux_euler_3d_Roe(rhol: 'float64', Pl: 'float64', rhoul: 'float64', rhovl: 'float64', rhowl: 'float64', rhoEl: 'float64', rhor: 'float64', Pr: 'float64', rhour: 'float64', rhovr: 'float64', rhowr: 'float64', rhoEr: 'float64', normal: 'float64[:]', mesure: 'float64', gamma: 'float64', tangent: 'float64[:]', binormal: 'float64[:]', ef: 'float64'):
  
     normal[:]=normal[:]/np.sqrt(normal[0]*normal[0]+normal[1]*normal[1]+normal[2]*normal[2])
     tangent[:]=tangent[:]/np.sqrt(tangent[0]*tangent[0]+tangent[1]*tangent[1]+tangent[2]*tangent[2])
@@ -871,12 +871,24 @@ def _compute_flux_euler_3d_Roe(rhol: 'float64', Pl: 'float64', rhoul: 'float64',
     LL      = np.zeros((5,5))
     RR      = np.zeros((5,5))
     RR1     = np.zeros((5,5))
-    
-    LL[0,0] = np.fabs(Lam1)  
-    LL[1,1] = np.fabs(Lam2)  
-    LL[2,2] = np.fabs(Lam3)  
-    LL[3,3] = np.fabs(Lam4) 
-    LL[4,4] = np.fabs(Lam5) 
+
+    # Harten entropy fix on the genuinely-nonlinear acoustic waves (u-c, u+c):
+    # smooth |lambda| near sonic points so the Roe scheme cannot admit an
+    # entropy-violating expansion shock. ef is the relative threshold delta0;
+    # ef = 0 reproduces the plain Roe scheme.
+    a1 = np.fabs(Lam1)
+    a3 = np.fabs(Lam3)
+    if ef > 0.0:
+        delta = ef * (np.fabs(uueta) + cc)
+        if a1 < delta:
+            a1 = 0.5 * (Lam1 * Lam1 + delta * delta) / delta
+        if a3 < delta:
+            a3 = 0.5 * (Lam3 * Lam3 + delta * delta) / delta
+    LL[0,0] = a1
+    LL[1,1] = np.fabs(Lam2)
+    LL[2,2] = a3
+    LL[3,3] = np.fabs(Lam4)
+    LL[4,4] = np.fabs(Lam5)
     
     RR[0,0] = 1 
     RR[0,1] = 1 
@@ -1098,7 +1110,7 @@ def _explicitscheme_euler_3d_rusanov(rez_rho: 'float64[:]', rez_rhou: 'float64[:
                 rez_rhoE[cellidf[i][0]] -= flux_rhoE             
 
 #############""
-def _explicitscheme_euler_3d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma: 'float64', tangent: 'float64[:,:]', binormal: 'float64[:,:]'):
+def _explicitscheme_euler_3d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', rez_rhov: 'float64[:]', rez_rhow: 'float64[:]', rez_rhoE: 'float64[:]', rho_c: 'float64[:]', P_c: 'float64[:]', rhou_c: 'float64[:]', rhov_c: 'float64[:]', rhow_c: 'float64[:]', rhoE_c: 'float64[:]', rho_g: 'float64[:]', P_g: 'float64[:]', rhou_g: 'float64[:]', rhov_g: 'float64[:]', rhow_g: 'float64[:]', rhoE_g: 'float64[:]', rho_h: 'float64[:]', P_h: 'float64[:]', rhou_h: 'float64[:]', rhov_h: 'float64[:]', rhow_h: 'float64[:]', rhoE_h: 'float64[:]', cellidf: 'int32[:,:]', halofid: 'int32[:]', normal: 'float64[:,:]', mesurf: 'float64[:]', name: 'uint32[:]', gamma: 'float64', tangent: 'float64[:,:]', binormal: 'float64[:,:]', ef: 'float64'):
 
     nbface = len(cellidf)
        
@@ -1132,7 +1144,7 @@ def _explicitscheme_euler_3d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', 
                 rhowr=rhow_c[cellidf[i][1]]
                 rhoEr=rhoE_c[cellidf[i][1]]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm,ef)
                 
                 rez_rho[cellidf[i][0]] -= flux_rho
                 rez_rho[cellidf[i][1]] += flux_rho
@@ -1154,7 +1166,7 @@ def _explicitscheme_euler_3d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', 
                 rhowr=rhow_h[halofid[i]]
                 rhoEr=rhoE_h[halofid[i]]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm) 
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm,ef) 
                 
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou
@@ -1171,7 +1183,7 @@ def _explicitscheme_euler_3d_Roe(rez_rho: 'float64[:]', rez_rhou: 'float64[:]', 
                 rhowr=rhow_g[i]
                 rhoEr=rhoE_g[i]
                 
-                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm)
+                flux_rho,flux_rhou,flux_rhov,flux_rhow,flux_rhoE = _compute_flux_euler_3d_Roe(rhol,Pl,rhoul,rhovl,rhowl,rhoEl,rhor,Pr,rhour,rhovr,rhowr,rhoEr,norm, mesu,gamma,tang,binorm,ef)
                
                 rez_rho[cellidf[i][0]]  -= flux_rho
                 rez_rhou[cellidf[i][0]] -= flux_rhou

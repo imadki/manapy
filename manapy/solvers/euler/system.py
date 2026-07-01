@@ -153,13 +153,12 @@ class EulerSolver:
       self._explicitscheme = getattr(fvm, f"explicitscheme_euler_{d}d_rusanov")
     else:
       self._explicitscheme = getattr(fvm, f"explicitscheme_euler_{d}d_Roe")
-    # Harten entropy-fix coefficient threaded to the 2D Roe scheme (0 = plain Roe).
+    # Harten entropy-fix coefficient threaded to the Roe scheme (0 = plain Roe),
+    # in both 2D and 3D.
     self.entropy_fix = float(entropy_fix)
-    if self.dim == 2 and scheme == "Roe":
+    if scheme == "Roe":
       self._scheme_tail = (self.entropy_fix,)
     else:
-      if self.dim == 3 and scheme == "Roe" and self.entropy_fix > 0.0:
-        raise NotImplementedError("entropy_fix is wired for the 2D Roe scheme only")
       self._scheme_tail = ()
     self._explicitscheme_o2 = getattr(fvm, "explicitscheme_euler_2d_rusanov_o2", None)
     self._update = getattr(fvm, f"update_euler_{d}d_fvc")
@@ -514,7 +513,8 @@ class EulerSolver:
                            self.domain.faces.cellid, self.domain.faces.halofid,
                            self.domain.faces.normal, self.domain.faces.mesure,
                            self.face_name, self.gamma,
-                           self.domain.faces.tangent, self.domain.faces.binormal)
+                           self.domain.faces.tangent, self.domain.faces.binormal,
+                           *self._scheme_tail)
 
     # viscous (Navier-Stokes) contribution, added into the same rez_* accumulators
     if self.viscous:

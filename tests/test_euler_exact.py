@@ -209,6 +209,40 @@ def test_roe_entropy_fix(domain):
   assert np.max(np.abs(r_fix - r_plain)) < 5e-2
 
 
+def test_roe_entropy_fix_3d():
+  """3D Harten entropy fix: ef>0 keeps the Roe solution positive and physical, and
+  changes it only locally near the sonic point (like the validated 2D fix)."""
+  mesh3d = os.path.join(os.path.dirname(__file__), "..", "meshes", "hybrid3d.msh")
+  dom = Domain.create_domain(mesh3d, 3, Partitioning.Par_Nodal, recreate=True)
+  xc, vol = dom.cells.center[:, 0], dom.cells.volume
+  gamma = 1.4
+  xm = 0.5 * (xc.min() + xc.max())
+
+  def run(ef):
+    rho, P, rhou, rhov, rhoE = (Variable(domain=dom) for _ in range(5))
+    rhow = Variable(domain=dom)
+    left = xc < xm
+    rho.cell[:] = np.where(left, 1.0, 0.125)
+    P.cell[:] = np.where(left, 1.0, 0.1)
+    rhoE.cell[:] = P.cell / (gamma - 1)
+    S = EulerSolver(rho, P, rhou, rhov, rhoE, rhow=rhow, gamma=gamma, cfl=0.4,
+                    scheme="Roe", bc="TubeSchok", entropy_fix=ef)
+    t = 0.0
+    while t < 0.1:
+      dt = S.stepper()
+      if t + dt > 0.1:
+        dt = 0.1 - t; S.dt = dt
+      t += dt
+      S.compute_fluxes(t); S.compute_new_val()
+    return rho.cell.copy()
+
+  r_plain = run(0.0)
+  r_fix = run(0.15)
+  assert np.max(np.abs(r_plain - run(0.0))) < 1e-14   # ef=0 reproducible / inert fix
+  assert np.all(r_fix > 0)                            # ef>0 stays physical
+  assert np.max(np.abs(r_fix - r_plain)) < 5e-2       # the fix is small and local
+
+
 def test_roe_is_sharper_than_rusanov(domain):
   cells = domain.cells
   xc, vol = cells.center[:, 0], cells.volume
