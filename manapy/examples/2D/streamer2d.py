@@ -22,7 +22,7 @@ import numpy as np
 from manapy.domain import Domain, Partitioning
 from manapy.solvers.streamer.tools_utils_compute import initialisation_streamer_2d
 from manapy.solvers.streamer.system import StreamerSolver
-from manapy.solvers.ls import GinkgoDistributedSolver, MUMPSSolver
+from manapy.solvers.ls import GinkgoDistributedSolver, MUMPSSolver, PETScKrylovSolver
 from manapy.core.Variable import Variable
 from manapy.backends.gpu import GPUBackend
 
@@ -50,7 +50,7 @@ gpu.init_stream()
 gpu.set_config(free=True)
 
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, #recreate=True,
-                              backend=gpu
+                              # backend=gpu
                               )
 be = domain.backend
 faces = domain.faces
@@ -106,30 +106,36 @@ be.copy(ne.cell, _ne); be.copy(ni.cell, _ni)
 be.copy(u.cell, _u); be.copy(v.cell, _v)
 be.copy(Ex.cell, _Ex); be.copy(Ey.cell, _Ey); be.copy(P.cell, _P)
 
-# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True,)
+L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, 
+                scheme='fv_corrected', 
+                non_orthogonal_corrections=0)
 
-# Ginkgo bicgstab (the diamond matrix is non-symmetric, so NOT cg) preconditioned
-# by AMG: Multigrid/Pgm with a Schwarz(Jacobi) smoother and a Cg coarse solver.
-# AMG cuts the Krylov iteration count drastically vs unpreconditioned gmres/bicgstab.
-amg_args = {
-    "type": "solver::Bicgstab",
-    "preconditioner": {
-        "type": "solver::Multigrid", "max_levels": 10, "min_coarse_rows": 2,
-        "mg_level": [{"type": "multigrid::Pgm", "deterministic": True}],
-        "pre_smoother": [{"type": "solver::Ir", "relaxation_factor": 0.9,
-            "solver": {"type": "preconditioner::Schwarz",
-                        "local_solver": {"type": "preconditioner::Jacobi"}},
-            "criteria": [{"type": "Iteration", "max_iters": 2}]}],
-        "post_uses_pre": True,
-        "coarsest_solver": {"type": "solver::Cg",
-                            "criteria": [{"type": "Iteration", "max_iters": 4}]},
-        "default_initial_guess": "zero",
-        "criteria": [{"type": "Iteration", "max_iters": 1}]},
-    "criteria": [{"type": "Iteration", "max_iters": 1000},
-                  {"type": "ResidualNorm", "reduction_factor": 1e-8}],
-}
-L = GinkgoDistributedSolver(domain=domain, var=P, device="cuda", scheme='diamond',
-                            reuse_mtx=True, verbose=False, solver_args=amg_args)
+# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='fv_corrected',
+#               precond='gamg', sub_precond="amg",  # with_mtx=False,
+#               eps_a=1e-10, eps_r=1e-10, method="gmres")
+
+# # Ginkgo bicgstab (the diamond matrix is non-symmetric, so NOT cg) preconditioned
+# # by AMG: Multigrid/Pgm with a Schwarz(Jacobi) smoother and a Cg coarse solver.
+# # AMG cuts the Krylov iteration count drastically vs unpreconditioned gmres/bicgstab.
+# amg_args = {
+#     "type": "solver::Bicgstab",
+#     "preconditioner": {
+#         "type": "solver::Multigrid", "max_levels": 10, "min_coarse_rows": 2,
+#         "mg_level": [{"type": "multigrid::Pgm", "deterministic": True}],
+#         "pre_smoother": [{"type": "solver::Ir", "relaxation_factor": 0.9,
+#             "solver": {"type": "preconditioner::Schwarz",
+#                         "local_solver": {"type": "preconditioner::Jacobi"}},
+#             "criteria": [{"type": "Iteration", "max_iters": 2}]}],
+#         "post_uses_pre": True,
+#         "coarsest_solver": {"type": "solver::Cg",
+#                             "criteria": [{"type": "Iteration", "max_iters": 4}]},
+#         "default_initial_guess": "zero",
+#         "criteria": [{"type": "Iteration", "max_iters": 1}]},
+#     "criteria": [{"type": "Iteration", "max_iters": 1000},
+#                   {"type": "ResidualNorm", "reduction_factor": 1e-8}],
+# }
+# L = GinkgoDistributedSolver(domain=domain, var=P, device="cuda", scheme='fv_corrected',
+#                             reuse_mtx=True, verbose=False, solver_args=amg_args)
 
 ts = MPI.Wtime()
 if RANK == 0: print("Start While loop ...")
@@ -138,7 +144,14 @@ while time < tfinal:
 
   # Poisson: solve for P with the charge-density source (local owned rows).
   rhs = S.update_rhs()
+  # ts = MPI.Wtime()
   L(rhs=rhs[:L.localsize])
+  te = MPI.Wtime()
+  
+  # print('time solveur', te - ts)
+  
+  # if niter == 10:
+  #     import sys; sys.exit()
   
   P.update_halo_value()
   P.update_ghost_value()

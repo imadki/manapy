@@ -1071,6 +1071,88 @@ def _face_gradient_info_3d(face_cellid: 'int[:,:]', faces: 'int[:,:]', face_to_p
     face_param3[i] = ((n0 * n0) + (n1 * n1) + (n2 * n2)) / face_air_diamond[i]
 
 
+
+def _fv_face_geometry(face_cellid: 'int[:,:]', face_name: 'int[:]', face_normal: 'float[:,:]',
+                            face_center: 'float[:,:]', face_haloid: 'int[:]', cell_center: 'float[:,:]',
+                            halo_centvol: 'float[:,:]', cell_shift: 'float[:,:]', fv_coeff: 'float[:]',
+                            fv_corrx: 'float[:]', fv_corry: 'float[:]', fv_corrz: 'float[:]',
+                            fv_weight_left: 'float[:]'):
+  for i in range(face_cellid.shape[0]):
+    c_left = face_cellid[i, 0]
+    c_right = face_cellid[i, 1]
+    left_x = cell_center[c_left, 0]
+    left_y = cell_center[c_left, 1]
+    left_z = cell_center[c_left, 2]
+    right_x = face_center[i, 0]
+    right_y = face_center[i, 1]
+    right_z = face_center[i, 2]
+    has_right = 0
+    nx = face_normal[i, 0]
+    ny = face_normal[i, 1]
+    nz = face_normal[i, 2]
+
+    if face_name[i] == 0:
+      right_x = cell_center[c_right, 0]
+      right_y = cell_center[c_right, 1]
+      right_z = cell_center[c_right, 2]
+      has_right = 1
+    elif face_name[i] == 11 or face_name[i] == 22:
+      right_x = cell_center[c_right, 0] + cell_shift[c_right, 0]
+      right_y = cell_center[c_right, 1]
+      right_z = cell_center[c_right, 2]
+      has_right = 1
+    elif face_name[i] == 33 or face_name[i] == 44:
+      right_x = cell_center[c_right, 0]
+      right_y = cell_center[c_right, 1] + cell_shift[c_right, 1]
+      right_z = cell_center[c_right, 2]
+      has_right = 1
+    elif face_name[i] == 55 or face_name[i] == 66:
+      right_x = cell_center[c_right, 0]
+      right_y = cell_center[c_right, 1]
+      right_z = cell_center[c_right, 2] + cell_shift[c_right, 2]
+      has_right = 1
+    elif face_name[i] == 10:
+      h = face_haloid[i]
+      right_x = halo_centvol[h, 0]
+      right_y = halo_centvol[h, 1]
+      right_z = halo_centvol[h, 2]
+      has_right = 1
+
+    dx = right_x - left_x
+    dy = right_y - left_y
+    dz = right_z - left_z
+    sfd = nx * dx + ny * dy + nz * dz
+    if sfd == 0.0:
+      raise RuntimeError("zero projected face distance in FV-like geometry")
+
+    nsq = nx * nx + ny * ny + nz * nz
+    abs_sfd = sfd
+    if abs_sfd < 0.0:
+      abs_sfd = -abs_sfd
+    fv_coeff[i] = nsq / abs_sfd
+
+    signed_coeff = nsq / sfd
+    fv_corrx[i] = nx - signed_coeff * dx
+    fv_corry[i] = ny - signed_coeff * dy
+    fv_corrz[i] = nz - signed_coeff * dz
+
+    if has_right == 1:
+      dlx = face_center[i, 0] - left_x
+      dly = face_center[i, 1] - left_y
+      dlz = face_center[i, 2] - left_z
+      drx = right_x - face_center[i, 0]
+      dry = right_y - face_center[i, 1]
+      drz = right_z - face_center[i, 2]
+      dleft = math.sqrt(dlx * dlx + dly * dly + dlz * dlz)
+      dright = math.sqrt(drx * drx + dry * dry + drz * drz)
+      dist = dleft + dright
+      if dist == 0.0:
+        fv_weight_left[i] = 0.5
+      else:
+        fv_weight_left[i] = dright / dist
+    else:
+      fv_weight_left[i] = 1.0
+
 def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloid: 'int[:,:]',
                   node_ghostid: 'int[:,:]', node_haloghostid: 'int[:,:]', node_periodicid: 'int[:,:]',
                   nodes: 'float[:,:]', node_oldname: 'int[:]',
@@ -1461,6 +1543,7 @@ def setup(dim):
     global create_halo_cells, create_ghost_info, get_ghost_part_size, create_ghost_tables
     global count_max_bcell_halophyid, create_bcell_halophyid, create_ghost_new_index, create_halo_ghost_tables
     global create_normal_face_of_cell, get_max_b_ncellid, create_b_ncellid, create_bf_cellid, get_cell_nb_phyid
+    global fv_face_geometry
 
     # nested helpers first (must be dispatchers before their callers)
     _is_in_array = compile(_is_in_array)
@@ -1493,6 +1576,7 @@ def setup(dim):
     create_b_ncellid = compile(_create_b_ncellid)
     create_bf_cellid = compile(_create_bf_cellid)
     get_cell_nb_phyid = compile(_get_cell_nb_phyid)
+    fv_face_geometry = compile(_fv_face_geometry)
 
     _agnostic_done = True
 

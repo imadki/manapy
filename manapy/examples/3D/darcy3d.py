@@ -77,7 +77,7 @@ f = lambda x, y, z: Pinit * (1. - x)
 ###Linear sys confi###
 # If you want the default options please do conf = Struct()
 # reuse_mtx: matrix does not change during the while loop
-# scheme: diamond (fv4 not tested!!!)
+# scheme: diamond or fv
 # verbose: printing the mumps/petsc output
 L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
               precond='gamg', sub_precond="amg",

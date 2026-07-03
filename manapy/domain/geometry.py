@@ -516,6 +516,16 @@ class Face:
 
                         # computed using:
                         # projection = cell_center - ((cell_center - face_center) · normal) * normal
+
+        '_fv_coeff', # FV-like orthogonal coefficient |Sf|^2 / |Sf.d|
+                           # shape: (nb_faces,)
+
+        '_fv_corrx', # FV-like non-orthogonal correction vector
+        '_fv_corry', # components: Sf - (|Sf|^2 / (Sf.d)) d
+        '_fv_corrz', # shape: (nb_faces,)
+
+        '_fv_weight_left', # distance weight for linear face interpolation
+                               # shape: (nb_faces,)
     ]
 
     def __init__(self):
@@ -607,6 +617,26 @@ class Face:
     @property
     def ghost_id(self):
         return self._ghost_id
+
+    @property
+    def fv_coeff(self):
+        return self._fv_coeff
+
+    @property
+    def fv_corrx(self):
+        return self._fv_corrx
+
+    @property
+    def fv_corry(self):
+        return self._fv_corry
+
+    @property
+    def fv_corrz(self):
+        return self._fv_corrz
+
+    @property
+    def fv_weight_left(self):
+        return self._fv_weight_left
     
     
     # @property

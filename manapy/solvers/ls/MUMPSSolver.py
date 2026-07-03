@@ -12,8 +12,8 @@ from typing import Union
 
 class MUMPSSolver(LinearSolver):
   _parameters = [
-    ('scheme', 'str', 'diamond', 'fv4',
-     'scheme diamond or fv4.'),
+    ('scheme', 'str', 'diamond', 'diamond',
+     'scheme: diamond, fv (orthogonal) or fv_corrected (non-orthogonal corrected).'),
     ('reordering', 'bool', False, False,
      'reordering the matrix only in serial case.'),
     ('reuse_mtx', 'bool', True, False,
@@ -21,6 +21,10 @@ class MUMPSSolver(LinearSolver):
     ('reuse_ij', 'bool', True, False,
      'If True, set the (row, col) structure and run analysis only once, '
      'then only refresh the numerical values on subsequent calls.'),
+    ('non_orthogonal_corrections', 'int', 2, False,
+     'Number of explicit non-orthogonal correction solves for scheme=fv_corrected.'),
+    ('non_orthogonal_limiter', 'float', 1.0, False,
+     'Blend psi in [0,1] of the non-orthogonal correction (scheme=fv_corrected): 1=full, 0=none.'),
     ('with_mtx', 'bool', False, True,
      'If True, the matrix should be given.'),
     ('system', "str", "double", "double",
@@ -44,6 +48,8 @@ class MUMPSSolver(LinearSolver):
                reordering: bool = False,
                reuse_mtx: bool = False,
                reuse_ij: bool = True,
+               non_orthogonal_corrections: int = 2,
+               non_orthogonal_limiter: float = 1.0,
                with_mtx: bool = False,
                system: str = "double",
                memory_relaxation: int = 20,
@@ -56,7 +62,7 @@ class MUMPSSolver(LinearSolver):
     self.mumps = mumps
     self.mumps_ls = None
 
-    LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme, reordering=reordering, solver_name=LinearSolver.SolverMumps)
+    LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme, reordering=reordering, solver_name=LinearSolver.SolverMumps, non_orthogonal_corrections=non_orthogonal_corrections, non_orthogonal_limiter=non_orthogonal_limiter)
 
 
     self.system = system
@@ -94,28 +100,45 @@ class MUMPSSolver(LinearSolver):
     self.presolve(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx,
                   reuse_ij=self.reuse_ij)
 
-    if rhs is not None:
-      rhs += self.rhs00
+    user_rhs = rhs
+    if user_rhs is not None:
+      # user_rhs is LOCAL (length localsize, indexed by local cell), like the PETSc
+      # backend expects. MUMPS uses a centralised GLOBAL rhs, so scatter it to the
+      # global positions (cells.loctoglob) and reduce to root -- consistent with
+      # rhs00 (the reduced global BC source). In serial loctoglob is the identity so
+      # this reduces to the former `user_rhs + rhs00`.
+      g = np.zeros(self.globalsize, dtype=FLOAT_TYPE)
+      g[self.domain.cells.loctoglob] = user_rhs
+      g = self.comm.reduce(g, op=MPI.SUM, root=0)
+      solve_rhs = (g + self.rhs00) if self.comm.Get_rank() == 0 else None
     else:
-      rhs = self.rhs00
+      solve_rhs = self.rhs00
 
-    # Allocation size of rhs
-    if self.comm.Get_rank() == 0:
-      self.sol = rhs.copy()
-      self.mumps_ls.set_rhs_centralized(self.sol)
+    ncycles = 1 + self.non_orthogonal_corrections
+    for cycle in range(ncycles):
+      if cycle > 0:
+        solve_rhs = self.fv_corrected_rhs(self.rhs00, user_rhs, global_rhs=True)
 
-    # Solution Phase
-    self.mumps_ls._mumps_call(job=3)
+      # Allocation size of rhs
+      if self.comm.Get_rank() == 0:
+        self.sol = solve_rhs.copy()
+        self.mumps_ls.set_rhs_centralized(self.sol)
 
-    if self.reordering and self.comm.Get_size() == 1:
-      self.sol = self.sol[np.argsort(self.perm)]
+      # Solution Phase
+      self.mumps_ls._mumps_call(job=3)
 
-    if self.comm.Get_rank() == 0:
-      # Convert solution for scattering
-      self.convert_solution(self.sol, self.x1converted, self.domain.cells.tc, self.globalsize)
+      if self.reordering and self.comm.Get_size() == 1:
+        self.sol = self.sol[np.argsort(self.perm)]
 
-    self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision], recvbuf=self.var.cell,
-                       root=0)
+      if self.comm.Get_rank() == 0:
+        # Convert solution for scattering
+        self.convert_solution(self.sol, self.x1converted, self.domain.cells.tc, self.globalsize)
+
+      self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision], recvbuf=self.var.cell,
+                         root=0)
+
+      if self.scheme not in self.fv_schemes:
+        break
 
   def presolve(self, reuse_mtx=False, with_mtx=False, reuse_ij=False):
     if not reuse_mtx or self.mumps_ls is None:
@@ -141,18 +164,36 @@ class MUMPSSolver(LinearSolver):
           if self.mumps_ls is None:
             self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
                                                    mem_relax=self.memory_relaxation)
-          # Fortran indexing + keep a copy for later restoration
+          # Fortran indexing + keep a copy. Register the PERSISTENT copies with
+          # MUMPS: mumps4py stores a RAW ctypes pointer with no python reference,
+          # so the registered arrays must outlive every later set_matrix()/assembly()
+          # (registering self._row dangles as soon as set_matrix replaces it -- the
+          # GC frees the buffer and MUMPS reads recycled memory -> error -53).
           self._row += 1
           self._col += 1
           self._row_origin = self._row.copy()
           self._col_origin = self._col.copy()
 
-          self.mumps_ls.set_rc_distributed(self._row, self._col, self.globalsize)
+          self.mumps_ls.set_rc_distributed(self._row_origin, self._col_origin,
+                                           self.globalsize)
           self._ij_already_set = True
         else:
-          # assembly() rewrote _row/_col as 0-based; restore Fortran indexing
-          # (only if assembly ran, i.e. not when the matrix is provided)
+          # structure registered once; only the values may change. The provided /
+          # re-assembled triplets MUST come in the registered order (guaranteed by
+          # the deterministic assembly loops); verify the pattern cheaply.
+          if len(self._row) != len(self._row_origin):
+            raise ValueError(
+              f"reuse_ij=True but the matrix pattern changed: {len(self._row)} "
+              f"entries vs {len(self._row_origin)} registered. Call clear() first "
+              "or use reuse_ij=False for matrices with a changing structure.")
+          if with_mtx and (not np.array_equal(self._row + 1, self._row_origin)
+                           or not np.array_equal(self._col + 1, self._col_origin)):
+            raise ValueError(
+              "reuse_ij=True but set_matrix() provided a different sparsity "
+              "pattern (or a different entry order) than the registered one. "
+              "Call clear() first or use reuse_ij=False.")
           if not with_mtx:
+            # assembly() rewrote _row/_col as 0-based (same buffers, same order)
             self._row[:] = self._row_origin
             self._col[:] = self._col_origin
       else:

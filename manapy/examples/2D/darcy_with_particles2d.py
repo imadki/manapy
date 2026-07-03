@@ -4,6 +4,7 @@ import os
 from manapy.domain import Domain, Partitioning
 import manapy.solvers.advecdiff.fvm_utils_compute as advecdiff_compute
 import manapy.solvers.ls.ls_compute as ls_compute
+import manapy.solvers.ls.ls_diamond as ls_diamond
 from manapy.solvers.ls import MUMPSSolver, PETScKrylovSolver
 from manapy.core.Variable import Variable
 import numpy as np
@@ -121,9 +122,10 @@ def tau_remplissage(I):
 # Compile only the 2D kernels we use (lazy per-dimension compilation).
 advecdiff_compute.setup(2)
 ls_compute.setup(2)
+ls_diamond.setup(2)
 
-get_triplet_2d_with_contrib = ls_compute.get_triplet_2d_with_contrib
-get_rhs_glob_2d_with_contrib = ls_compute.get_rhs_glob_2d_with_contrib
+get_triplet_2d_with_contrib = ls_diamond.get_triplet_2d_with_contrib
+get_rhs_glob_2d_with_contrib = ls_diamond.get_rhs_glob_2d_with_contrib
 #
 explicitscheme_convective_2d = advecdiff_compute.explicitscheme_convective_2d
 update_new_value = advecdiff_compute.update_new_value
@@ -205,7 +207,6 @@ nbcells = domain.nbcells
 
 
 scheme = "Diamond"
-# scheme = "FV4"
 ##################################################################################
 ##################################################################################
 
@@ -336,7 +337,7 @@ div = np.zeros(nbcells)
 ###Linear sys confi###
 # If you want the default options please do conf = Struct()
 # reuse_mtx: matrix does not change during the while loop
-# scheme: diamond (fv4 not tested!!!)
+# scheme: diamond or fv
 # verbose: printing the mumps/petsc output
 # L = MUMPSSolver(domain=domain, var=P, reuse_mtx=False, scheme='diamond')
 
