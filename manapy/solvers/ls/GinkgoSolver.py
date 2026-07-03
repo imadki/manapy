@@ -23,8 +23,8 @@ class GinkgoSolver(LinearSolver):
   """
 
   _parameters = [
-    ('scheme', 'str', 'diamond', 'fv4',
-     'scheme diamond or fv4.'),
+    ('scheme', 'str', 'diamond', 'diamond',
+     'scheme: diamond, fv (orthogonal) or fv_corrected (non-orthogonal corrected).'),
     ('reordering', 'bool', False, False,
      'reordering the matrix only in serial case.'),
     ('reuse_mtx', 'bool', True, False,
@@ -32,6 +32,10 @@ class GinkgoSolver(LinearSolver):
     ('reuse_ij', 'bool', True, False,
      'If True, gather the (row, col) structure once and only refresh the '
      'numerical values on subsequent calls.'),
+    ('non_orthogonal_corrections', 'int', 2, False,
+     'Number of explicit non-orthogonal correction solves for scheme=fv_corrected.'),
+    ('non_orthogonal_limiter', 'float', 1.0, False,
+     'Blend psi in [0,1] of the non-orthogonal correction (scheme=fv_corrected): 1=full, 0=none.'),
     ('with_mtx', 'bool', False, True,
      'If True, the matrix should be given.'),
     ('device', 'str', 'cuda', False,
@@ -69,6 +73,8 @@ class GinkgoSolver(LinearSolver):
                reordering: bool = False,
                reuse_mtx: bool = True,
                reuse_ij: bool = True,
+               non_orthogonal_corrections: int = 2,
+               non_orthogonal_limiter: float = 1.0,
                with_mtx: bool = False,
                device: str = "cuda",
                method: str = "gmres",
@@ -91,7 +97,8 @@ class GinkgoSolver(LinearSolver):
     self.pGB = pGB
 
     LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme,
-                          reordering=reordering, solver_name=LinearSolver.SolverGinkgo)
+                          reordering=reordering, solver_name=LinearSolver.SolverGinkgo,
+                          non_orthogonal_corrections=non_orthogonal_corrections, non_orthogonal_limiter=non_orthogonal_limiter)
 
     self._dim = self.domain.dim
     self.var = var
@@ -212,47 +219,56 @@ class GinkgoSolver(LinearSolver):
     self.presolve(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx,
                   reuse_ij=self.reuse_ij)
 
-    if rhs is not None:
-      rhs = rhs + self.rhs00 if self.rhs00 is not None else rhs
+    user_rhs = rhs
+    if user_rhs is not None:
+      solve_rhs = user_rhs + self.rhs00 if self.rhs00 is not None else user_rhs
     else:
-      rhs = self.rhs00
+      solve_rhs = self.rhs00
 
-    if self.comm.Get_rank() == 0:
-      # Right-hand side (warm-start the solution with the previous iterate)
-      b_np = np.ascontiguousarray(rhs, dtype=self._np_value).reshape(self.globalsize, 1)
-      self.b = self._dense(self.executor, b_np)
-      if self.x is None:
-        self.x = self._dense(self.executor, (self.globalsize, 1))
-        self.x.fill(0.0)
+    ncycles = 1 + self.non_orthogonal_corrections
+    for cycle in range(ncycles):
+      if cycle > 0:
+        solve_rhs = self.fv_corrected_rhs(self.rhs00, user_rhs, global_rhs=True)
 
-      solver_args = self._build_solver_args()
+      if self.comm.Get_rank() == 0:
+        # Right-hand side (warm-start the solution with the previous iterate)
+        b_np = np.ascontiguousarray(solve_rhs, dtype=self._np_value).reshape(self.globalsize, 1)
+        self.b = self._dense(self.executor, b_np)
+        if self.x is None:
+          self.x = self._dense(self.executor, (self.globalsize, 1))
+          self.x.fill(0.0)
 
-      if self.reuse_mtx and self.solver is not None:
-        # Reusable solver bound to a constant matrix: just apply it.
-        self.solver.apply(self.b, self.x)
-        result = self.x
-        logger = None
-      else:
-        logger, result = self.pg.solve(self.A, self.b, self.x,
-                                       solver_args=solver_args)
-        # keep the produced solution for the next warm start
-        self.x = result
+        solver_args = self._build_solver_args()
 
-      self.sol = np.array(result.copy_to_host()).reshape(-1).astype(FLOAT_TYPE)
+        if self.reuse_mtx and self.solver is not None:
+          # Reusable solver bound to a constant matrix: just apply it.
+          self.solver.apply(self.b, self.x)
+          result = self.x
+          logger = None
+        else:
+          logger, result = self.pg.solve(self.A, self.b, self.x,
+                                         solver_args=solver_args)
+          # keep the produced solution for the next warm start
+          self.x = result
 
-      if self.verbose and logger is not None:
-        print(f"[Ginkgo] {self.method}/{self.precond} converged="
-              f"{logger.has_converged()} iters={logger.get_num_iterations()}")
+        self.sol = np.array(result.copy_to_host()).reshape(-1).astype(FLOAT_TYPE)
 
-      if self.reordering and self.comm.Get_size() == 1:
-        self.sol = self.sol[np.argsort(self.perm)]
+        if self.verbose and logger is not None:
+          print(f"[Ginkgo] {self.method}/{self.precond} converged="
+                f"{logger.has_converged()} iters={logger.get_num_iterations()}")
 
-      # Convert solution for scattering
-      self.convert_solution(self.sol, self.x1converted, self.domain.cells.tc,
-                            self.globalsize)
+        if self.reordering and self.comm.Get_size() == 1:
+          self.sol = self.sol[np.argsort(self.perm)]
 
-    self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision],
-                       recvbuf=self.var.cell, root=0)
+        # Convert solution for scattering
+        self.convert_solution(self.sol, self.x1converted, self.domain.cells.tc,
+                              self.globalsize)
+
+      self.comm.Scatterv(sendbuf=[self.x1converted, self.sendcounts1, self.mpi_precision],
+                         recvbuf=self.var.cell, root=0)
+
+      if self.scheme not in self.fv_schemes:
+        break
 
   def presolve(self, reuse_mtx=False, with_mtx=False, reuse_ij=False):
     if reuse_mtx and self.A is not None:

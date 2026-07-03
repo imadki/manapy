@@ -13,8 +13,8 @@ from scipy import sparse
 
 class ScipySolver(LinearSolver):
   _parameters = [
-    ('scheme', 'str', 'diamond', 'fv4',
-     'scheme diamond or fv4.'),
+    ('scheme', 'str', 'diamond', 'diamond',
+     'scheme: diamond, fv (orthogonal) or fv_corrected (non-orthogonal corrected).'),
     ('reordering', 'bool', False, False,
      'reordering the matrix only in serial case.'),
     ('reuse_mtx', 'bool', True, False,

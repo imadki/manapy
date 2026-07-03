@@ -24,12 +24,16 @@ class GinkgoDistributedSolver(LinearSolver):
   """
 
   _parameters = [
-    ('scheme', 'str', 'diamond', 'fv4',
-     'scheme diamond or fv4.'),
+    ('scheme', 'str', 'diamond', 'diamond',
+     'scheme: diamond, fv (orthogonal) or fv_corrected (non-orthogonal corrected).'),
     ('reordering', 'bool', False, False,
      'unused (kept for API symmetry); distributed reordering is not supported.'),
     ('reuse_mtx', 'bool', True, False,
      'If True, build the matrix and partition once and reuse them.'),
+    ('non_orthogonal_corrections', 'int', 2, False,
+     'Number of explicit non-orthogonal correction solves for scheme=fv_corrected.'),
+    ('non_orthogonal_limiter', 'float', 1.0, False,
+     'Blend psi in [0,1] of the non-orthogonal correction (scheme=fv_corrected): 1=full, 0=none.'),
     ('with_mtx', 'bool', False, True,
      'If True, the matrix should be given.'),
     ('device', 'str', 'cuda', False,
@@ -64,6 +68,8 @@ class GinkgoDistributedSolver(LinearSolver):
                scheme: str = "diamond",
                reordering: bool = False,
                reuse_mtx: bool = True,
+               non_orthogonal_corrections: int = 2,
+               non_orthogonal_limiter: float = 1.0,
                with_mtx: bool = False,
                device: str = "cuda",
                method: str = "gmres",
@@ -93,7 +99,8 @@ class GinkgoDistributedSolver(LinearSolver):
 
     LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme,
                           reordering=False,
-                          solver_name=LinearSolver.SolverGinkgoDist)
+                          solver_name=LinearSolver.SolverGinkgoDist,
+                          non_orthogonal_corrections=non_orthogonal_corrections, non_orthogonal_limiter=non_orthogonal_limiter)
 
     self._dim = self.domain.dim
     self.var = var
@@ -254,51 +261,69 @@ class GinkgoDistributedSolver(LinearSolver):
     t0 = MPI.Wtime()
     if self.b is None:
       self._setup_vectors()
-    if self.verbose:
-      print(f"[GinkgoDist rank {self.comm.Get_rank()}] rhs update", flush=True)
-    self._update_rhs(rhs)
-    self._profile_time("vectors", t0)
+    user_rhs = rhs
 
-    if self.verbose:
-      print(f"[GinkgoDist rank {self.comm.Get_rank()}] solve begin", flush=True)
-    solver_args = json.dumps(self._build_solver_args())
-    logger = None
-    if self.reuse_mtx and self.method != "cg":
-      # Matrix is fixed across solves: generate the solver once and apply it
-      # repeatedly. NOTE cg is excluded on purpose: a *persistent* Ginkgo cg
-      # solver drifts across repeated apply() calls (iteration count grows every
-      # step), whereas a *fresh* solver each step (the config_solve branch below)
-      # converges in ~2 iters thanks to the warm-started x. b is reused either way.
-      if self.solver is None:
+    # For scheme=fv_corrected the non-orthogonal correction is an explicit (deferred) term
+    # rebuilt from the current solution gradient; cycle 0 solves the orthogonal
+    # part, each extra cycle re-solves the SAME matrix with the corrected RHS.
+    ncycles = 1 + self.non_orthogonal_corrections
+    for cycle in range(ncycles):
+      t0 = MPI.Wtime()
+      if self.verbose:
+        print(f"[GinkgoDist rank {self.comm.Get_rank()}] rhs update", flush=True)
+      if cycle == 0:
+        self._update_rhs(user_rhs)
+      else:
+        # rhs0 + non-orthogonal correction (+ user rhs), all processor-local.
+        corr = self.fv_correction_rhs(global_rhs=False)
+        extra = corr if user_rhs is None else corr + user_rhs
+        self._update_rhs(extra)
+      self._profile_time("vectors", t0)
+
+      if self.verbose:
+        print(f"[GinkgoDist rank {self.comm.Get_rank()}] solve begin", flush=True)
+      solver_args = json.dumps(self._build_solver_args())
+      logger = None
+      if self.reuse_mtx and self.method != "cg":
+        # Matrix is fixed across solves: generate the solver once and apply it
+        # repeatedly. NOTE cg is excluded on purpose: a *persistent* Ginkgo cg
+        # solver drifts across repeated apply() calls (iteration count grows every
+        # step), whereas a *fresh* solver each step (the config_solve branch below)
+        # converges in ~2 iters thanks to the warm-started x. b is reused either way.
+        if self.solver is None:
+          t0 = MPI.Wtime()
+          self.solver = self.pGB.solver.__getattribute__(f"config_solver_{self._value}")(
+            self.executor, self.A, solver_args)
+          self._profile_time("config_solver", t0)
         t0 = MPI.Wtime()
-        self.solver = self.pGB.solver.__getattribute__(f"config_solver_{self._value}")(
-          self.executor, self.A, solver_args)
-        self._profile_time("config_solver", t0)
+        self.solver.apply(self.b, self.x)
+        self._profile_time("solver_apply", t0)
+      else:
+        t0 = MPI.Wtime()
+        logger = self.pGB.solver.__getattribute__(f"config_solve_{self._value}")(
+          self.executor, self.A, self.b, self.x, solver_args)
+        self._profile_time("config_solve", t0)
+      if self.verbose:
+        print(f"[GinkgoDist rank {self.comm.Get_rank()}] solve done", flush=True)
+
       t0 = MPI.Wtime()
-      self.solver.apply(self.b, self.x)
-      self._profile_time("solver_apply", t0)
-    else:
-      t0 = MPI.Wtime()
-      logger = self.pGB.solver.__getattribute__(f"config_solve_{self._value}")(
-        self.executor, self.A, self.b, self.x, solver_args)
-      self._profile_time("config_solve", t0)
-    if self.verbose:
-      print(f"[GinkgoDist rank {self.comm.Get_rank()}] solve done", flush=True)
+      local_sol = self.dpc.vector_local(self.x, dtype=self._value)
 
-    t0 = MPI.Wtime()
-    local_sol = self.dpc.vector_local(self.x, dtype=self._value)
+      if ((self.verbose or os.environ.get("MANAPY_GINKGO_PROFILE") == "1")
+          and logger is not None and self.comm.Get_rank() == 0):
+        print(f"[GinkgoDist] {self.method}/{self.precond} "
+              f"converged={logger.has_converged()} "
+              f"iters={logger.get_num_iterations()}", flush=True)
 
-    if ((self.verbose or os.environ.get("MANAPY_GINKGO_PROFILE") == "1")
-        and logger is not None and self.comm.Get_rank() == 0):
-      print(f"[GinkgoDist] {self.method}/{self.precond} "
-            f"converged={logger.has_converged()} "
-            f"iters={logger.get_num_iterations()}", flush=True)
+      # Write each owned cell's solution directly: no scatter needed. var.cell is a
+      # device array under GPU; the sliced assignment from the host `local_sol`
+      # copies host->device (numba), so the GPU kernels see the updated solution
+      # (and the next cycle's correction reads this iterate's gradient).
+      self.var.cell[:self.localsize] = local_sol[self._perm].astype(FLOAT_TYPE)
+      self._profile_time("copy_solution", t0)
 
-    # Write each owned cell's solution directly: no scatter needed. var.cell is a
-    # device array under GPU; the sliced assignment from the host `local_sol`
-    # copies host->device (numba), so the GPU kernels see the updated solution.
-    self.var.cell[:self.localsize] = local_sol[self._perm].astype(FLOAT_TYPE)
-    self._profile_time("copy_solution", t0)
+      if self.scheme not in self.fv_schemes:
+        break
 
   def presolve(self, reuse_mtx=False, with_mtx=False):
     if reuse_mtx and self.A is not None:

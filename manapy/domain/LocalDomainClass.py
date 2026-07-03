@@ -171,6 +171,16 @@ class LocalDomain:
     ) = self._face_gradient_info(self.face_cellid, self.faces, self.face_to_phyid, self.ghost_info_flt, self.face_name, self.face_normal, self.cell_center, self.halo_centvol, self.face_haloid, self.nodes, self.cell_shift)
     log_step.out()
 
+    log_step.log("_fv_face_geometry")
+    (
+      self.face_fv_coeff,
+      self.face_fv_corrx,
+      self.face_fv_corry,
+      self.face_fv_corrz,
+      self.face_fv_weight_left,
+    ) = self._fv_face_geometry(self.face_cellid, self.face_name, self.face_normal, self.face_center, self.face_haloid, self.cell_center, self.halo_centvol, self.cell_shift)
+    log_step.out()
+
     log_step.log("_variables")
     (
       self.node_R_x,
@@ -580,6 +590,23 @@ class LocalDomain:
       face_f2,
       face_f3,
       face_f4
+    )
+
+  def _fv_face_geometry(self, face_cellid, face_name, face_normal, face_center, face_haloid, cell_center, halo_centvol, cell_shift):
+
+    face_fv_coeff = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_fv_corrx = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_fv_corry = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_fv_corrz = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    face_fv_weight_left = np.zeros(shape=self.nb_faces, dtype=types.np_float_type)
+    compute.fv_face_geometry(face_cellid, face_name, face_normal, face_center, face_haloid, cell_center, halo_centvol, cell_shift, face_fv_coeff, face_fv_corrx, face_fv_corry, face_fv_corrz, face_fv_weight_left)
+
+    return (
+      face_fv_coeff,
+      face_fv_corrx,
+      face_fv_corry,
+      face_fv_corrz,
+      face_fv_weight_left
     )
 
   def _variables(self, cell_center, node_cellid, node_haloid, node_ghostid, node_haloghostid, node_periodicid, nodes, node_oldname, ghost_info_flt, ext_ghost_info_flt, halo_centvol, cell_shift):
