@@ -69,21 +69,23 @@ values = {"in": 20,
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
 
-L = GinkgoSolver(domain=domain, var=P, reuse_mtx=True,
-                            precond="jacobi", scheme='diamond')
+# L = GinkgoDistributedSolver(domain=domain, var=P, reuse_mtx=True,
+#                             precond="jacobi", scheme='diamond',
+#                             device="cpu"
+                            # )
 
-# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
-#               precond='gamg', sub_precond="amg",  # with_mtx=False,
-#               eps_a=1e-10, eps_r=1e-10, method="gmres")
+L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
+              precond='gamg', sub_precond="amg",  # with_mtx=False,
+              eps_a=1e-10, eps_r=1e-10, method="gmres")
 
-# L = ScipySolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
+# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='fv_corrected')
 
 # Solve the system
 ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
 
-L.view()
+# L.view()
 P.update_halo_value()
 P.update_ghost_value()
 P.interpolate_celltonode()

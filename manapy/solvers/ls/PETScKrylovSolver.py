@@ -10,8 +10,8 @@ from typing import Union
 
 class PETScKrylovSolver(LinearSolver):
   _parameters = [
-    ('scheme', 'str', 'diamond', 'fv4',
-     'scheme diamond or fv4.'),
+    ('scheme', 'str', 'diamond', 'diamond',
+     'scheme: diamond, fv (orthogonal) or fv_corrected (non-orthogonal corrected).'),
     ('reordering', 'bool', False, False,
      'reordering the matrix only in serial case.'),
     ('reuse_mtx', 'bool', True, False,
@@ -19,6 +19,10 @@ class PETScKrylovSolver(LinearSolver):
     ('reuse_ij', 'bool', True, False,
      'If True, reuse the matrix structure (preallocation) and only refresh '
      'the values with zeroEntries on subsequent calls.'),
+    ('non_orthogonal_corrections', 'int', 2, False,
+     'Number of explicit non-orthogonal correction solves for scheme=fv_corrected.'),
+    ('non_orthogonal_limiter', 'float', 1.0, False,
+     'Blend psi in [0,1] of the non-orthogonal correction (scheme=fv_corrected): 1=full, 0=none.'),
     ('with_mtx', 'bool', False, True,
      'If True, the matrix should be given.'),
     ('method', 'str', 'fgmres', False,
@@ -51,6 +55,8 @@ class PETScKrylovSolver(LinearSolver):
                reordering: bool = False,
                reuse_mtx: bool = True,
                reuse_ij: bool = True,
+               non_orthogonal_corrections: int = 2,
+               non_orthogonal_limiter: float = 1.0,
                with_mtx: bool = False,
                method: str = 'fgmres',
                precond: str = 'gamg',
@@ -106,13 +112,18 @@ class PETScKrylovSolver(LinearSolver):
         self.converged_reasons[val] = key
 
 
-    LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme, reordering=reordering, solver_name=LinearSolver.SolverPetsc)
+    LinearSolver.__init__(self, domain=domain, var=var, comm=comm, scheme=scheme, reordering=reordering, solver_name=LinearSolver.SolverPetsc, non_orthogonal_corrections=non_orthogonal_corrections, non_orthogonal_limiter=non_orthogonal_limiter)
 
     self._domain = domain
     self._dim = self._domain.dim
     self.var = var
     self._domain.solver = "petsc"
     self.rhs0 = np.zeros(self.localsize, dtype=FLOAT_TYPE)
+    # cached global row indices (int32) for the vectorised RHS assembly.
+    self._l2g_i32 = np.asarray(self.domain.cells.loctoglob, dtype=np.int32)
+    # vectorised matrix value assembly via a global-row CSR + setValuesCSR (one
+    # C-level call). Set to False to fall back to the per-entry setValues loop.
+    self._mat_csr = True
 
 
 
@@ -127,33 +138,54 @@ class PETScKrylovSolver(LinearSolver):
     self.create_petsc_matrix(reuse_mtx=self.reuse_mtx, with_mtx=self.with_mtx,
                              reuse_ij=self.reuse_ij)
 
-    if rhs is not None:
-      self.update_rhs(rhs=rhs)
+    user_rhs = rhs
 
-    # warm-start: reuse the previous solution as initial guess
-    self.initiate_sol()
-    self.ksp.solve(self.rhs, self.sol)
+    # For scheme=fv_corrected the non-orthogonal correction is an explicit (deferred) term
+    # rebuilt from the current solution gradient; cycle 0 solves the orthogonal
+    # part, each extra cycle re-solves the SAME matrix with the corrected RHS.
+    ncycles = 1 + self.non_orthogonal_corrections
+    for cycle in range(ncycles):
+      if cycle == 0:
+        # Local RHS = BC source (rhs0) [+ user rhs]; set explicitly so a reused
+        # matrix (which skips create_rhs) still starts from a fresh RHS.
+        if user_rhs is not None:
+          self.update_rhs(rhs=user_rhs)
+        else:
+          self.create_rhs()
+      else:
+        # rhs0 + non-orthogonal correction (+ user rhs), all local (loc kernel).
+        corr = self.fv_correction_rhs(global_rhs=False)
+        extra = corr if user_rhs is None else corr + user_rhs
+        self.update_rhs(rhs=extra)
 
-    if self.verbose:
-      print(self.ksp.getType(), self.ksp.getPC().getType(), self.sub_precond,
-            self.ksp.reason, self.converged_reasons[self.ksp.reason],
-            self.ksp.getIterationNumber())
+      # warm-start: reuse the previous solution as initial guess
+      self.initiate_sol()
+      self.ksp.solve(self.rhs, self.sol)
 
-      for i in range(self.ksp.getIterationNumber()):
-        r_norm = self.ksp.getResidualNorm()
-        custom_monitor(self.ksp, i + 1, r_norm)
+      if self.verbose:
+        print(self.ksp.getType(), self.ksp.getPC().getType(), self.sub_precond,
+              self.ksp.reason, self.converged_reasons[self.ksp.reason],
+              self.ksp.getIterationNumber())
 
-    if self.reordering and self.comm.Get_size() == 1:
-      self.sol.array = self.sol.array[np.argsort(self.perm)]
+        for i in range(self.ksp.getIterationNumber()):
+          r_norm = self.ksp.getResidualNorm()
+          custom_monitor(self.ksp, i + 1, r_norm)
 
-    self.comm.Gatherv(sendbuf=self.sol.array.astype(FLOAT_TYPE), recvbuf=(self.recvbuf, self.sendcounts2),
-                      root=0)
+      if self.reordering and self.comm.Get_size() == 1:
+        self.sol.array = self.sol.array[np.argsort(self.perm)]
 
-    if self.comm.Get_rank() == 0:
-      # Convert solution for scattering
-      ls_compute.convert_solution(self.recvbuf, self.x1converted, self.domain.cells.tc, self.globalsize)
+      self.comm.Gatherv(sendbuf=self.sol.array.astype(FLOAT_TYPE), recvbuf=(self.recvbuf, self.sendcounts2),
+                        root=0)
 
-    self.comm.Scatterv([self.x1converted, self.sendcounts1, self.mpi_precision], self.var.cell, root=0)
+      if self.comm.Get_rank() == 0:
+        # Convert solution for scattering
+        ls_compute.convert_solution(self.recvbuf, self.x1converted, self.domain.cells.tc, self.globalsize)
+
+      # Scatter back to var.cell so the next cycle's correction sees this iterate.
+      self.comm.Scatterv([self.x1converted, self.sendcounts1, self.mpi_precision], self.var.cell, root=0)
+
+      if self.scheme not in self.fv_schemes:
+        break
 
   def create_ksp(self, options: dict, comm: MPI.Comm):
     optDB = self.petsc.Options()
@@ -183,19 +215,16 @@ class PETScKrylovSolver(LinearSolver):
     self.ksp.setFromOptions()
 
   def update_rhs(self, rhs=None):
+    # vectorised: one setValues over the global-index array instead of a per-cell
+    # Python loop (loctoglob routes off-process entries via assembly, as before).
     self.rhs = self.mat.getVecLeft()
-    for i in range(self.domain.nbcells):
-      self.rhs.setValues(self.domain.cells.loctoglob[i], self.rhs0[i] + rhs[i])
-
+    self.rhs.setValues(self._l2g_i32, self.rhs0 + rhs)
     self.rhs.assemblyBegin()
     self.rhs.assemblyEnd()
 
   def create_rhs(self):
-
     self.rhs = self.mat.getVecLeft()
-    for i in range(self.domain.nbcells):
-      self.rhs.setValues(self.domain.cells.loctoglob[i], self.rhs0[i])
-
+    self.rhs.setValues(self._l2g_i32, self.rhs0)
     self.rhs.assemblyBegin()
     self.rhs.assemblyEnd()
 
@@ -245,11 +274,30 @@ class PETScKrylovSolver(LinearSolver):
         self._ij_already_set = True
 
       ###################################################################
-      # Refresh the numerical values
+      # Refresh the numerical values. The triplet (row, col) indices are GLOBAL
+      # (loctoglob / halosext) and manapy does NOT number cells contiguously per
+      # rank, so PETSc's bulk CSR/COO interfaces (which want the owned rows in
+      # [rstart, rend)) don't apply -- PETSc keeps its own ownership split and
+      # routes off-process entries via the stash. We still avoid the per-non-zero
+      # Python loop by grouping the triplets by row and setting each row in ONE
+      # setValues call (one call per owned row; duplicate columns are summed by
+      # ADD_VALUES within the call). `_mat_csr=False` restores the per-entry loop.
       self.mat.zeroEntries()
-      for i in range(len(self._row)):
-        self.mat.setValues(self._row[i], self._col[i], self._data[i], addv=True)
-
+      ADD = self.petsc.InsertMode.ADD_VALUES
+      if self._mat_csr:
+        row = np.asarray(self._row, dtype=np.int32)
+        col = np.asarray(self._col, dtype=np.int32)
+        data = np.asarray(self._data, dtype=FLOAT_TYPE)
+        order = np.argsort(row, kind="stable")
+        row = row[order]; col = col[order]; data = data[order]
+        # row-change boundaries -> [start, end) slices of one global row each
+        cut = np.concatenate(([0], np.nonzero(np.diff(row))[0] + 1, [row.size]))
+        for k in range(cut.size - 1):
+          s = cut[k]; e = cut[k + 1]
+          self.mat.setValues(row[s], col[s:e], data[s:e], addv=ADD)
+      else:
+        for i in range(len(self._row)):
+          self.mat.setValues(self._row[i], self._col[i], self._data[i], addv=True)
       self.mat.assemblyBegin(self.mat.AssemblyType.FINAL)
       self.mat.assemblyEnd(self.mat.AssemblyType.FINAL)
 

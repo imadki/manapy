@@ -22,7 +22,7 @@ from manapy.backends.gpu import get_active_backend, GPUArray
 
 
 # ---------------------------------------------------------------------------
-# Device helper: membership test (mirrors ls_compute._search_element).
+# Device helper: membership test (mirrors ls_diamond._search_element).
 def device_search_element(a: 'int[:]', target_value: 'int') -> 'int':
   find = 0
   for k in range(a.shape[0]):

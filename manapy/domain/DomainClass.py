@@ -100,6 +100,11 @@ class Domain:
     self.faces._tangent = local_domain.face_tangent
     self.faces._binormal = local_domain.face_binormal
     self.faces._ghost_id = local_domain.face_to_phyid
+    self.faces._fv_coeff = local_domain.face_fv_coeff
+    self.faces._fv_corrx = local_domain.face_fv_corrx
+    self.faces._fv_corry = local_domain.face_fv_corry
+    self.faces._fv_corrz = local_domain.face_fv_corrz
+    self.faces._fv_weight_left = local_domain.face_fv_weight_left
 
     # Halos
     self.halos._nb_halos = len(local_domain.halo_centvol)
