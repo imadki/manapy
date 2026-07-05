@@ -51,6 +51,8 @@ class AdvectionSolver:
     if scheme not in AdvectionSolver.SCHEMES:
       raise ValueError(f"unknown scheme '{scheme}'; choose from {list(AdvectionSolver.SCHEMES)}")
     self.scheme = scheme
+    # Integer code passed to the (single, cached) convective kernel at call time.
+    self._scheme_id = fvm_utils_compute.SCHEME_IDS[scheme]
 
 
     self.var.add_term("convective")
@@ -88,7 +90,8 @@ class AdvectionSolver:
                                     self.domain.faces.cellid, self.domain.faces.normal,
                                     self.domain.faces.halofid, self.domain.faces.name,
                                     self.domain.innerfaces, self.domain.halofaces, self.domain.boundaryfaces,
-                                    self.domain.periodicboundaryfaces, self.domain.cells.shift, self.order)
+                                    self.domain.periodicboundaryfaces, self.domain.cells.shift, self.order,
+                                    self._scheme_id)
 
   def stepper(self):
     d_t = self._time_step(self.u.cell, self.v.cell, self.w.cell, self.cfl, self.domain.faces.normal,
