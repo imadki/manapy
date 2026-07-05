@@ -1,43 +1,123 @@
 import os
-import tempfile
 import time
 import numba
+import numba.core.config
 import numpy as np
 import inspect
-from numba import cuda
 import hashlib
 from mpi4py import MPI
 from manapy.backends.types import FLOAT_TYPE, INT_TYPE
 
 
 # =============================================================================
-# Choix de la strategie de synchronisation de la compilation (cache numba).
+# Emplacement du cache numba : node-local (pas NFS).
 #
-# Pourquoi : en MPI, tous les rangs compilent les memes fonctions en meme temps
-# et numba (cache=True) ecrit le resultat sur disque. Sans precaution, les rangs
-# peuvent se marcher dessus sur le fichier cache au premier run.
+# Mesure (advection2d.py, 112 rangs) : sur NFS le cache numba est INUTILISABLE a
+# l'echelle. Quelle que soit la synchro, les 100+ rangs qui se partagent les
+# memes fichiers cache soit CRASHENT (OSError 116 Stale file handle), soit
+# n'arrivent pas a recharger (chaque run recompile ~tout). Un repertoire LOCAL
+# au noeud (coherent, rapide) est la seule chose qui marche -> tout se charge.
 #
-# Strategies disponibles (variable d'env MANAPY_COMPILE_SYNC) :
-#   "current"  : comportement historique. Barrieres MPI par fonction
-#                (rang 0 compile, barriere, les autres compilent, barriere).
-#   "per_node" : sous-communicateur par noeud (COMM_TYPE_SHARED) :
-#                seul le rang local 0 de chaque noeud compile d'abord, puis
-#                les autres rangs du meme noeud lisent le cache.
-#   "claim"    : premier process arrive, premier process compile. Un lock
-#                atomique par fonction empeche deux rangs de compiler la meme
-#                fonction en meme temps ; les autres attendent puis lisent le cache.
-#   "mpi_shared_lock" : verrou MPI shared-memory par noeud. Le premier rang du
-#                noeud qui reserve le slot compile ; les autres attendent puis
-#                lisent le cache.
+# On pointe donc numba vers un repertoire local, une seule fois, au PREMIER
+# compile() (pas a l'import). Respecte un NUMBA_CACHE_DIR explicite ; desactivable
+# avec MANAPY_LOCAL_CACHE=0.
+# =============================================================================
+_LOCAL_CACHE_READY = False
+
+
+def _ensure_local_cache_dir():
+  global _LOCAL_CACHE_READY
+  if _LOCAL_CACHE_READY:
+    return
+  _LOCAL_CACHE_READY = True
+  if os.environ.get("NUMBA_CACHE_DIR") or os.environ.get("MANAPY_LOCAL_CACHE", "1") == "0":
+    return  # l'utilisateur choisit lui-meme, ou desactive : on ne touche a rien
+  user = os.environ.get("USER") or "user"
+  for base in ("/dev/shm", os.environ.get("TMPDIR") or "/tmp"):
+    d = os.path.join(base, f"manapy-numba-{user}")
+    try:
+      os.makedirs(d, exist_ok=True)
+      numba.core.config.CACHE_DIR = d
+      return
+    except OSError:
+      continue
+
+
+# =============================================================================
+# Court-circuit du scan numba `entry_points` (groupe numba_extensions).
+#
+# Au tout premier jit, numba scanne les entry points de TOUS les paquets
+# installes (importlib.metadata.entry_points) pour decouvrir d'eventuelles
+# extensions. Mesure : ~0.2 s solo mais ~3 s a 56 rangs/noeud (contention I/O
+# NFS sur ~300 dist-info) -> ce cout gonfle l'init du rang le plus lent, sur
+# lequel tous les autres attendent au 1er collectif MPI. Aucune extension
+# `numba_extensions` n'etant enregistree, le scan ne trouve jamais rien : on
+# marque l'init deja faite AVANT le 1er jit -> init_all() devient un no-op.
+# Reactivable avec MANAPY_NUMBA_ENTRYPOINTS=1.
+# =============================================================================
+_ENTRYPOINTS_TUNED = False
+
+
+def _skip_numba_entrypoints():
+  global _ENTRYPOINTS_TUNED
+  if _ENTRYPOINTS_TUNED:
+    return
+  _ENTRYPOINTS_TUNED = True
+  if os.environ.get("MANAPY_NUMBA_ENTRYPOINTS", "0") == "1":
+    return
+  try:
+    import numba.core.entrypoints as _ep
+    _ep._already_initialized = True
+  except Exception:
+    pass
+
+
+# =============================================================================
+# Warmup JIT : init one-time numba/LLVM du process, payee en parallele.
+#
+# Le premier numba.jit d'un process paie toute l'init LLVM/typing (~0.7 s solo,
+# ~14 s a 56 rangs/noeud). Sans warmup, cette init se paie DANS le verrou de la
+# 1ere fonction compilee (le rang qui tient le slot la paie pendant que les
+# autres attendent, puis eux la paient a leur tour -> deux inits en serie).
+# Ici : compilation triviale cache=False (aucun verrou) -> tous les rangs
+# s'initialisent EN MEME TEMPS. (Une variante "node-serial" a ete mesuree PLUS
+# LENTE a 112 procs -> abandonnee.)
+# =============================================================================
+_JIT_WARMED = False
+
+
+def _warmup_jit():
+  global _JIT_WARMED
+  if _JIT_WARMED:
+    return
+  _JIT_WARMED = True
+
+  def _warm(x):
+    return x + 1
+
+  numba.jit("int64(int64)", nopython=True, cache=False)(_warm)
+
+
+# =============================================================================
+# Strategie de synchronisation de la compilation MPI (variable MANAPY_COMPILE_SYNC).
+#
+# En MPI, tous les rangs compilent les memes fonctions en meme temps et numba
+# (cache=True) ecrit le resultat sur disque ; sans precaution ils se marchent
+# dessus sur le fichier cache au 1er run.
+#   "mpi_shared_lock" (defaut) : verrou MPI shared-memory par noeud. Le 1er rang
+#                du noeud qui reserve le slot compile ; les autres attendent puis
+#                lisent le cache. Strategie validee a l'echelle.
+#   "current" : barrieres MPI par fonction (rang 0 compile, barriere, les autres
+#                compilent, barriere). Historique, conserve pour le cas GPU+MPI.
 # =============================================================================
 COMPILE_SYNC = os.environ.get("MANAPY_COMPILE_SYNC", "mpi_shared_lock")
 
 
 def get_function_hash(func):
   """Compute hash of function's source code to detect changes."""
-  # print(func)
   source = inspect.getsource(func).encode('utf-8')
   return hashlib.md5(source).hexdigest()
+
 
 def get_type(s: 'str'):
   """
@@ -72,6 +152,7 @@ def get_type(s: 'str'):
   else:
     return numba.types.Array(base_type, n_dim, 'C')
 
+
 def get_arg_types(func):
   arg_types = []
   for param in inspect.signature(func).parameters.values():
@@ -88,8 +169,12 @@ def get_arg_types(func):
 
 def _compile_numba(backend: str, func, signature, parallel=False, nogil=False):
   if backend == "numba":
-    return numba.jit(signature, nopython=True, fastmath=False, cache=True, parallel=parallel, nogil=nogil)(func)
+    # Sauvegarde du cache disque desactivable pour diagnostic (MANAPY_NUMBA_CACHE=0)
+    # -> chaque rang recompile en memoire (pas de load), revele le cout memoire brut.
+    use_cache = os.environ.get("MANAPY_NUMBA_CACHE", "1") != "0"
+    return numba.jit(signature, nopython=True, fastmath=False, cache=use_cache, parallel=parallel, nogil=nogil)(func)
   elif backend == "cuda":
+    from numba import cuda  # import paresseux : evite le scan CUDA sur noeud CPU
     return cuda.jit(signature, fastmath=True, device=True)(func)
   else:
     raise ValueError(f"Unsupported backend: {backend}")
@@ -102,30 +187,12 @@ def _local_compile(func, signature, backend, parallel, nogil, current_hash):
   return compiled_func
 
 
-def _compile_lock_dir():
-  lock_dir = os.environ.get("MANAPY_COMPILE_LOCK_DIR")
-  if lock_dir is None:
-    lock_dir = os.path.join(tempfile.gettempdir(), "manapy_compile_locks")
-  os.makedirs(lock_dir, exist_ok=True)
-  return lock_dir
-
-
-def _compile_lock_path(func):
-  name = f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}"
-  safe_name = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
-  return os.path.join(_compile_lock_dir(), safe_name + ".lock")
-
-
-def _wait_for_compile_lock(lock_path):
-  timeout = float(os.environ.get("MANAPY_COMPILE_LOCK_TIMEOUT", "600"))
-  poll = float(os.environ.get("MANAPY_COMPILE_LOCK_POLL", "0.05"))
-  start = time.monotonic()
-  while os.path.exists(lock_path):
-    if time.monotonic() - start > timeout:
-      raise TimeoutError(f"Timed out waiting for numba compile lock: {lock_path}")
-    time.sleep(poll)
-
-
+# -----------------------------------------------------------------------------
+# Strategie "mpi_shared_lock" : lock MPI shared-memory par noeud (defaut).
+# Un tableau de verrous en memoire partagee du noeud ; chaque fonction est
+# hachee vers un slot. Le 1er rang qui reserve le slot compile, les autres
+# attendent la liberation puis lisent le cache.
+# -----------------------------------------------------------------------------
 _MPI_SHARED_LOCK_STATE = None
 
 
@@ -203,8 +270,20 @@ def _mpi_shared_lock_release(slot):
     win.Unlock(0)
 
 
+def _sync_mpi_shared_lock(func, signature, backend, parallel, nogil, current_hash):
+  slot = _mpi_shared_lock_slot(func)
+  if _mpi_shared_lock_try_claim(slot):
+    try:
+      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
+    finally:
+      _mpi_shared_lock_release(slot)
+
+  _mpi_shared_lock_wait(slot)
+  return _local_compile(func, signature, backend, parallel, nogil, current_hash)
+
+
 # -----------------------------------------------------------------------------
-# Stratégie "current" : barrières MPI par fonction (comportement historique).
+# Strategie "current" : barrieres MPI par fonction (historique, cas GPU+MPI).
 # -----------------------------------------------------------------------------
 def _sync_current(func, signature, backend, parallel, nogil, current_hash):
   comm = MPI.COMM_WORLD
@@ -221,83 +300,18 @@ def _sync_current(func, signature, backend, parallel, nogil, current_hash):
   return compiled_func
 
 
-# -----------------------------------------------------------------------------
-# Stratégie "per_node" (option 4) : un compilateur par nœud.
-# Sous-communicateur partagé (COMM_TYPE_SHARED) créé une seule fois et réutilisé.
-# -----------------------------------------------------------------------------
-_NODE_COMM = None
-
-def _node_comm():
-  global _NODE_COMM
-  if _NODE_COMM is None:
-    _NODE_COMM = MPI.COMM_WORLD.Split_type(MPI.COMM_TYPE_SHARED)
-  return _NODE_COMM
-
-def _sync_per_node(func, signature, backend, parallel, nogil, current_hash):
-  if MPI.COMM_WORLD.Get_size() == 1:
-    return _local_compile(func, signature, backend, parallel, nogil, current_hash)
-  ncomm = _node_comm()
-  if ncomm.Get_rank() == 0:
-    compiled_func = _local_compile(func, signature, backend, parallel, nogil, current_hash)
-    ncomm.Barrier()
-  else:
-    ncomm.Barrier()
-    compiled_func = _local_compile(func, signature, backend, parallel, nogil, current_hash)
-  ncomm.Barrier()
-  return compiled_func
-
-
-# -----------------------------------------------------------------------------
-# Strategie "claim" : premier arrive, premier servi par fonction.
-# -----------------------------------------------------------------------------
-def _sync_claim(func, signature, backend, parallel, nogil, current_hash):
-  lock_path = _compile_lock_path(func)
-  while True:
-    try:
-      fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-      _wait_for_compile_lock(lock_path)
-      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
-
-    try:
-      with os.fdopen(fd, "w") as f:
-        comm = MPI.COMM_WORLD
-        f.write(f"rank={comm.Get_rank()} pid={os.getpid()}\n")
-      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
-    finally:
-      try:
-        os.unlink(lock_path)
-      except FileNotFoundError:
-        pass
-
-# -----------------------------------------------------------------------------
-# Strategie "mpi_shared_lock" : lock MPI shared-memory par noeud.
-# -----------------------------------------------------------------------------
-def _sync_mpi_shared_lock(func, signature, backend, parallel, nogil, current_hash):
-  slot = _mpi_shared_lock_slot(func)
-  if _mpi_shared_lock_try_claim(slot):
-    try:
-      return _local_compile(func, signature, backend, parallel, nogil, current_hash)
-    finally:
-      _mpi_shared_lock_release(slot)
-
-  _mpi_shared_lock_wait(slot)
-  return _local_compile(func, signature, backend, parallel, nogil, current_hash)
-
-
-# -----------------------------------------------------------------------------
 _STRATEGIES = {
-  "current": _sync_current,
-  "per_node": _sync_per_node,
-  "claim": _sync_claim,
   "mpi_shared_lock": _sync_mpi_shared_lock,
+  "current": _sync_current,
 }
 
 
 def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=False):
-  # return func
   if backend == "python":
     return func
+  _ensure_local_cache_dir()
+  _skip_numba_entrypoints()
+  _warmup_jit()
 
   # Store hash of function source to detect changes
   current_hash = get_function_hash(func)
@@ -305,7 +319,6 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=Fa
 
   # If function is compiled and source hasn't changed, return cached version
   if getattr(func, 'signatures', None) and current_hash == cached_hash:
-    # print("already compiled =>", func)
     return func
 
   # Parse arguments if not cached or source changed
@@ -315,7 +328,6 @@ def compile(func, backend="numba", parallel=False, skip_on_error=False, nogil=Fa
     except (ValueError, TypeError):
       return func  # Return uncompiled function on error
   else:
-    # print("Getting signature =>", func)
     signature = get_arg_types(func)
 
   # Dispatch to the selected synchronization strategy
@@ -336,6 +348,9 @@ def compile_no_cache(func, backend="numba", parallel=False, nogil=False):
   """
   if backend == "python":
     return func
+  _ensure_local_cache_dir()
+  _skip_numba_entrypoints()
+  _warmup_jit()
   current_hash = get_function_hash(func)
   if getattr(func, 'signatures', None) and current_hash == getattr(func, '_source_hash', None):
     return func
@@ -346,10 +361,8 @@ def compile_no_cache(func, backend="numba", parallel=False, nogil=False):
   return compiled
 
 
-"""
-Compile a function once it called the first time (not immediately).
-"""
 class FunObj:
+  """Compile a function the first time it is called (not immediately)."""
   def __init__(self, func, *a, **kw):
     self.target_func = func
     self.func = self._first_call

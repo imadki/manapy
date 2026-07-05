@@ -1,4 +1,5 @@
 import os
+
 from manapy.domain.LocalDomainClass import LocalDomain
 from manapy.domain.MeshClass import Mesh
 from manapy.domain.PartitioningClass import Partitioning
@@ -9,6 +10,8 @@ from manapy.domain import VTKWriter
 import manapy.backends.types as types
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
 import manapy.domain.domain_compute as compute
+from manapy.backends.debug import log_step
+
 
 class Domain:
   PartitioningClass = Partitioning
@@ -230,6 +233,7 @@ class Domain:
 
   @staticmethod
   def _print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh=None):
+    print(f"====> mesh: {mesh}", flush=True)
     print("====> Run info <=====", flush=True)
     print(f"  MPI ranks: {size}", flush=True)
     print(f"  Dimension: {dim}D", flush=True)
@@ -253,11 +257,13 @@ class Domain:
     # Compile all domain kernels here, once, uniformly on every rank (before the
     # rank-0-only partitioning step). Keeps zero compilation at import while
     # staying barrier-safe.
+    log_step.log("domain: compute.setup")
     compute.setup(dim)
+    log_step.out("domain: compute.setup")
 
     if size == 1:
       if recreate == True or not Domain._all_local_mesh_files_exist(size):
-        mesh = Mesh(mesh_path, dim, show_info=False)
+        mesh = Mesh(mesh_path, dim, show_info=True)
         Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
         partitioner = Partitioning(mesh)
         local_domain_data = partitioner.create_sub_domains()
@@ -274,11 +280,13 @@ class Domain:
           print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
           raise
     else:
+      log_step.log("domain: rank0 partition/check + barrier")
       if rank == 0:
         try:
           if recreate == True or not Domain._all_local_mesh_files_exist(size):
+            print("here====>")
             Domain._delete_local_domain_folder(size)
-            mesh = Mesh(mesh_path, dim, show_info=False)
+            mesh = Mesh(mesh_path, dim, show_info=True)
             Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
             partitioner = Partitioning(mesh)
             partitioner.set_part_vert(size, partitioning_method)
@@ -293,18 +301,28 @@ class Domain:
           comm.Abort(1)
 
       comm.Barrier()
+      log_step.out("domain: rank0 partition/check + barrier")
 
 
       try:
+        log_step.log("domain: load hdf5")
         local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
+        log_step.out("domain: load hdf5")
+        log_step.log("domain: LocalDomain build")
         local_domain = LocalDomain(local_domain_struct, rank, size, backend=backend)
+        log_step.out("domain: LocalDomain build")
       except Exception as e:
         import traceback
         print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
         comm.Abort(1)
 
+      log_step.log("domain: final barrier")
       comm.Barrier()
-      return Domain(local_domain, backend=backend)
+      log_step.out("domain: final barrier")
+      log_step.log("domain: Domain wrap")
+      d = Domain(local_domain, backend=backend)
+      log_step.out("domain: Domain wrap")
+      return d
 
 
   def save_on_node_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
@@ -312,3 +330,4 @@ class Domain:
 
   def save_on_cell_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
     self.vtk_writer.save_cell_multi(variables, values, miter, niter, time, dt)
+
