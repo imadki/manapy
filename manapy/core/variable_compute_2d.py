@@ -149,6 +149,49 @@ def barthlimiter_2d(start: 'int', stride: 'int', w_c: 'float[:]', w_ghost: 'floa
       psi[i] = min(psi[i], psi_ij)
 
 
+def vanalbadalimiter_2d(start: 'int', stride: 'int', w_c: 'float[:]', w_ghost: 'float[:]',
+                        w_halo: 'float[:]', w_x: 'float[:]', w_y: 'float[:]', w_z: 'float[:]',
+                        psi: 'float[:]', face_cellid: 'int[:,:]', cell_faceid: 'int[:,:]',
+                        face_name: 'int[:]', face_haloid: 'int[:]', cell_center: 'float[:,:]',
+                        face_center: 'float[:,:]'):
+  # Smooth (van Albada / Venkatakrishnan) slope limiter: same neighbourhood-min/max
+  # structure as Barth-Jespersen, but the per-face factor is the smooth function
+  # phi(y) = (y^2 + 2y)/(y^2 + y + 2) of the Barth argument y = (w_max-w_c)/delta
+  # instead of min(1, y). phi(y) ~ y for small y and -> 1 for large y, so it stops
+  # "clipping" smooth extrema (Barth's min(1,y) kills the 2nd order there) -> much
+  # smoother convergence, while staying bounded (<= 1). Drop-in for barthlimiter_2d
+  # (identical signature); selected by Variable(limiter='vanalbada').
+  val = 1.0
+  for i in range(start, w_c.shape[0], stride):
+    psi[i] = val
+    w_max = w_c[i]
+    w_min = w_c[i]
+    for j in range(cell_faceid[i][-1]):
+      face = cell_faceid[i][j]
+      if face_name[face] == 0 or face_name[face] > 10:
+        w_max = max(w_max, w_c[face_cellid[face][0]], w_c[face_cellid[face][1]])
+        w_min = min(w_min, w_c[face_cellid[face][0]], w_c[face_cellid[face][1]])
+      elif face_name[face] == 1 or face_name[face] == 2 or face_name[face] == 3 or face_name[face] == 4:
+        w_max = max(w_max, w_c[face_cellid[face][0]], w_ghost[face])
+        w_min = min(w_min, w_c[face_cellid[face][0]], w_ghost[face])
+      else:
+        w_max = max(w_max, w_c[face_cellid[face][0]], w_halo[face_haloid[face]])
+        w_min = min(w_min, w_c[face_cellid[face][0]], w_halo[face_haloid[face]])
+    for j in range(cell_faceid[i][-1]):
+      face = cell_faceid[i][j]
+      r_xyz1 = face_center[face][0] - cell_center[i][0]
+      r_xyz2 = face_center[face][1] - cell_center[i][1]
+      delta2 = w_x[i] * r_xyz1 + w_y[i] * r_xyz2
+      psi_ij = 1.0
+      if abs(delta2) >= 1e-8:
+        if delta2 > 0.:
+          y = (w_max - w_c[i]) / delta2
+        else:
+          y = (w_min - w_c[i]) / delta2
+        psi_ij = (y * y + 2.0 * y) / (y * y + y + 2.0)
+      psi[i] = min(psi[i], psi_ij)
+
+
 def centertovertex_2d(start: 'int', stride: 'int', w_c: 'float[:]', w_ghost: 'float[:]',
                       w_halo: 'float[:]', w_haloghost: 'float[:]', cell_center: 'float[:,:]',
                       halo_centvol: 'float[:,:]', node_cellid: 'int[:,:]', ghost_info_flt: 'float[:, :]',
