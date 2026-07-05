@@ -18,10 +18,12 @@ gradcellx/y/z, psi). Le bloc 2D leverait NotImplementedError.
 """
 import os
 import numpy as np
-from numba import cuda
 from mpi4py import MPI
 
-from manapy.backends.gpu import GPUArray
+# numba.cuda et manapy.backends.gpu sont importes PARESSEUSEMENT dans les methodes
+# GPU ci-dessous. Sinon, un simple `import manapy.domain` (chemin CPU) tire toute
+# la pile numba.cuda (~0.6 s solo, bien plus a 112 rangs sur NFS) alors qu'elle
+# n'est jamais utilisee. GPUNeighborCommunication n'est instancie qu'en backend GPU.
 
 
 def _gpu_aware_enabled():
@@ -31,6 +33,7 @@ def _gpu_aware_enabled():
 
 
 def _make_gather_kernel(gpu):
+  from numba import cuda
   def kernel_define_halosend(w_c: 'float[:]', w_halosend: 'float[:]', indsend: 'int[:]'):
     start = cuda.grid(1)
     stride = cuda.gridsize(1)
@@ -55,6 +58,7 @@ class GPUNeighborCommunication:
     self._counts = None
 
     if self._active and self._gpu_aware:
+      from numba import cuda
       self._gather = _make_gather_kernel(gpu)
       self._d_send_indices = cuda.to_device(np.ascontiguousarray(base.send_indices).astype(np.int32))
       send_counts = np.asarray(base.send_counts, dtype=np.int32)
@@ -64,6 +68,7 @@ class GPUNeighborCommunication:
       self._counts = (send_counts, send_displs, recv_counts, recv_displs)
 
   def _send_buffer(self, nsend, dtype):
+    from numba import cuda
     key = np.dtype(dtype).str
     buf = self._send_buf.get(key)
     if buf is None or buf.size != nsend:
@@ -82,6 +87,7 @@ class GPUNeighborCommunication:
     if not self._gpu_aware:
       return self._exchange_host_staged(data, recv_buffer)
 
+    from manapy.backends.gpu import GPUArray
     d_data = GPUArray.to_device(data)
     d_recv = GPUArray.to_device(recv_buffer)
 
@@ -108,6 +114,8 @@ class GPUNeighborCommunication:
 
   def _exchange_host_staged(self, data, recv_buffer):
     """device->hote, MPI sur hote (comm de base), hote->device. Portable."""
+    from numba import cuda
+    from manapy.backends.gpu import GPUArray
     d_data = GPUArray.to_device(data)
     stream = self.gpu.stream
     h_data = d_data.copy_to_host(stream=stream)

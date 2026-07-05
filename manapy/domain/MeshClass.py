@@ -11,8 +11,8 @@ class Mesh:
     cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid = self._create_cells(cells_dict, dim)
     phy_faces, phy_faces_name = self._create_phy_faces(cells_dict, cell_data_dict, dim)
     nb_faces = self._compute_nb_faces(cells_dict, len(phy_faces), dim)
-    if show_info:
-      print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
+    #if show_info:
+    print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
 
     self.mesh = mesh
     self.cells = cells

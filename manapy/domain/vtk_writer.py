@@ -5,6 +5,8 @@ import meshio
 from mpi4py import MPI
 import manapy.backends.types as types
 import shutil
+import threading
+import time
 
 class VTKWriter:
     def __init__(self, nodes, dim, cells, cell_type, comm=MPI.COMM_WORLD, vtk_precision="Float64"):
@@ -22,12 +24,27 @@ class VTKWriter:
 
     @staticmethod
     def _get_vtk_path(rank):
+        # Supprimer les milliers de vtk du run precedent sur NFS prend ~10 s et
+        # etait paye DANS Domain.__init__ a chaque run (compte dans "Time to
+        # create the domain") : on renomme (une seule op metadata) et on
+        # supprime dans un thread d'arriere-plan. Les restes d'un run tue
+        # (vtk_results.old.*) sont balayes au passage.
         vtkpath = "vtk_results"
         if rank == 0:
+            stale = [d for d in os.listdir('.') if d.startswith(vtkpath + ".old.")]
             if os.path.exists(vtkpath):
-                shutil.rmtree(vtkpath)
+                old = f"{vtkpath}.old.{os.getpid()}_{int(time.time() * 1e6)}"
+                os.rename(vtkpath, old)
+                stale.append(old)
+            if stale:
+                threading.Thread(target=VTKWriter._rmtree_many, args=(stale,), daemon=True).start()
             os.mkdir(vtkpath)
         return vtkpath
+
+    @staticmethod
+    def _rmtree_many(paths):
+        for p in paths:
+            shutil.rmtree(p, ignore_errors=True)
 
     @staticmethod
     def _get_cells_tuple(dim, cells, cells_type):

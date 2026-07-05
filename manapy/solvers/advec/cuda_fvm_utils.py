@@ -41,7 +41,9 @@ def get_kernel_explicitscheme_convective_2d():
              face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
              face_name: 'int[:]', d_innerfaces: 'int[:]', d_halofaces: 'int[:]',
              d_boundaryfaces: 'int[:]', d_periodicboundaryfaces: 'int[:]',
-             cell_shift: 'float[:,:]', order: 'int'):
+             cell_shift: 'float[:,:]', order: 'int', scheme: 'int'):
+    # `scheme` is accepted for signature parity with the CPU kernel; the GPU path
+    # currently implements upwind only (see device_compute_upwind_flux).
     start = cuda.grid(1)
     stride = cuda.gridsize(1)
     r_l = cuda.local.array(2, cell_center.dtype)

@@ -1,47 +1,31 @@
-from manapy.backends.compile_fun import compile, compile_no_cache
+from manapy.backends.compile_fun import compile
 import numpy as np
 
-# Numerical-flux bodies. One is selected (compiled + bound to the module global
-# `_compute_flux`) by setup(dim, scheme); the convective kernel calls that single
-# global, so the chosen flux is inlined with no per-face branch. Add a scheme by
-# writing a body here and registering it in _FLUX_BODIES.
-def _upwind_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
-                normal: 'float[:]', flux_w: 'float[:]'):
+# Single numerical-flux body. The scheme is a runtime *integer* argument, so ONE
+# compiled function serves every scheme and numba can cache it (stable source +
+# signature) — unlike the old design that rebound a per-scheme global and thus
+# had to disable the cache. `scheme` is loop-invariant, so the branch is hoisted
+# out of the per-face loop (no measurable cost for linear advection).
+SCHEME_IDS = {"upwind": 0, "centered": 1, "rusanov": 2, "lax_friedrichs": 2}
+
+
+def _numerical_flux_body(scheme: 'int', w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float',
+                         w_face: 'float', normal: 'float[:]', flux_w: 'float[:]'):
   sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
-  if sign >= 0:
-    sol = w_l
-  else:
-    sol = w_r
-  flux_w[0] = sign * sol
+  if scheme == 0:      # upwind
+    if sign >= 0:
+      flux_w[0] = sign * w_l
+    else:
+      flux_w[0] = sign * w_r
+  elif scheme == 1:    # centered
+    flux_w[0] = sign * 0.5 * (w_l + w_r)
+  else:                # rusanov / local Lax-Friedrichs (== upwind for linear advection)
+    flux_w[0] = 0.5 * sign * (w_l + w_r) - 0.5 * abs(sign) * (w_r - w_l)
 
 
-def _centered_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
-                  normal: 'float[:]', flux_w: 'float[:]'):
-  sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
-  flux_w[0] = sign * 0.5 * (w_l + w_r)
-
-
-def _rusanov_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
-                 normal: 'float[:]', flux_w: 'float[:]'):
-  # Rusanov / local Lax-Friedrichs. For linear scalar advection this equals
-  # upwind (the dissipation |sign| matches the upwind jump exactly).
-  sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
-  flux_w[0] = 0.5 * sign * (w_l + w_r) - 0.5 * abs(sign) * (w_r - w_l)
-
-
-def _lax_friedrichs_flux(w_l: 'float', w_r: 'float', u_face: 'float', v_face: 'float', w_face: 'float',
-                        normal: 'float[:]', flux_w: 'float[:]'):
-  # Lax-Friedrichs (local). For linear scalar advection this matches Rusanov/upwind.
-  sign = u_face * normal[0] + v_face * normal[1] + w_face * normal[2]
-  flux_w[0] = 0.5 * sign * (w_l + w_r) - 0.5 * abs(sign) * (w_r - w_l)
-
-
-_FLUX_BODIES = {"upwind": _upwind_flux, "centered": _centered_flux,
-              "rusanov": _rusanov_flux, "lax_friedrichs": _lax_friedrichs_flux}
-
-# Bound by setup(); the kernels reference this global.
-_compute_flux = None
-_current_scheme = None
+# Bound by setup() to the compiled flux (never rebound to different code, so the
+# convective kernels that call it stay cache-correct).
+_numerical_flux = None
 
 
 def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: 'float[:]', w_halo: 'float[:]',
@@ -53,7 +37,8 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                  face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]',
                                  face_name: 'int[:]', d_innerfaces: 'int[:]', d_halofaces: 'int[:]',
                                  d_boundaryfaces: 'int[:]',
-                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
+                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int',
+                                 scheme: 'int'):
 
   center_left = np.zeros(2)
   center_right = np.zeros(2)
@@ -90,7 +75,7 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
     w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1])
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
 
     rez_w[face_cellid[i][0]] -= flux_w[0]
     rez_w[face_cellid[i][1]] += flux_w[0]
@@ -128,7 +113,7 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
     w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1])
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
     rez_w[face_cellid[i][0]] -= flux_w[0]
 
   for i in d_halofaces:
@@ -156,7 +141,7 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
     w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1])
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
     rez_w[face_cellid[i][0]] -= flux_w[0]
 
   for i in d_boundaryfaces:
@@ -177,7 +162,7 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1])
     w_r = w_r
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
     rez_w[face_cellid[i][0]] -= flux_w[0]
 
 
@@ -190,7 +175,8 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
                                  cell_center: 'float[:,:]', face_center: 'float[:,:]', halo_centvol: 'float[:,:]',
                                  face_cellid: 'int[:,:]', face_normal: 'float[:,:]', face_haloid: 'int[:]', face_name: 'int[:]',
                                  d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
-                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int'):
+                                 d_periodicboundaryfaces: 'int[:]', cell_shift: 'float[:,:]', order: 'int',
+                                 scheme: 'int'):
   center_left = np.zeros(3)
   center_right = np.zeros(3)
   r_l = np.zeros(3)
@@ -230,7 +216,7 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1] + w_z_left * r_l[2])
     w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1] + w_z_right * r_r[2])
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
 
     rez_w[face_cellid[i][0]] -= flux_w[0]
     rez_w[face_cellid[i][1]] += flux_w[0]
@@ -282,7 +268,7 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1] + w_z_left * r_l[2])
     w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1] + w_z_right * r_r[2])
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
     rez_w[face_cellid[i][0]] -= flux_w[0]
 
   for i in d_halofaces:
@@ -314,7 +300,7 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1] + w_z_left * r_l[2])
     w_r = w_r + (order - 1) * psi_right * (w_x_right * r_r[0] + w_y_right * r_r[1] + w_z_right * r_r[2])
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
     rez_w[face_cellid[i][0]] -= flux_w[0]
 
   for i in d_boundaryfaces:
@@ -337,7 +323,7 @@ def _explicitscheme_convective_3d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
     w_l = w_l + (order - 1) * psi_left * (w_x_left * r_l[0] + w_y_left * r_l[1] + w_z_left * r_l[2])
     w_r = w_r
 
-    _compute_flux(w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
+    _numerical_flux(scheme, w_l, w_r, u_face[i], v_face[i], w_face[i], normal, flux_w)
     rez_w[face_cellid[i][0]] -= flux_w[0]
 
 
@@ -384,22 +370,22 @@ def setup(dim, scheme="upwind"):
     update_new_value = compile(_update_new_value)
     _agnostic_done = True
 
-  # Bind the chosen numerical flux to the global the kernels call, and force the
-  # convective kernels (which inline it) to be recompiled for the new scheme.
-  global _compute_flux, _current_scheme
-  if scheme not in _FLUX_BODIES:
-    raise ValueError(f"unknown scheme '{scheme}'; choose from {list(_FLUX_BODIES)}")
-  if scheme != _current_scheme:
-    _compute_flux = compile_no_cache(_FLUX_BODIES[scheme])
-    _current_scheme = scheme
-    _dims_done.clear()
+  if scheme not in SCHEME_IDS:
+    raise ValueError(f"unknown scheme '{scheme}'; choose from {list(SCHEME_IDS)}")
+
+  # Compile the single flux once (cache=True) and bind it to the global the
+  # convective kernels call. It is never rebound to different code, so the
+  # convective cache stays valid across runs (the scheme is a runtime argument).
+  global _numerical_flux
+  if _numerical_flux is None:
+    _numerical_flux = compile(_numerical_flux_body)
 
   if dim not in _dims_done:
     global explicitscheme_convective_2d, explicitscheme_convective_3d
     if dim == 2:
-      explicitscheme_convective_2d = compile_no_cache(_explicitscheme_convective_2d)
+      explicitscheme_convective_2d = compile(_explicitscheme_convective_2d)
     elif dim == 3:
-      explicitscheme_convective_3d = compile_no_cache(_explicitscheme_convective_3d)
+      explicitscheme_convective_3d = compile(_explicitscheme_convective_3d)
     else:
       raise ValueError(f"Unsupported dimension: {dim}")
     _dims_done.add(dim)
