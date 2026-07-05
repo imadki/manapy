@@ -85,8 +85,8 @@ class EulerSolver:
       raise ValueError("3D EulerSolver requires the z-momentum variable rhow")
     self.comm = self.domain.halo_comm.graph_comm
 
-    if self.domain.backend.name == "gpu":
-      raise NotImplementedError("EulerSolver has no GPU backend yet (CPU/numba only)")
+    # GPU (CUDA) backend is wired below, after the CPU kernels are bound, for the
+    # euler3d benchmark path only (3D rusanov order-1 Neumann, constant gamma).
 
     # Order matters for the halo exchange loop only; every var carries a cell field.
     if self.dim == 2:
@@ -194,6 +194,39 @@ class EulerSolver:
                "NonReflecting": "ghost_value_NonReflecting3D"}.get(bc, f"ghost_value_{bc}")
       self._ghost_value = getattr(fvm, gname)
 
+    # ---- GPU (CUDA) backend: swap in the CUDA kernels for the euler3d benchmark
+    # path (3D rusanov order-1 Neumann, constant gamma, non-viscous). Signatures
+    # match the CPU kernels so the call sites in this class are unchanged.
+    if self.domain.backend.name == "gpu":
+      if not (self.dim == 3 and scheme == "rusanov" and self.order == 1
+              and self.bc == "Neumann" and not self.variable_gamma):
+        raise NotImplementedError(
+          "EulerSolver GPU port covers 3D rusanov order-1 Neumann (constant gamma) only")
+      from manapy.solvers.euler.cuda_fvm_utils3d import (
+        get_kernel_explicitscheme_euler_3d_rusanov,
+        get_kernel_time_step_euler_3d,
+        get_kernel_update_euler_3d_fvc,
+        get_kernel_ghost_value_Neumann3D,
+      )
+      self._time_step = get_kernel_time_step_euler_3d()
+      self._explicitscheme = get_kernel_explicitscheme_euler_3d_rusanov()
+      self._update = get_kernel_update_euler_3d_fvc()
+      self._ghost_value = get_kernel_ghost_value_Neumann3D()
+      self._scheme_tail = ()
+      # face name codes as int32 for the CUDA kernels
+      self.face_name = np.asarray(self.domain.faces.name, dtype=np.int32)
+      # The residual accumulators are SHARED between the explicit-scheme kernel
+      # (writes) and the update kernel (reads). Each kernel factory has its own
+      # to_device cache, so a host array would be copied to a *different* device
+      # array per kernel. Put them on the device once (GPUArray) so both kernels
+      # operate on the same buffer.
+      be = self.domain.backend
+      self.rez_rho = be.to_device(self.rez_rho)
+      self.rez_rhou = be.to_device(self.rez_rhou)
+      self.rez_rhov = be.to_device(self.rez_rhov)
+      self.rez_rhow = be.to_device(self.rez_rhow)
+      self.rez_rhoE = be.to_device(self.rez_rhoE)
+
     # Free-stream reference state for the characteristic far-field BC.
     self.rho_inf = float(rho_inf)
     self.u_inf = float(u_inf)
@@ -294,7 +327,7 @@ class EulerSolver:
                       self.rhow.cell, self.cfl, self.domain.faces.normal,
                       self.domain.faces.mesure, self.domain.cells.volume,
                       self.domain.cells.faceid, self.gamma, self.dt_c)
-    d_t = self.dt_c.min()
+    d_t = self.dt_c.min()   # on GPU the time_step wrapper copies the device result back into dt_c
     if self.viscous:
       # primitives are also reused by compute_viscous_fluxes() this iteration
       self._compute_primitives()
