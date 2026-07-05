@@ -40,6 +40,33 @@ class Variable:
   # Cache of compiled kernels per dimension. Mirrors the old `compile_func`:
   # only the dimension actually used is ever compiled, and only once.
   _compiled_funcs = {}
+  # Available slope limiters for the 2nd-order (MUSCL) gradient reconstruction.
+  # 'barth'  : Barth-Jespersen min(1, y) (default; == minmod in this multi-D
+  #            neighbourhood-min/max framework, where the argument y is always >=0).
+  # 'vanalbada'/'venkatakrishnan': smooth phi(y)=(y^2+2y)/(y^2+y+2) -- less clipping
+  #            of smooth extrema, smoother convergence. Same kernel signature.
+  _LIMITER_KERNELS = {'barth': 'barthlimiter', 'vanalbada': 'vanalbadalimiter',
+                      'venkatakrishnan': 'vanalbadalimiter'}
+  _limiter_cache = {}
+
+  @classmethod
+  def _get_limiter_kernel(cls, dim, backend, limiter):
+    """Compile (once, lazily) and return the chosen slope-limiter kernel. Only the
+    limiter actually requested is compiled, so the default 'barth' path pays nothing
+    extra (it reuses the kernel already in _get_compiled_funcs)."""
+    name = str(limiter).lower()
+    if name not in cls._LIMITER_KERNELS:
+      raise ValueError(f"unknown limiter '{limiter}'; choose from "
+                       f"{sorted(cls._LIMITER_KERNELS)}")
+    key = (backend.name, dim, name)
+    if key not in cls._limiter_cache:
+      if dim == 2:
+        import manapy.core.variable_compute_2d as K
+      else:
+        import manapy.core.variable_compute_3d as K
+      kern = getattr(K, f"{cls._LIMITER_KERNELS[name]}_{dim}d")
+      cls._limiter_cache[key] = backend.make_gridstride_kernel(kern, size_arg=0)
+    return cls._limiter_cache[key]
 
   @classmethod
   def _get_compiled_funcs(cls, dim, backend):
@@ -73,10 +100,15 @@ class Variable:
     cls._compiled_funcs[key] = funcs
     return funcs
 
-  def __init__(self, domain:Domain, BC:dict=None, values_dict:dict=None, name:str=None):
+  def __init__(self, domain:Domain, BC:dict=None, values_dict:dict=None, name:str=None,
+               limiter:str='barth'):
     if domain is None:
       raise ValueError("domain must be given")
 
+    # None / '' / 'none' all mean the default Barth limiter.
+    self._limiter = str(limiter).lower() if limiter else 'barth'
+    if self._limiter == 'none':
+      self._limiter = 'barth'
     self._domain = domain
     self.backend = domain.backend
     self._values = values_dict
@@ -165,7 +197,12 @@ class Variable:
     self._func_interp   = funcs['interp']
     self._face_gradient = funcs['face_gradient']
     self._cell_gradient = funcs['cell_gradient']
-    self._barthlimiter  = funcs['barthlimiter']
+    # default 'barth' reuses the kernel already compiled above; any other limiter
+    # is compiled lazily on first use (no extra compile cost for the default path).
+    if self._limiter == 'barth':
+      self._barthlimiter = funcs['barthlimiter']
+    else:
+      self._barthlimiter = Variable._get_limiter_kernel(self._dim, self.backend, self._limiter)
 
   def add_term(self, name):
     # Alloue dans la memoire du backend (device sous GPU, host sous CPU).

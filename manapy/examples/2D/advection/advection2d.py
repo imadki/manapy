@@ -5,7 +5,7 @@ from manapy.domain import Domain, Partitioning
 from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.solvers.advec.system import AdvectionSolver
 from manapy.core.Variable import Variable
-from manapy.backends.gpu import GPUBackend
+# from manapy.backends.gpu import GPUBackend
 
 
 COMM = MPI.COMM_WORLD
@@ -25,11 +25,11 @@ filename = "carre.msh"
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
 
-gpu = GPUBackend(float_precision="float64", int_precision="int32", cache=False)
-gpu.init_stream()
-gpu.set_config(free=True)
+# gpu = GPUBackend(float_precision="float64", int_precision="int32", cache=False)
+# gpu.init_stream()
+# gpu.set_config(free=True)
 
-backend=gpu
+# backend=gpu
 
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True, 
                               # backend=backend
@@ -67,7 +67,7 @@ values = {"in": Pinit,
           "out": 0.,
           }
 
-ne = Variable(domain=domain)
+ne = Variable(domain=domain, limiter='vanalbada')
 u = Variable(domain=domain)
 v = Variable(domain=domain)
 P = Variable(domain=domain)
@@ -92,9 +92,9 @@ while time < tfinal:
   u.face[:] = 2.
   v.face[:] = 0.
 
-  if backend == gpu:
-        gpu.assign(u.face, 2.0)
-        gpu.assign(v.face, 0.0)
+  # if backend == gpu:
+  #       gpu.assign(u.face, 2.0)
+  #       gpu.assign(v.face, 0.0)
 
   u.interpolate_facetocell()
   v.interpolate_facetocell()

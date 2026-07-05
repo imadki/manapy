@@ -87,14 +87,14 @@ class Mesh:
     return self._domain.dim
 
   # ----------------------------------------------------------- field factory
-  def field(self, name=None, init=None, bc=None):
+  def field(self, name=None, init=None, bc=None, limiter=None):
     """Create a Variable on this mesh.
 
     init : constant, callable f(x, y, z), or array → initial cell values.
     bc   : dict {patch: type | (type, value)} → boundary conditions.
     """
     types, values = _parse_bc(bc)
-    var = Variable(domain=self._domain, BC=types, values_dict=values, name=name)
+    var = Variable(domain=self._domain, BC=types, values_dict=values, name=name, limiter=limiter)
     _apply_init(var, self._domain, init)
     return var
 
