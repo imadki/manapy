@@ -82,12 +82,17 @@ class LinearSolver:
     # (cuda_ls_compute) instead of the numba CPU kernels (ls_compute). 2D only.
     self._gpu = getattr(self.domain.backend, "name", "cpu") == "gpu"
     if self._gpu:
-      if self.dim != 2:
-        raise NotImplementedError("LinearSolver GPU kernels are 2D-only for now")
-      import manapy.solvers.ls.cuda_ls_compute as gls
       from manapy.backends.gpu import GPUArray
-      self._gls = gls
       self._GPUArray = GPUArray
+      if scheme in self.fv_schemes:
+        # FV kernels are dimension-generic (work in 2D and 3D).
+        import manapy.solvers.ls.cuda_ls_fv as glsfv
+        self._glsfv = glsfv
+      else:
+        if self.dim != 2:
+          raise NotImplementedError("LinearSolver diamond GPU kernels are 2D-only for now")
+        import manapy.solvers.ls.cuda_ls_compute as gls
+        self._gls = gls
 
     # Backend
 
@@ -115,15 +120,25 @@ class LinearSolver:
     self.matrixinnerfaces = np.sort(matrixinnerfaces)
 
     if scheme in self.fv_schemes:
-      if self._gpu:
-        raise NotImplementedError("FV-like Laplacian assembly is CPU-only for now")
       self._compute_P_gradient = None
-      self._get_triplet = ls_fv.get_triplet_fv
-      self.dataSize = ls_fv.compute_fv_matrix_size(
-        self.matrixinnerfaces, self.domain.halofaces, self.var.dirichletfaces)
-      self._row = np.zeros(self.dataSize, dtype=np.int32)
-      self._col = np.zeros(self.dataSize, dtype=np.int32)
-      self._data = np.zeros(self.dataSize, dtype=FLOAT_TYPE)
+      # COO layout: 4 entries per inner face, 2 per halo face, 1 per dirichlet
+      # face (see cuda_ls_fv / ls_fv._compute_fv_matrix_size). Plain Python so it
+      # works whether the index arrays live on host (CPU) or device (GPU).
+      self.dataSize = int(4 * len(self.matrixinnerfaces)
+                          + 2 * len(self.domain.halofaces)
+                          + len(self.var.dirichletfaces))
+      if self._gpu:
+        self._get_triplet = self._glsfv.get_kernel_get_triplet_fv()
+        self._compute_P_gradient_fv_fn = self._glsfv.get_kernel_compute_P_gradient_fv()
+      else:
+        self._get_triplet = ls_fv.get_triplet_fv
+        self._compute_P_gradient_fv_fn = ls_fv.compute_P_gradient_fv
+      _be = self.domain.backend
+      self._row = _be.zeros(self.dataSize, np.int32)
+      self._col = _be.zeros(self.dataSize, np.int32)
+      self._data = _be.zeros(self.dataSize, FLOAT_TYPE)
+      if self._gpu:
+        self.matrixinnerfaces = _be.asarray(self.matrixinnerfaces, np.int32)
 
     elif scheme == "diamond":
       if self.dim == 2:
@@ -178,15 +193,21 @@ class LinearSolver:
 
     _glob = solver_name in [LinearSolver.SolverScipy, LinearSolver.SolverMumps,
                             LinearSolver.SolverGinkgo]
-    if self._gpu:
+    if scheme in self.fv_schemes:
+      if self._gpu:
+        self._get_rhs = (self._glsfv.get_kernel_get_rhs_fv_glob() if _glob
+                         else self._glsfv.get_kernel_get_rhs_fv_loc())
+        self._get_rhs_correction = (self._glsfv.get_kernel_get_rhs_fv_correction_glob() if _glob
+                                    else self._glsfv.get_kernel_get_rhs_fv_correction_loc())
+      else:
+        self._get_rhs = (ls_fv.get_rhs_fv_glob if _glob
+                         else ls_fv.get_rhs_fv_loc)
+        self._get_rhs_correction = (ls_fv.get_rhs_fv_correction_glob if _glob
+                                    else ls_fv.get_rhs_fv_correction_loc)
+    elif self._gpu:
       # 2D-only GPU RHS kernels (glob for centralized solvers, loc otherwise).
       self._get_rhs = (self._gls.get_kernel_get_rhs_glob_2d() if _glob
                        else self._gls.get_kernel_get_rhs_loc_2d())
-    elif scheme in self.fv_schemes:
-      self._get_rhs = (ls_fv.get_rhs_fv_glob if _glob
-                       else ls_fv.get_rhs_fv_loc)
-      self._get_rhs_correction = (ls_fv.get_rhs_fv_correction_glob if _glob
-                                  else ls_fv.get_rhs_fv_correction_loc)
     elif _glob:
       self._get_rhs = ls_diamond.get_rhs_glob_2d if self.dim == 2 else ls_diamond.get_rhs_glob_3d
     else:
@@ -283,7 +304,7 @@ class LinearSolver:
       self.var.update_halo_value()
       self.var.update_ghost_value()
       self.var.compute_cell_gradient()
-      ls_fv.compute_P_gradient_fv(
+      self._compute_P_gradient_fv_fn(
         self.var.cell, self.var.halo, self.domain.faces.cellid,
         self.domain.faces.name, self.domain.faces.normal, self.domain.faces.center,
         self.domain.faces.halofid, self.domain.cells.center,
@@ -313,7 +334,12 @@ class LinearSolver:
     self.var.compute_cell_gradient()
 
     size = self.globalsize if global_rhs else self.localsize
-    corr = np.zeros(size, dtype=FLOAT_TYPE)
+    # GPU: accumulate on a device buffer (the kernel does atomic adds), then copy
+    # to host because _update_rhs / MPI.reduce below operate on host arrays.
+    if self._gpu:
+      corr = self.domain.backend.zeros(size, FLOAT_TYPE)
+    else:
+      corr = np.zeros(size, dtype=FLOAT_TYPE)
     self._get_rhs_correction(
       self.domain.faces.cellid, self.domain.faces.halofid, self.domain.cells.volume,
       self.domain.cells.loctoglob, self.domain.faces.fv_corrx,
@@ -323,6 +349,8 @@ class LinearSolver:
       self.var.gradhalocellx, self.var.gradhalocelly, self.var.gradhalocellz,
       corr, self.matrixinnerfaces, self.domain.halofaces, self.var.dirichletfaces,
       self.domain.periodicboundaryfaces)
+    if self._gpu:
+      corr = self.domain.backend.to_host(corr)
     # "limited" blend: scale the explicit non-orthogonal correction by psi.
     if self.non_orthogonal_limiter != 1.0:
       corr *= self.non_orthogonal_limiter
