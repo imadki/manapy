@@ -57,6 +57,15 @@ class EulerSolver:
                Cs: float = 0.16,
                Cw: float = 0.5,
                Prt: float = 0.9,
+               rans: str = None,
+               rans_mode: str = "m2",
+               wall_boundaries: tuple = (),
+               k_inf: float = 1e-4,
+               omega_inf: float = 1.0,
+               bc_k: dict = None,
+               bc_omega: dict = None,
+               k_values: dict = None,
+               omega_values: dict = None,
                bc_vel: dict = None,
                bc_temp: dict = None,
                vel_values: dict = None,
@@ -226,6 +235,15 @@ class EulerSolver:
       self.rez_rhov = be.to_device(self.rez_rhov)
       self.rez_rhow = be.to_device(self.rez_rhow)
       self.rez_rhoE = be.to_device(self.rez_rhoE)
+      # Solver-owned per-face scratch/BC arrays passed to the kernels every step.
+      # On the GPU (Neumann) path ug/vg/wg are written only by the ghost kernel on
+      # the device, and face_name is read-only; keep all four resident on the device
+      # so to_device_list passes them through instead of re-uploading each step
+      # (was ~5 H2D copies/step -> 86% of GPU time; see bench/probe_gpu_uploads.py).
+      self.ug = be.to_device(self.ug)
+      self.vg = be.to_device(self.vg)
+      self.wg = be.to_device(self.wg)
+      self.face_name = be.to_device(self.face_name)
 
     # Free-stream reference state for the characteristic far-field BC.
     self.rho_inf = float(rho_inf)
@@ -242,6 +260,11 @@ class EulerSolver:
     # ---- Viscous (Navier-Stokes) extension -------------------------------
     if les and not viscous:
       raise ValueError("les=True requires viscous=True (the SGS model augments the viscous stress)")
+    if rans is not None and not viscous:
+      raise ValueError("rans requires viscous=True (the turbulence model augments the viscous stress)")
+    if les and rans is not None:
+      raise ValueError("les and rans are mutually exclusive (choose SGS or RANS turbulence)")
+    self.rans = None
     self.viscous = bool(viscous)
     if self.viscous:
       if viscosity_law not in ("constant", "sutherland", "mixture"):
@@ -312,6 +335,73 @@ class EulerSolver:
         self._add_sgs_face_props = getattr(fvm, f"add_sgs_face_props_{d}d")
       else:
         self.les = False
+
+      # ---- RANS / k-omega SST turbulence model ---------------------------
+      # mu_t is built from the transported (rho k, rho omega) state and the wall
+      # distance (Menter F2), then added to the laminar face props by the same
+      # _add_sgs_face_props_{d}d used by the LES path. M1: mu_t injection only,
+      # with (rho k, rho omega) held at their free-stream values (transport in M2).
+      if rans is not None:
+        if rans != "kwsst":
+          raise ValueError("rans must be 'kwsst' (the only model wired so far)")
+        if self.dim != 2:
+          raise NotImplementedError("RANS k-omega SST is wired for 2D only for now")
+        if self._law != 0:
+          raise NotImplementedError("RANS k-omega SST supports the constant viscosity law only")
+        if rans_mode not in ("m1", "m2"):
+          raise ValueError("rans_mode must be 'm1' (frozen mu_t) or 'm2' (transported)")
+        self.rans = rans
+        self.rans_mode = rans_mode
+        self.Prt = float(Prt)
+        # SST constants (turbmodels.larc.nasa.gov/sst.html)
+        self.sst_a1 = 0.31
+        self.sst_betast = 0.09
+        self.sst_beta1 = 0.075
+        self.sst_kappa = 0.41
+        self.sst_cmu_qrt = 0.09 ** 0.25
+        self.sst_mut_limit = 1.0e5
+        self.omega_floor = 1.0e-6
+        # free-stream turbulence state; carried as conservative rho k, rho omega.
+        self.k_inf = float(k_inf)
+        self.omega_inf = float(omega_inf)
+        self.rhok = Variable(domain=self.domain)
+        self.rhoomega = Variable(domain=self.domain)
+        self.rhok.cell[:] = self.rho.cell * self.k_inf
+        self.rhoomega.cell[:] = self.rho.cell * self.omega_inf
+        self._mut = Variable(domain=self.domain)
+        self._mut_kwsst = getattr(fvm, f"mut_kwsst_{d}d")
+        self._wall_distance = getattr(fvm, f"wall_distance_{d}d")
+        self._add_sgs_face_props = getattr(fvm, f"add_sgs_face_props_{d}d")
+        # per-cell distance to the nearest no-slip wall (computed once, static mesh)
+        self.walldist = self._compute_wall_distance(wall_boundaries)
+        if rans_mode == "m2":
+          # transported SST: specific k, omega carried on Variables to reuse the
+          # halo/ghost/face-gradient pipeline. Wall BC on k = zeroGradient
+          # (kqRWallFunction); omega is imposed in the wall cell each step
+          # (omegaWallFunction). Far-field defaults to the free-stream value.
+          if bc_k is None:
+            bc_k = {b: "neumann" for b in wall_boundaries}
+          if bc_omega is None:
+            bc_omega = {b: "neumann" for b in wall_boundaries}
+          if k_values is None:
+            k_values = {}
+          if omega_values is None:
+            omega_values = {}
+          self._k = Variable(domain=self.domain, BC=bc_k, values_dict=k_values)
+          self._omega = Variable(domain=self.domain, BC=bc_omega, values_dict=omega_values)
+          self._dkv = Variable(domain=self.domain)
+          self._dwv = Variable(domain=self.domain)
+          self._srck = np.zeros(nbcells, dtype=dtype)
+          self._srcw = np.zeros(nbcells, dtype=dtype)
+          self.rez_rhok = np.zeros(nbcells, dtype=dtype)
+          self.rez_rhoomega = np.zeros(nbcells, dtype=dtype)
+          self._sst_coeffs = getattr(fvm, f"sst_coeffs_{d}d")
+          self._sst_convdiff = getattr(fvm, f"sst_convdiff_{d}d")
+          self._sst_update = getattr(fvm, f"sst_update_{d}d")
+          self._sst_wall_omega = getattr(fvm, f"sst_wall_omega_{d}d")
+          # wall-adjacent cells and their wall-normal spacing y1 (owner-centre to
+          # wall-face-centre), local to each rank -- for the omega wall function.
+          self._wall_owner, self._wall_y = self._compute_wall_cells(wall_boundaries)
     else:
       self.les = False
 
@@ -658,6 +748,139 @@ class EulerSolver:
                              self.domain.faces.cellid, self.domain.faces.halofid,
                              self.face_name, self.cp, self.Prt)
 
+  def _compute_wall_distance(self, wall_boundaries):
+    """Per-cell distance to the nearest no-slip wall face centre. The wall faces
+    are gathered from every MPI rank so each cell sees the global wall geometry;
+    the double loop (cells x wall faces) is done in the compiled kernel. Computed
+    once (static mesh). `wall_boundaries` is the tuple of no-slip boundary names."""
+    dom = self.domain
+    dtype = np.asarray(self.rho.cell).dtype
+    fc = np.asarray(dom.faces.center)
+    # local wall-face centres (owner side, physical boundary faces)
+    idx = np.zeros(0, dtype=np.int64)
+    for bname in wall_boundaries:
+      code = dom.BCs[bname][1]
+      idx = np.concatenate([idx, np.nonzero(self.face_name == code)[0]])
+    lx = np.ascontiguousarray(fc[idx, 0]) if idx.size else np.zeros(0, dtype=dtype)
+    ly = np.ascontiguousarray(fc[idx, 1]) if idx.size else np.zeros(0, dtype=dtype)
+    # gather every rank's wall faces so the distance is global
+    comm = MPI.COMM_WORLD
+    gx = np.ascontiguousarray(np.concatenate(comm.allgather(lx)), dtype=dtype)
+    gy = np.ascontiguousarray(np.concatenate(comm.allgather(ly)), dtype=dtype)
+    walldist = np.full(dom.nbcells, 1.0e30, dtype=dtype)
+    if gx.size == 0:
+      raise ValueError("RANS: no wall faces found; pass wall_boundaries=(...) "
+                       "with the no-slip boundary name(s)")
+    self._wall_distance(walldist, np.asarray(dom.cells.center), gx, gy)
+    return walldist
+
+  def _compute_rans_mut(self):
+    """RANS (k-omega SST): build the eddy viscosity mu_t from the transported
+    (rho k, rho omega) state and the wall distance, then add it to the laminar
+    face props. Mirrors _compute_sgs (LES) but with the SST formula."""
+    # reset the face props to the laminar base (constant law in M1)
+    self.mu_face[:] = self.mu
+    self.kappa_face[:] = self.mu * self.cp / self.Pr
+    # resolved-velocity cell gradients for the vorticity magnitude
+    self._u.compute_cell_gradient()
+    self._v.compute_cell_gradient()
+    mut_max = self.sst_mut_limit * self.mu
+    self._mut_kwsst(self._mut.cell, self.rho.cell, self.rhok.cell, self.rhoomega.cell,
+                    self._u.gradcelly, self._v.gradcellx, self.walldist,
+                    self.mu, self.sst_a1, self.sst_betast, mut_max)
+    # turbulent viscosity on the halo cells for the face average
+    self._mut.update_halo_value()
+    self._add_sgs_face_props(self.mu_face, self.kappa_face,
+                             self._mut.cell, self._mut.halo,
+                             self.domain.faces.cellid, self.domain.faces.halofid,
+                             self.face_name, self.cp, self.Prt)
+
+  def _compute_wall_cells(self, wall_boundaries):
+    """Wall-adjacent owner cells and their wall-normal spacing y1 (owner cell
+    centre to wall face centre), local to this rank. Feeds the omega wall
+    function (M2), which imposes omega in the first cell every step."""
+    dom = self.domain
+    fc = np.asarray(dom.faces.center)
+    cc = np.asarray(dom.cells.center)
+    cellid = np.asarray(dom.faces.cellid)
+    dtype = np.asarray(self.rho.cell).dtype
+    owners = []
+    ys = []
+    for bname in wall_boundaries:
+      code = dom.BCs[bname][1]
+      for f in np.nonzero(self.face_name == code)[0]:
+        c = int(cellid[f, 0])
+        dx = cc[c, 0] - fc[f, 0]
+        dy = cc[c, 1] - fc[f, 1]
+        owners.append(c)
+        ys.append(np.sqrt(dx * dx + dy * dy))
+    return (np.asarray(owners, dtype=np.int32), np.asarray(ys, dtype=dtype))
+
+  def _compute_rans_sst(self):
+    """RANS k-omega SST (M2, fully transported). Refresh the SST closure from
+    the transported (rho k, rho omega): eddy viscosity mu_t (added to the face
+    props for the momentum viscous flux), the two blended diffusivities and the
+    volumetric sources, then assemble the k/omega transport residual (convection
+    + diffusion) for the forward-Euler update. Assumes _compute_primitives() ran
+    this iteration (u, v cell values current)."""
+    rho = self.rho.cell
+    # reset the face props to the laminar base (constant law)
+    self.mu_face[:] = self.mu
+    self.kappa_face[:] = self.mu * self.cp / self.Pr
+    # specific k, omega on their Variables (reuse halo/ghost/gradient pipeline)
+    self._k.cell[:] = self.rhok.cell / rho
+    self._omega.cell[:] = self.rhoomega.cell / rho
+    # cell gradients: velocity (strain/vorticity) and k, omega (cross-diffusion)
+    self._u.compute_cell_gradient()
+    self._v.compute_cell_gradient()
+    self._k.compute_cell_gradient()
+    self._omega.compute_cell_gradient()
+    # diamond face gradients of k, omega for the diffusion flux
+    for var in (self._k, self._omega):
+      var.update_halo_value()
+      var.update_ghost_value()
+      var.interpolate_celltonode()
+      var.compute_face_gradient()
+    mut_max = self.sst_mut_limit * self.mu
+    self._sst_coeffs(self._mut.cell, self._dkv.cell, self._dwv.cell,
+                     self._srck, self._srcw,
+                     rho, self.rhok.cell, self.rhoomega.cell,
+                     self._u.gradcellx, self._u.gradcelly,
+                     self._v.gradcellx, self._v.gradcelly,
+                     self._k.gradcellx, self._k.gradcelly,
+                     self._omega.gradcellx, self._omega.gradcelly,
+                     self.walldist, self.mu, self.sst_a1, self.sst_betast, mut_max)
+    # add face-averaged mu_t to the laminar face props for the momentum flux
+    self._mut.update_halo_value()
+    self._add_sgs_face_props(self.mu_face, self.kappa_face,
+                             self._mut.cell, self._mut.halo,
+                             self.domain.faces.cellid, self.domain.faces.halofid,
+                             self.face_name, self.cp, self.Prt)
+    # diffusivities on the halo cells for the transport diffusion face average
+    self._dkv.update_halo_value()
+    self._dwv.update_halo_value()
+    self._sst_convdiff(self.rez_rhok, self.rez_rhoomega,
+                       rho, self.rhou.cell, self.rhov.cell,
+                       self._k.cell, self._omega.cell, self._k.ghost, self._omega.ghost,
+                       self._k.halo, self._omega.halo,
+                       self.rhou.halo, self.rhov.halo, self.rho.halo,
+                       self._k.gradfacex, self._k.gradfacey,
+                       self._omega.gradfacex, self._omega.gradfacey,
+                       self._dkv.cell, self._dwv.cell, self._dkv.halo, self._dwv.halo,
+                       self.domain.faces.cellid, self.domain.faces.halofid,
+                       self.domain.faces.normal, self.face_name)
+
+  def _advance_turbulence(self):
+    """Forward-Euler update of (rho k, rho omega) with the SST sources, then the
+    omega wall function (imposed in every wall-adjacent cell). Called after the
+    mean-flow conservative update in compute_new_val (M2 only)."""
+    self._sst_update(self.rhok.cell, self.rhoomega.cell, self.rho.cell,
+                     self.rez_rhok, self.rez_rhoomega, self._srck, self._srcw,
+                     self.dt, self.domain.cells.volume, self.omega_floor)
+    self._sst_wall_omega(self.rhoomega.cell, self.rho.cell, self.rhok.cell,
+                         self._wall_owner, self._wall_y,
+                         self.mu, self.sst_beta1, self.sst_cmu_qrt, self.sst_kappa)
+
   def compute_viscous_fluxes(self):
     self._compute_primitives()
     # diamond face gradients of u, v, T (same pipeline as DiffusionSolver)
@@ -674,6 +897,11 @@ class EulerSolver:
                                  self.mu_ref, self.T_ref, self.S_suth, self.cp, self.Pr)
     if self.les:
       self._compute_sgs()
+    if self.rans is not None:
+      if self.rans_mode == "m2":
+        self._compute_rans_sst()
+      else:
+        self._compute_rans_mut()
     if self.dim == 2:
       self._explicitscheme_viscous(
           self.rez_rhou, self.rez_rhov, self.rez_rhoE,
@@ -770,3 +998,7 @@ class EulerSolver:
       self._update(self.rho.cell, self.P.cell, self.rhou.cell, self.rhov.cell, self.rhow.cell, self.rhoE.cell,
                    self.rez_rho, self.rez_rhou, self.rez_rhov, self.rez_rhow, self.rez_rhoE,
                    self.gamma, self.dt, self.domain.cells.volume)
+
+    # advance the transported turbulence (rho k, rho omega) with the SST sources
+    if self.rans is not None and self.rans_mode == "m2":
+      self._advance_turbulence()
