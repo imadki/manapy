@@ -61,14 +61,16 @@ class AdvectionSolver:
 
     fvm_utils_compute.setup(self.dim, self.scheme)
     if self.domain.backend.name == "gpu":
-      if self.dim != 2:
-        raise NotImplementedError("Advection GPU is implemented for 2D only")
       from manapy.solvers.advec.cuda_fvm_utils import (
         get_kernel_explicitscheme_convective_2d,
+        get_kernel_explicitscheme_convective_3d,
         get_kernel_time_step,
         get_kernel_update_new_value,
       )
-      self._explicitscheme_convective = get_kernel_explicitscheme_convective_2d()
+      if self.dim == 2:
+        self._explicitscheme_convective = get_kernel_explicitscheme_convective_2d()
+      else:
+        self._explicitscheme_convective = get_kernel_explicitscheme_convective_3d()
       self._time_step = get_kernel_time_step()
       self._update_new_value = get_kernel_update_new_value()
     else:
