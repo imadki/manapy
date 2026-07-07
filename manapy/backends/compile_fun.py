@@ -210,8 +210,12 @@ def _mpi_shared_lock_state():
   locks = np.ndarray(buffer=buf, dtype=dtype, shape=(nlocks,))
 
   if node_comm.Get_rank() == 0:
-    locks.fill(0)
-    win.Sync()
+    win.Lock(0, MPI.LOCK_EXCLUSIVE)
+    try:
+      locks.fill(0)
+      win.Sync()
+    finally:
+      win.Unlock(0)
   node_comm.Barrier()
 
   _MPI_SHARED_LOCK_STATE = node_comm, win, locks
