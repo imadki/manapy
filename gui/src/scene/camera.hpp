@@ -17,21 +17,23 @@ class Camera {
     CameraData data;
 
     glm::vec3 position;
+    glm::vec3 pivot;
 
     float radius;
     float polar;
     float azimuthal;
 
-    float fov;
-    float near;
-    float far;
+    float fov  = 60.f;
+    float near = .01f;
+    float far  = 100.f;
 
-    glm::vec2 dragSensitivity;
-    float     scrollSensitivity;
+    glm::vec2 orbitSpeed = glm::vec2(.8f, .6f);
+    float     zoomSpeed  = .5f;
 
   private:
-    void orbit(glm::vec2 offset);
+    void orbit(const glm::vec2& offset);
     void adjustRadius(float offset);
+    void adjustPivot(const glm::vec2& offset);
 
     void updatePosition();
 };

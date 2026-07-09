@@ -51,11 +51,11 @@ void MeshViewResources::init(const VulkanContext& vkCtx,
     VK_CHECK(vkCreateSampler(vkCtx.device, &samplerInfo, nullptr, &sampler));
 
     // ─[ Color Images ]───────────────────────────────────────────────────
-    colorImages.resize(Config::renderer.maxFramesInFlight);
-    colorImagesMemory.resize(Config::renderer.maxFramesInFlight);
-    colorImageViews.resize(Config::renderer.maxFramesInFlight);
+    colorImages.resize(Config::render.maxFramesInFlight);
+    colorImagesMemory.resize(Config::render.maxFramesInFlight);
+    colorImageViews.resize(Config::render.maxFramesInFlight);
 
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         utils::createImage(vkCtx.physicalDevice,
                            vkCtx.device,
                            viewportExtent.width,
@@ -93,9 +93,9 @@ void MeshViewResources::init(const VulkanContext& vkCtx,
                            &depthImageView);
 
     // ─[ Framebuffer ]────────────────────────────────────────────────────
-    framebuffers.resize(Config::renderer.maxFramesInFlight);
+    framebuffers.resize(Config::render.maxFramesInFlight);
 
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         std::array<VkImageView, 2> attachments = {colorImageViews[i], depthImageView};
 
         VkFramebufferCreateInfo framebufferInfo{
@@ -114,9 +114,9 @@ void MeshViewResources::init(const VulkanContext& vkCtx,
 
 void MeshViewResources::initTextureDesc()
 {
-    descriptorSets.resize(Config::renderer.maxFramesInFlight);
+    descriptorSets.resize(Config::render.maxFramesInFlight);
 
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         descriptorSets[i] = ImGui_ImplVulkan_AddTexture(sampler,
                                                         colorImageViews[i],
                                                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -125,7 +125,7 @@ void MeshViewResources::initTextureDesc()
 
 void MeshViewResources::clearTextureDesc()
 {
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         ImGui_ImplVulkan_RemoveTexture(descriptorSets[i]);
     }
 
@@ -137,7 +137,7 @@ void MeshViewResources::shutdown(const VulkanContext& vkCtx)
     vkDestroySampler(vkCtx.device, sampler, nullptr);
 
     // ─[ Color Images ]───────────────────────────────────────────────────
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         vkDestroyFramebuffer(vkCtx.device, framebuffers[i], nullptr);
         vkDestroyImageView(vkCtx.device, colorImageViews[i], nullptr);
         vkDestroyImage(vkCtx.device, colorImages[i], nullptr);

@@ -1,5 +1,6 @@
 #include "./uiBackend.hpp"
 #include "../common/config.hpp"
+#include <cstddef>
 #include <cstdint>
 
 void UIBackend::init(const VulkanContext&          vkCtx,
@@ -12,11 +13,12 @@ void UIBackend::init(const VulkanContext&          vkCtx,
 
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
     io.ConfigWindowsMoveFromTitleBarOnly = true;
+    io.IniFilename                       = NULL;
 
     ImGui_ImplGlfw_InitForVulkan(glfwWindow, true);
 
     ImGui_ImplVulkan_InitInfo initInfo{
-        .ApiVersion         = Config::renderer.vulkanApiVersion,
+        .ApiVersion         = Config::render.vulkanApiVersion,
         .Instance           = vkCtx.instance,
         .PhysicalDevice     = vkCtx.physicalDevice,
         .Device             = vkCtx.device,

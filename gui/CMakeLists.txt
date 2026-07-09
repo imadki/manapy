@@ -23,6 +23,7 @@ target_compile_definitions(manapyGUI PRIVATE
 target_include_directories(manapyGUI PRIVATE
     extern/glm
     extern/imgui
+    extern/magic_enum
 )
 
 target_link_libraries(manapyGUI PRIVATE 

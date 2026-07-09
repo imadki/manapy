@@ -1,6 +1,7 @@
 #include "./meshManager.hpp"
 #include "../common/config.hpp"
 #include <cstring>
+#include <filesystem>
 
 void MeshManager::init(const VulkanContext& vkCtx)
 {
@@ -73,7 +74,7 @@ void MeshManager::update(const VulkanContext& vkCtx, const UIState& uiState)
 
 const MeshData& MeshManager::getMeshData() const { return meshData; }
 
-void MeshManager::loadMesh(const VulkanContext& vkCtx, std::string filePath)
+void MeshManager::loadMesh(const VulkanContext& vkCtx, const std::filesystem::path& filePath)
 {
     // ─[ Cleanup ]────────────────────────────────────────────────────────
     meshData.clear(vkCtx);
@@ -82,7 +83,7 @@ void MeshManager::loadMesh(const VulkanContext& vkCtx, std::string filePath)
     std::vector<Vertex>   vertices;
     std::vector<uint32_t> indices;
 
-    gmsh::open(filePath);
+    gmsh::open(filePath.string());
 
     // ─[ 1. Cache Global Node Coordinates ]───────────────────────────────
     // We get all nodes globally just to know where they are in 3D space.
@@ -326,7 +327,7 @@ glm::mat4 MeshManager::buildMeshModelMatrix(const std::vector<Vertex>& vertices)
     float scaleFactor  = Config::mesh.defaultMeshSize / glm::max(size.x, glm::max(size.y, size.z));
     glm::mat4 scaleMat = glm::scale(glm::mat4(1.f), scaleFactor * glm::vec3(1.f));
 
-    glm::vec3 center = Config::mesh.worldMeshAnchor + (boundingBox[0] + boundingBox[1]) / 2.f;
+    glm::vec3 center = (boundingBox[0] + boundingBox[1]) / 2.f;
 
     return glm::translate(scaleMat, -center);
 }

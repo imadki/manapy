@@ -2,6 +2,7 @@
 
 #include "./uiBackend.hpp"
 #include "./uiState.hpp"
+#include <string_view>
 
 class EditorUI {
   public:
@@ -16,12 +17,27 @@ class EditorUI {
     const UIState& getState() const;
 
   private:
+    enum class Panel {
+        Simulation,
+        Domain,
+        Viewport,
+        ViewportSettings,
+        Console,
+    };
+
+  private:
     UIBackend backend;
     UIState   state;
 
     ImGui::FileBrowser meshFileDialog;
 
   private:
+    void buildDockLayout();
+    void buildDockPanel(Panel panel);
+
+  private:
     static void style();
     static void helpMarker(const char* desc);
+
+    static constexpr std::string_view getLabel(Panel panel);
 };

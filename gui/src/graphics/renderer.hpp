@@ -52,10 +52,10 @@ class Renderer {
     VkCommandPool                graphicsCommandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> graphicsCommandBuffers;
 
-    std::vector<VkSemaphore>                                    renderFinishedSemaphores;
-    std::array<VkSemaphore, Config::renderer.maxFramesInFlight> imageAvailableSemaphores;
-    std::array<VkFence, Config::renderer.maxFramesInFlight>     frameInFlightFences;
-    std::vector<VkFence>                                        imageLastUsedFences;
+    std::vector<VkSemaphore>                                  renderFinishedSemaphores;
+    std::array<VkSemaphore, Config::render.maxFramesInFlight> imageAvailableSemaphores;
+    std::array<VkFence, Config::render.maxFramesInFlight>     frameInFlightFences;
+    std::vector<VkFence>                                      imageLastUsedFences;
 
   private:
     void createCommandPools();

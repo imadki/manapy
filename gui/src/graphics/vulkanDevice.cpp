@@ -37,7 +37,7 @@ void VulkanDevice::shutdown()
 {
     vkDestroyDevice(device, nullptr);
 
-    if constexpr (Config::renderer.enableValidationLayers)
+    if constexpr (Config::render.enableValidationLayers)
         DestroyDebugUtilsMessengerEXT(vkInstance, debugMessenger, nullptr);
 
     vkDestroySurfaceKHR(vkInstance, surface, nullptr);
@@ -52,7 +52,7 @@ void VulkanDevice::createVulkanInstance()
         .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
         .pEngineName        = "N/A",
         .engineVersion      = VK_MAKE_VERSION(0, 0, 0),
-        .apiVersion         = Config::renderer.vulkanApiVersion,
+        .apiVersion         = Config::render.vulkanApiVersion,
     };
 
     VkInstanceCreateInfo createInfo{
@@ -68,14 +68,14 @@ void VulkanDevice::createVulkanInstance()
 
     // ─[ Validation Layers ]──────────────────────────────────────────────
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-    if constexpr (Config::renderer.enableValidationLayers) {
+    if constexpr (Config::render.enableValidationLayers) {
         if (!checkValidationLayersSupport()) {
             throw std::runtime_error("Validation layers requested, but not available!");
         }
 
         createInfo.enabledLayerCount =
-            static_cast<uint32_t>(Config::renderer.validationLayers.size());
-        createInfo.ppEnabledLayerNames = Config::renderer.validationLayers.data();
+            static_cast<uint32_t>(Config::render.validationLayers.size());
+        createInfo.ppEnabledLayerNames = Config::render.validationLayers.data();
 
         populateDebugMessengerCreateInfo(debugCreateInfo);
         createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
@@ -90,7 +90,7 @@ void VulkanDevice::createVulkanInstance()
 
 void VulkanDevice::setupDebugMessenger()
 {
-    if constexpr (!Config::renderer.enableValidationLayers) return;
+    if constexpr (!Config::render.enableValidationLayers) return;
 
     VkDebugUtilsMessengerCreateInfoEXT createInfo;
     populateDebugMessengerCreateInfo(createInfo);
@@ -162,8 +162,8 @@ void VulkanDevice::createLogicalDevice()
         .pNext                   = &eds3Features,
         .queueCreateInfoCount    = static_cast<uint32_t>(queueCreateInfos.size()),
         .pQueueCreateInfos       = queueCreateInfos.data(),
-        .enabledExtensionCount   = static_cast<uint32_t>(Config::renderer.deviceExtensions.size()),
-        .ppEnabledExtensionNames = Config::renderer.deviceExtensions.data(),
+        .enabledExtensionCount   = static_cast<uint32_t>(Config::render.deviceExtensions.size()),
+        .ppEnabledExtensionNames = Config::render.deviceExtensions.data(),
         .pEnabledFeatures        = &enabledFeatures,
     };
 
@@ -186,7 +186,7 @@ bool VulkanDevice::checkValidationLayersSupport()
     std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-    for (const char* layerName : Config::renderer.validationLayers) {
+    for (const char* layerName : Config::render.validationLayers) {
         bool layerFound = false;
 
         for (const auto& layerProperties : availableLayers) {
@@ -210,7 +210,7 @@ std::vector<const char*> VulkanDevice::getRequiredExtensions()
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-    if constexpr (Config::renderer.enableValidationLayers) {
+    if constexpr (Config::render.enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
@@ -339,8 +339,8 @@ bool VulkanDevice::checkDeviceExtensionSupport(VkPhysicalDevice dev)
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(dev, nullptr, &extensionCount, availableExtensions.data());
 
-    std::set<std::string> requiredExtensions(Config::renderer.deviceExtensions.begin(),
-                                             Config::renderer.deviceExtensions.end());
+    std::set<std::string> requiredExtensions(Config::render.deviceExtensions.begin(),
+                                             Config::render.deviceExtensions.end());
 
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);

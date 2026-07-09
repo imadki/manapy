@@ -1,6 +1,10 @@
 #include "./editorUI.hpp"
+#include "imgui.h"
 #include <map>
 #include <iostream>
+#include <magic_enum.hpp>
+#include <string>
+#include <sys/stat.h>
 
 void EditorUI::init(const VulkanContext&          vkCtx,
                     GLFWwindow*                   glfwWindow,
@@ -19,107 +23,206 @@ void EditorUI::shutdown() { backend.shutdown(); }
 void EditorUI::build()
 {
     backend.newFrame();
+    buildDockLayout();
 
-    ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
+    for (auto const& panel : magic_enum::enum_values<Panel>())
+        buildDockPanel(panel);
 
-    static bool firstTime = true;
-    if (firstTime) {
-        firstTime = false;
-
-        ImGui::DockBuilderRemoveNode(dockspaceId);
-        ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-        ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->WorkSize);
-
-        ImGuiID dock_left, dock_remaining, dock_right, dock_center, dock_right_top,
-            dock_right_bottom;
-
-        ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.20f, &dock_left, &dock_remaining);
-        ImGui::DockBuilderSplitNode(dock_remaining,
-                                    ImGuiDir_Right,
-                                    0.25f,
-                                    &dock_right,
-                                    &dock_center);
-        ImGui::DockBuilderSplitNode(dock_right,
-                                    ImGuiDir_Up,
-                                    0.50f,
-                                    &dock_right_top,
-                                    &dock_right_bottom);
-
-        ImGui::DockBuilderDockWindow("Settings", dock_left);
-        ImGui::DockBuilderDockWindow("Viewport", dock_center);
-        ImGui::DockBuilderDockWindow("Properties", dock_right_top);
-        ImGui::DockBuilderDockWindow("Console", dock_right_bottom);
-
-        ImGui::DockBuilderFinish(dockspaceId);
-    }
-
-    ImGui::Begin("Settings");
-    ImGui::Text("Settings panel");
-    { // Mesh Load
-        if (ImGui::Button("Load mesh")) meshFileDialog.Open();
-        meshFileDialog.Display();
-
-        if (meshFileDialog.HasSelected()) {
-            state.meshFile.isSelected = true;
-            state.meshFile.path       = meshFileDialog.GetSelected().string();
-            meshFileDialog.ClearSelected();
-        }
-        else {
-            state.meshFile.isSelected = false;
-        }
-    }
-
-    { // Polygon Mode Combo
-        static const std::map<VkPolygonMode, const char*> modeNames = {
-            {VK_POLYGON_MODE_FILL, "Fill"},
-            {VK_POLYGON_MODE_LINE, "Line"},
-            {VK_POLYGON_MODE_POINT, "Point"},
-        };
-
-        const char* preview = modeNames.at(state.meshView.polygoneMode);
-
-        if (ImGui::BeginCombo("Polygon Mode", preview)) {
-            for (const auto& [mode, name] : modeNames) {
-                bool isSelected = (state.meshView.polygoneMode == mode);
-
-                if (ImGui::Selectable(name, isSelected)) state.meshView.polygoneMode = mode;
-
-                if (isSelected) ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-    }
-    ImGui::End();
-
-    // TODO: wrap in if?
-    ImGui::Begin("Properties");
-    ImGui::Text("Properties panel");
-    ImGui::End();
-
-    ImGui::Begin("Console");
-    ImGui::Text("Console panel");
-    ImGui::End();
-
-    ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
-    state.meshView.isFocused = ImGui::IsWindowFocused();
-    state.meshView.isHovered = ImGui::IsWindowHovered();
-
-    ImVec2   unscaledSize = ImGui::GetContentRegionAvail();
-    ImGuiIO& io           = ImGui::GetIO();
-
-    state.meshView.size.x = unscaledSize.x * io.DisplayFramebufferScale.x;
-    state.meshView.size.y = unscaledSize.y * io.DisplayFramebufferScale.y;
-    ImGui::End();
+    // TODO: Set per panel window flags to set on buildDockPanel
+    // e.g:ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
 }
 
 void EditorUI::insertMeshViewTexture(VkDescriptorSet meshViewTexture)
 {
-    if (ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse))
+    if (ImGui::Begin(getLabel(Panel::Viewport).data()))
         ImGui::Image((ImTextureID)meshViewTexture, ImGui::GetContentRegionAvail());
     ImGui::End();
 }
 
 const UIState& EditorUI::getState() const { return state; }
+
+void EditorUI::buildDockLayout()
+{
+    const char*    dockspaceStrId = "Dockspace";
+    ImGuiID        dockspaceId    = ImGui::GetID(dockspaceStrId);
+    ImGuiViewport* viewport       = ImGui::GetMainViewport();
+
+    // Create settings
+    if (ImGui::DockBuilderGetNode(dockspaceId) == nullptr) {
+        ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspaceId, viewport->Size);
+
+        const float leftRatio   = .2f;
+        const float rightRatio  = .2f;
+        const float bottomRatio = .2f;
+
+        ImGuiID dockIdLeft, dockIdMain;
+        ImGui::DockBuilderSplitNode(dockspaceId,
+                                    ImGuiDir_Left,
+                                    leftRatio,
+                                    &dockIdLeft,
+                                    &dockIdMain);
+
+        ImGuiID dockIdRight;
+        ImGui::DockBuilderSplitNode(dockIdMain,
+                                    ImGuiDir_Right,
+                                    rightRatio / (1 - leftRatio),
+                                    &dockIdRight,
+                                    &dockIdMain);
+
+        ImGuiID dockIdBottom;
+        ImGui::DockBuilderSplitNode(dockIdMain,
+                                    ImGuiDir_Down,
+                                    bottomRatio,
+                                    &dockIdBottom,
+                                    &dockIdMain);
+
+        ImGui::DockBuilderDockWindow(getLabel(Panel::Simulation).data(), dockIdLeft);
+        ImGui::DockBuilderDockWindow(getLabel(Panel::Domain).data(), dockIdLeft);
+        ImGui::DockBuilderDockWindow(getLabel(Panel::Viewport).data(), dockIdMain);
+        ImGui::DockBuilderDockWindow(getLabel(Panel::ViewportSettings).data(), dockIdRight);
+        ImGui::DockBuilderDockWindow(getLabel(Panel::Console).data(), dockIdBottom);
+
+        ImGui::DockBuilderFinish(dockspaceId);
+    }
+
+    // Submit dockspace
+    ImGui::DockSpaceOverViewport(dockspaceId, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
+}
+
+void EditorUI::buildDockPanel(Panel panel)
+{
+    if (ImGui::Begin(getLabel(panel).data())) {
+        switch (panel) {
+            // ╭─────────────────────────────────────────────────────────╮
+            // │                    Simulation Panel                     │
+            // ╰─────────────────────────────────────────────────────────╯
+        case Panel::Simulation: {
+        } break;
+
+            // ╭─────────────────────────────────────────────────────────╮
+            // │                      Domain Panel                       │
+            // ╰─────────────────────────────────────────────────────────╯
+        case Panel::Domain: {
+            ImGui::SeparatorText("Mesh");
+
+            // ─[ Mesh Filename ]──────────────────────────────────────────────────
+            bool        hasMesh = !state.meshFile.path.empty();
+            std::string meshFilename =
+                hasMesh ? state.meshFile.path.filename().string() : "No mesh loaded...";
+
+            ImGui::BeginDisabled();
+            ImGui::InputText("##meshFilename",
+                             meshFilename.data(),
+                             meshFilename.size(),
+                             ImGuiInputTextFlags_ReadOnly);
+
+            if (hasMesh && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::BeginTooltip();
+                ImGui::TextDisabled("%s", state.meshFile.path.c_str());
+                ImGui::EndTooltip();
+            }
+
+            ImGui::EndDisabled();
+
+            ImGui::SameLine();
+            // ─[ Mesh Load ]──────────────────────────────────────────────────────
+            if (ImGui::Button("Browse")) meshFileDialog.Open();
+            meshFileDialog.Display();
+
+            if (meshFileDialog.HasSelected()) {
+                state.meshFile.isSelected = true;
+                state.meshFile.path       = meshFileDialog.GetSelected();
+                meshFileDialog.ClearSelected();
+            }
+            else {
+                state.meshFile.isSelected = false;
+            }
+        } break;
+
+            // ╭─────────────────────────────────────────────────────────╮
+            // │                     Viewport Panel                      │
+            // ╰─────────────────────────────────────────────────────────╯
+        case Panel::Viewport: {
+            // ─[ State Update ]───────────────────────────────────────────────────
+            state.meshView.isFocused = ImGui::IsWindowFocused();
+            state.meshView.isHovered = ImGui::IsWindowHovered();
+
+            ImVec2   unscaledSize = ImGui::GetContentRegionAvail();
+            ImGuiIO& io           = ImGui::GetIO();
+
+            state.meshView.size.x = unscaledSize.x * io.DisplayFramebufferScale.x;
+            state.meshView.size.y = unscaledSize.y * io.DisplayFramebufferScale.y;
+        } break;
+
+            // ╭─────────────────────────────────────────────────────────╮
+            // │                 Viewport Settings Panel                 │
+            // ╰─────────────────────────────────────────────────────────╯
+        case Panel::ViewportSettings: {
+            if (ImGui::CollapsingHeader("Camera")) {
+                ImGui::SeparatorText("View");
+                ImGui::DragFloat("FOV",
+                                 &state.meshView.cameraFov,
+                                 0.5f,
+                                 20.f,
+                                 90.f,
+                                 "%.0f",
+                                 ImGuiSliderFlags_AlwaysClamp);
+
+                ImGui::SeparatorText("Sensitivity");
+                ImGui::DragFloat2("Orbit Speed",
+                                  (float*)&state.meshView.orbitSpeed,
+                                  .01f,
+                                  .1f,
+                                  2.f,
+                                  "%.2f",
+                                  ImGuiSliderFlags_AlwaysClamp);
+                helpMarker("(X, Y)");
+
+                ImGui::DragFloat("Zoom Speed",
+                                 &state.meshView.zoomSpeed,
+                                 .01f,
+                                 .1f,
+                                 2.f,
+                                 "%.2f",
+                                 ImGuiSliderFlags_AlwaysClamp);
+
+                ImGui::Spacing();
+            }
+
+            if (ImGui::CollapsingHeader("Visualization")) {
+                ImGui::SeparatorText("Render Style");
+                // ─[ Polygon Mode ]───────────────────────────────────────────────────
+                static const std::map<VkPolygonMode, const char*> modeNames = {
+                    {VK_POLYGON_MODE_FILL, "Fill"},
+                    {VK_POLYGON_MODE_LINE, "Line"},
+                    {VK_POLYGON_MODE_POINT, "Point"},
+                };
+
+                const char* preview = modeNames.at(state.meshView.polygoneMode);
+
+                if (ImGui::BeginCombo("Polygon Mode", preview)) {
+                    for (const auto& [mode, name] : modeNames) {
+                        bool isSelected = (state.meshView.polygoneMode == mode);
+
+                        if (ImGui::Selectable(name, isSelected)) state.meshView.polygoneMode = mode;
+
+                        if (isSelected) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+        } break;
+
+            // ╭─────────────────────────────────────────────────────────╮
+            // │                      Console Panel                      │
+            // ╰─────────────────────────────────────────────────────────╯
+        case Panel::Console: {
+        } break;
+        }
+    }
+    ImGui::End();
+}
 
 void EditorUI::style()
 {
@@ -235,5 +338,17 @@ void EditorUI::helpMarker(const char* desc)
         ImGui::TextUnformatted(desc);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
+    }
+}
+
+constexpr std::string_view EditorUI::getLabel(Panel panel)
+{
+    switch (panel) {
+    case Panel::Simulation: return "Simulation";
+    case Panel::Domain: return "Domain";
+    case Panel::Viewport: return "Viewport";
+    case Panel::ViewportSettings: return "Viewport Settings";
+    case Panel::Console: return "Console";
+    default: return "Unknown Panel";
     }
 }

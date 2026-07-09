@@ -19,7 +19,7 @@ InputState InputManager::consumeState()
 
 void InputManager::queryInput()
 {
-    // NOTE: other input might be queried asynchronously
+    // NOTE: other input might be queried asynchronously (e.g: mouse scroll)
 
     // ─[ Mouse Buttons ]──────────────────────────────────────────────────
     state.mouseLeftDown  = (glfwGetMouseButton(glfwWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);

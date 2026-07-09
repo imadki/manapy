@@ -1,7 +1,7 @@
 #pragma once
 
+#include <filesystem>
 #include <imgui.h>
-#include <string>
 #include <vulkan/vulkan_core.h>
 
 struct UIState {
@@ -11,11 +11,16 @@ struct UIState {
         bool isFocused = false;
         bool isHovered = false;
 
+        float cameraFov = 60.f;
+
+        ImVec2 orbitSpeed = {.8f, .6f};
+        float  zoomSpeed  = .5f;
+
         VkPolygonMode polygoneMode = VK_POLYGON_MODE_FILL;
     } meshView;
 
     struct {
-        bool        isSelected = false;
-        std::string path;
+        bool                  isSelected = false;
+        std::filesystem::path path;
     } meshFile;
 };

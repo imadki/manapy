@@ -1,4 +1,5 @@
 #include "renderPassManager.hpp"
+#include "../../common/config.hpp"
 
 void RenderPassManager::init(const VulkanContext& vkCtx, GLFWwindow* glfwWindow)
 {
@@ -215,7 +216,7 @@ void RenderPassManager::recordDrawCommandBuffer(const VulkanContext& vkCtx,
 
         // ─[ Begin Render Pass ]──────────────────────────────────────────────
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color        = {{0.f, 0.f, 0.f, 1.0f}};
+        clearValues[0].color        = Config::render.clearColor;
         clearValues[1].depthStencil = {1.0f, 0};
 
         VkRenderPassBeginInfo renderPassInfo{

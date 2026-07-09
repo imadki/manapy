@@ -44,7 +44,7 @@ void Renderer::shutdown()
     renderPassManager.shutdown(vkCtx);
     swapchain.shutdown(vkCtx);
 
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         vkDestroySemaphore(vkCtx.device, imageAvailableSemaphores[i], nullptr);
         vkDestroyFence(vkCtx.device, frameInFlightFences[i], nullptr);
     }
@@ -68,10 +68,6 @@ ImGui_ImplVulkan_PipelineInfo Renderer::getImGuiPipelineInfo() const
 void Renderer::update(const UIState& uiState) { renderPassManager.update(vkCtx, uiState); }
 
 void Renderer::onWindowResize(int width, int height) { isWindowResized = true; }
-
-// ╭─────────────────────────────────────────────────────────╮
-// │                     MAIN FUNCTIONS                      │
-// ╰─────────────────────────────────────────────────────────╯
 
 bool Renderer::beginFrame()
 {
@@ -152,7 +148,7 @@ void Renderer::drawFrame(const UIState&    uiState,
         isWindowResized = false;
     }
 
-    currFrameIdx = (currFrameIdx + 1) % Config::renderer.maxFramesInFlight;
+    currFrameIdx = (currFrameIdx + 1) % Config::render.maxFramesInFlight;
 }
 
 void Renderer::createCommandPools()
@@ -170,7 +166,7 @@ void Renderer::createCommandPools()
 void Renderer::allocateCommandBuffers()
 {
     // ─[ Graphics ]───────────────────────────────────────────────────────
-    graphicsCommandBuffers.resize(Config::renderer.maxFramesInFlight);
+    graphicsCommandBuffers.resize(Config::render.maxFramesInFlight);
 
     VkCommandBufferAllocateInfo allocInfo{
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -193,7 +189,7 @@ void Renderer::createFrameSyncObjects()
         .flags = VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    for (size_t i = 0; i < Config::renderer.maxFramesInFlight; i++) {
+    for (size_t i = 0; i < Config::render.maxFramesInFlight; i++) {
         VK_CHECK(
             vkCreateSemaphore(vkCtx.device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]));
         VK_CHECK(vkCreateFence(vkCtx.device, &fenceInfo, nullptr, &frameInFlightFences[i]));
@@ -208,10 +204,6 @@ void Renderer::createFrameSyncObjects()
         VK_CHECK(
             vkCreateSemaphore(vkCtx.device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]));
 }
-
-// ╭─────────────────────────────────────────────────────────╮
-// │                    HELPER FUNCTIONS                     │
-// ╰─────────────────────────────────────────────────────────╯
 
 PushConstantData Renderer::getPushConstantData(const UIState&    uiState,
                                                const CameraData& cameraData,

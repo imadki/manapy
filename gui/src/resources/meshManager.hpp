@@ -18,7 +18,7 @@ class MeshManager {
     MeshData meshData;
 
   private:
-    void      loadMesh(const VulkanContext& vkCtx, std::string filePath);
+    void      loadMesh(const VulkanContext& vkCtx, const std::filesystem::path& filePath);
     glm::mat4 buildMeshModelMatrix(const std::vector<Vertex>& vertices);
 
     void createVertexBuffer(const VulkanContext&       vkCtx,
