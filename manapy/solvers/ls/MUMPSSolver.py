@@ -55,6 +55,7 @@ class MUMPSSolver(LinearSolver):
                memory_relaxation: int = 20,
                blr: bool = False,
                blr_eps: float = 1e-4,
+               spd: bool = False,
                ):
 
     import mumps4py.mumps_solver as mumps
@@ -77,6 +78,10 @@ class MUMPSSolver(LinearSolver):
     self.memory_relaxation = memory_relaxation
     self.blr = blr
     self.blr_eps = blr_eps
+    # negate (A,b) in the shared assembly -> SPD. MUMPS here uses unsymmetric LU
+    # (sym=0), which factorizes either sign fine, so spd is not REQUIRED for MUMPS;
+    # it only matters if MUMPS is switched to its SPD Cholesky mode (sym=1).
+    self.spd = spd
     self.sol = None
 
     # State for reuse_ij: structure set / analysis done only once
@@ -157,12 +162,24 @@ class MUMPSSolver(LinearSolver):
         print("=>Reordering the matrix ...")
         self.reordering_matrix()
 
+      # SPD path: MUMPS sym=1 (Cholesky) expects ONLY the lower triangle (row>=col);
+      # manapy assembles the FULL symmetric matrix, so keep row>=col to avoid summing
+      # the (i,j)+(j,i) duplicates (which would double the off-diagonals). Deterministic
+      # (same mask every call) -> compatible with reuse_ij. The matrix is already
+      # negated to SPD by the shared assembly (spd flag). 0-based indices here.
+      if self.spd:
+        mask = self._row >= self._col
+        self._row = np.ascontiguousarray(self._row[mask])
+        self._col = np.ascontiguousarray(self._col[mask])
+        self._data = np.ascontiguousarray(self._data[mask])
+
       self.rhs00 = self.comm.reduce(self.rhs0, op=MPI.SUM, root=0)
 
       if reuse_ij:
         if not self._ij_already_set:
           if self.mumps_ls is None:
             self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
+                                                   sym=(1 if self.spd else 0),
                                                    mem_relax=self.memory_relaxation)
           # Fortran indexing + keep a copy. Register the PERSISTENT copies with
           # MUMPS: mumps4py stores a RAW ctypes pointer with no python reference,
@@ -199,6 +216,7 @@ class MUMPSSolver(LinearSolver):
       else:
         if self.mumps_ls is None:
           self.mumps_ls = self.mumps.MumpsSolver(verbose=self.verbose, system=self.system,
+                                                 sym=(1 if self.spd else 0),
                                                  mem_relax=self.memory_relaxation)
         # Fortran indexing
         self._row += 1
