@@ -42,8 +42,20 @@ class PETScKrylovSolver(LinearSolver):
     ('eps_d', 'float', 1e5, False,
      'The divergence tolerance for the residual.'),
     ('petsc_options', 'dict', {}, {},
-     """Additional parameters supported by the method. Can be used to pass                                                                                                                             
+     """Additional parameters supported by the method. Can be used to pass
         all PETSc options supported by :func:`petsc.Options()`."""),
+    ('spd', 'bool', False, False,
+     'If True, negate the assembled system (A,b) -> (-A,-b). manapy assembles the '
+     'Laplacian in its natural div(grad) sign (negative diagonal = symmetric '
+     'NEGATIVE definite); Cholesky-based preconditioners (icc) need a POSITIVE '
+     'definite matrix. Negating gives the same solution but a SPD matrix so icc '
+     'works. Only valid for symmetric schemes (fv/orthogonal); leave False for '
+     'diamond (non-symmetric).'),
+    ('mat_type', 'str', 'mpiaij', False,
+     'PETSc matrix type. "mpiaij" (default) stores both triangles. "mpisbaij" '
+     'stores only the upper triangle of a SYMMETRIC matrix -> half the memory and '
+     '~1.5x faster SpMV in CG. Only valid for symmetric schemes (fv); do NOT use '
+     'with the non-symmetric diamond scheme.'),
 
   ]
 
@@ -66,6 +78,8 @@ class PETScKrylovSolver(LinearSolver):
                eps_a: float = 1e-6,
                eps_r: float = 1e-12,
                eps_d: float = 1e5,
+               spd: bool = False,
+               mat_type: str = "mpiaij",
                petsc_options: dict = None
    ):
     if petsc_options is None:
@@ -98,6 +112,8 @@ class PETScKrylovSolver(LinearSolver):
     self.eps_a = eps_a
     self.eps_r = eps_r
     self.eps_d = eps_d
+    self.spd = spd
+    self.mat_type = mat_type
     self.i_max = i_max
     self.petsc_options = petsc_options
     self.sol = None
@@ -254,11 +270,19 @@ class PETScKrylovSolver(LinearSolver):
       # Create the petsc matrix structure (preallocation) only once when
       # reuse_ij is enabled; afterwards only the values are refreshed.
       if not reuse_ij or not self._ij_already_set:
-        # non zero values for each rows
-        NNZ_loc = np.zeros(self.globalsize, dtype=np.int32)
-        unique, counts = np.unique(np.asarray(self._row, dtype=np.int32),
-                                   return_counts=True)
+        # non-zeros per row = number of UNIQUE (row,col) pairs, NOT the raw triplet
+        # count. The diamond assembly emits many duplicate (row,col) triplets (summed
+        # later by ADD_VALUES), so np.unique(_row) alone over-counts wildly (max ~3245
+        # on a 2M-cell triangle mesh vs a true ~30). setPreallocationNNZ(max(NNZ)) then
+        # asks PETSc to allocate max*n_local_rows entries, whose product overflows
+        # 32-bit PetscInt at p>=2 (3245*1e6 = 3.2e9 > INT32_MAX). Dedup (row,col) first
+        # (encode the pair as row*globalsize+col so a single 1-D np.unique dedups it).
+        key = (np.asarray(self._row, dtype=np.int64) * np.int64(self.globalsize)
+               + np.asarray(self._col, dtype=np.int64))
+        rows_u = (np.unique(key) // np.int64(self.globalsize)).astype(np.int32)
+        unique, counts = np.unique(rows_u, return_counts=True)
 
+        NNZ_loc = np.zeros(self.globalsize, dtype=np.int32)
         for uid, count in zip(unique, counts):
           NNZ_loc[uid] = count
 
@@ -267,9 +291,20 @@ class PETScKrylovSolver(LinearSolver):
 
         self.mat = self.petsc.Mat().create()
         self.mat.setSizes(self.globalsize)
-        self.mat.setType("mpiaij")
+        self.mat.setType(self.mat_type)
+        # SBAIJ stores only the UPPER triangle of a symmetric matrix -> half the
+        # memory and ~1.5x faster (memory-bound) SpMV in CG. Block size 1; the full
+        # triplets are still fed via setValues, IGNORE_LOWER_TRIANGULAR drops the
+        # lower half. Only valid for SYMMETRIC matrices (fv + spd); the caller must
+        # not select sbaij for the non-symmetric diamond scheme. ORDER MATTERS:
+        # setBlockSize BEFORE setFromOptions, IGNORE_LOWER_TRIANGULAR AFTER
+        # preallocation (setting it before preallocation segfaults PETSc).
+        if "sbaij" in self.mat_type:
+          self.mat.setBlockSize(1)
         self.mat.setFromOptions()
         self.mat.setPreallocationNNZ(max(self.NNZ))
+        if "sbaij" in self.mat_type:
+          self.mat.setOption(self.petsc.Mat.Option.IGNORE_LOWER_TRIANGULAR, True)
         self.mat.setOption(self.petsc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
         self._ij_already_set = True
 

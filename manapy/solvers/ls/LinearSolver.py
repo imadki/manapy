@@ -287,6 +287,16 @@ class LinearSolver:
                     self.rhs0, self.var.BCdirichlet,
                     self.matrixinnerfaces, self.domain.halofaces, self.var.dirichletfaces)
 
+    # SPD option (shared by every backend via this assembly): manapy builds the
+    # Laplacian in its natural div(grad) sign -> negative diagonal -> symmetric
+    # NEGATIVE definite. Cholesky-based preconditioners (PETSc icc, Ginkgo ic,
+    # MUMPS sym=1) require a POSITIVE definite matrix. Negating (A,b)->(-A,-b) gives
+    # the IDENTICAL solution but an SPD matrix. Only valid for SYMMETRIC schemes
+    # (fv / orthogonal); diamond is non-symmetric, so keep spd=False there.
+    if getattr(self, "spd", False):
+      self._data = -self._data
+      self.rhs0 = -self.rhs0
+
   def update_ghost_values(self):
     for kind, BC, faces, nodes in self._bc_update_tables:
       if kind == "dirichlet":
@@ -297,13 +307,27 @@ class LinearSolver:
         # Pbordnode[neumann_nodes] = 1, via kernel (Pbordnode est sur le backend).
         self._set_scalar_at(self.domain.Pbordnode, nodes, 1.0)
 
-  def compute_Sol_gradient(self):
+  def compute_Sol_gradient(self, normal_only=False):
     if self.scheme in self.fv_schemes:
       # The corrected face gradient needs the full cell gradient (its tangential
       # part); the two-point term only supplies the normal component.
+      # normal_only=True: skip compute_cell_gradient and zero the cell gradient so
+      # the face gradient keeps ONLY the exact two-point normal component. The
+      # face-normal projection U.n (= the only thing an advective flux consumes)
+      # is bit-identical to the full path; only the unused tangential part is
+      # dropped. This is the OpenFOAM pEqn.flux() equivalent: no gradient recon.
       self.var.update_halo_value()
       self.var.update_ghost_value()
-      self.var.compute_cell_gradient()
+      if normal_only:
+        for g in (self.var.gradcellx, self.var.gradcelly, self.var.gradcellz,
+                  self.var.gradhalocellx, self.var.gradhalocelly, self.var.gradhalocellz):
+          # skip empty arrays: on a single-rank GPU the halo grads have size 0 and
+          # numba_cuda raises "non-empty slice into empty slice" on g[:]=0.0 (numpy
+          # silently no-ops). Nothing to zero when empty -> behaviour is identical.
+          if g.size:
+            g[:] = 0.0
+      else:
+        self.var.compute_cell_gradient()
       self._compute_P_gradient_fv_fn(
         self.var.cell, self.var.halo, self.domain.faces.cellid,
         self.domain.faces.name, self.domain.faces.normal, self.domain.faces.center,
