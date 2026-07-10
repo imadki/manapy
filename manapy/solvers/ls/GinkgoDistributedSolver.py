@@ -78,6 +78,7 @@ class GinkgoDistributedSolver(LinearSolver):
                eps_r: float = 1e-7,
                solver_args: dict = None,
                verbose: bool = False,
+               spd: bool = False,
                ):
 
     try:
@@ -114,6 +115,7 @@ class GinkgoDistributedSolver(LinearSolver):
     self.eps_r = eps_r
     self.solver_args = solver_args if solver_args else {}
     self.verbose = verbose
+    self.spd = spd          # negate (A,b) in the shared assembly -> SPD (for ic/cg)
 
     self._value = "double" if FLOAT_TYPE == "float64" else "float"
     self._np_value = np.float64 if FLOAT_TYPE == "float64" else np.float32
