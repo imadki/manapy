@@ -81,6 +81,31 @@ def _explicitscheme_convective_2d(rez_w: 'float[:]', w_c: 'float[:]', w_ghost: '
 
   rez_w[:] = 0.
 
+  if order == 1:
+    # Order-1 fast path: the higher-order reconstruction term is (order-1)*...=0,
+    # so skip ALL of it (gradients w_x/w_y, limiter psi, cell/face centers). Reads
+    # only w_c, U.face and the normal per face -> matches OpenFOAM's div(phi,ne)
+    # memory footprint. Scheme-agnostic (uses the bound _compute_flux); bit-identical
+    # to the generic path at order 1.
+    for i in d_innerfaces:
+      cl = face_cellid[i][0]; cr = face_cellid[i][1]
+      _compute_flux(w_c[cl], w_c[cr], u_face[i], v_face[i], w_face[i], face_normal[i], flux_w)
+      rez_w[cl] -= flux_w[0]
+      rez_w[cr] += flux_w[0]
+    for i in d_periodicboundaryfaces:
+      cl = face_cellid[i][0]; cr = face_cellid[i][1]
+      _compute_flux(w_c[cl], w_c[cr], u_face[i], v_face[i], w_face[i], face_normal[i], flux_w)
+      rez_w[cl] -= flux_w[0]
+    for i in d_halofaces:
+      cl = face_cellid[i][0]
+      _compute_flux(w_c[cl], w_halo[face_haloid[i]], u_face[i], v_face[i], w_face[i], face_normal[i], flux_w)
+      rez_w[cl] -= flux_w[0]
+    for i in d_boundaryfaces:
+      cl = face_cellid[i][0]
+      _compute_flux(w_c[cl], w_ghost[i], u_face[i], v_face[i], w_face[i], face_normal[i], flux_w)
+      rez_w[cl] -= flux_w[0]
+    return
+
   for i in d_innerfaces:
     w_l = w_c[face_cellid[i][0]]
     normal[:] = face_normal[i][:]
