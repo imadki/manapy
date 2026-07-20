@@ -69,3 +69,6 @@ bubble_compare/
 
 # graphify knowledge-graph output (généré)
 graphify-out/
+
+# experimental / cluster-specific scratch (ginkgo benchmarks, Toubkal jobs)
+other/
