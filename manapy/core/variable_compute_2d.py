@@ -228,17 +228,11 @@ def centertovertex_2d(start: 'int', stride: 'int', w_c: 'float[:]', w_ghost: 'fl
       ydiff = halo_centvol[cell][1] - nodes[i][1]
       alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / denom
       acc += alpha * w_halo[cell]
-    if node_oldname[i] == 11 or node_oldname[i] == 22:
+    if node_oldname[i] >= 11:
+      # unified periodic branch, full cell_shift (handles corner/edge nodes)
       for j in range(node_periodicid[i][-1]):
         cell = node_periodicid[i][j]
         xdiff = cell_center[cell][0] + cell_shift[cell][0] - nodes[i][0]
-        ydiff = cell_center[cell][1] - nodes[i][1]
-        alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / denom
-        acc += alpha * w_c[cell]
-    elif node_oldname[i] == 33 or node_oldname[i] == 44:
-      for j in range(node_periodicid[i][-1]):
-        cell = node_periodicid[i][j]
-        xdiff = cell_center[cell][0] - nodes[i][0]
         ydiff = cell_center[cell][1] + cell_shift[cell][1] - nodes[i][1]
         alpha = (1. + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff) / denom
         acc += alpha * w_c[cell]
