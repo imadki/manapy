@@ -48,7 +48,7 @@ cells = domain.cells
 boundaries = {"in": "periodic", "out": "periodic",
               "upper": "periodic", "bottom": "periodic"}
 
-ne = Variable(domain=domain)#, limiter='vanalbada')   # advected scalar
+ne = Variable(domain=domain)   # advected scalar
 u  = Variable(domain=domain)
 v  = Variable(domain=domain)
 P  = Variable(domain=domain)
