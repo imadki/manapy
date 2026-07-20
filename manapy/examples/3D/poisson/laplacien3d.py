@@ -39,7 +39,6 @@ nbnodes = domain.nbnodes
 nbfaces = domain.nbfaces
 nbcells = domain.nbcells
 
-# TODO tfinal
 if RANK == 0: print("Start Computation")
 miter = 0
 niter = 1
@@ -64,21 +63,15 @@ values = {"in": 20,
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
 
-# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
-
 L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
-              precond='gamg', sub_precond="amg",  # with_mtx=False,
+              precond='gamg', sub_precond="amg",
               eps_a=1e-10, eps_r=1e-10, method="gmres")
-
-# L = ScipySolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond')
 
 ts = MPI.Wtime()
 L()
 P.update_halo_value()
 P.update_ghost_value()
 P.interpolate_celltonode()
-
-# L.view()
 
 domain.save_on_node_multi(variables=["P"], values=[P.node], dt=0., time=0., niter=niter, miter=miter)
 

@@ -75,7 +75,6 @@ u = Variable(domain=domain)
 v = Variable(domain=domain)
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
-# Call the transport solver
 S = AdvectionDiffusionSolver(ne, vel=(u, v), Dxx=0., Dyy=0., order=2, cfl=0.8)
 
 ####Initialisation
@@ -90,7 +89,6 @@ ne.cell[:] = _ne; u.cell[:] = _u; v.cell[:] = _v; P.cell[:] = _P
 # scheme: diamond or fv
 # verbose: printing the mumps/petsc output
 L = GinkgoDistributedSolver(domain=domain, var=P,
-                            # precond="jacobi",
                             device="cpu",
                             scheme='diamond',
                             method="cg",
@@ -103,21 +101,14 @@ ts = MPI.Wtime()
 
 if RANK == 0: print("Start While loop ...")
 
-# loop over time
 while time < tfinal:
 
-  # print(f"[darcy rank {RANK}] before L iter={niter}", flush=True)
   L()
-  # print("Max P", P.cell.max())
-  # print(f"[darcy rank {RANK}] after L iter={niter}", flush=True)
   P.update_halo_value()
   P.update_ghost_value()
   P.interpolate_celltonode()
   L.compute_Sol_gradient()
-  
-  # print("Max P grad", P.gradfacex.max())
 
-  # u.face <- grad(P)
   u.face[:] = P.gradfacex
   v.face[:] = P.gradfacey
 
@@ -134,17 +125,14 @@ while time < tfinal:
 
   if niter == 1 or niter % tot == 0:
     if saving_at_node:
-      # save vtk files for the solution
       ne.update_halo_value()
       ne.update_ghost_value()
       ne.interpolate_celltonode()
 
-      # save vtk files for the solution
       u.update_halo_value()
       u.update_ghost_value()
       u.interpolate_celltonode()
 
-      # save vtk files for the solution
       v.update_halo_value()
       v.update_ghost_value()
       v.interpolate_celltonode()
@@ -164,5 +152,3 @@ te = MPI.Wtime()
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:
   print("Time to do calculation", tt)
-
-# del L

@@ -46,7 +46,6 @@ tt = COMM.reduce(end - start, op=MPI.MAX, root=0)
 if RANK == 0:
   print("Time to create the domain", tt)
 
-# TODO tfinal
 if RANK == 0: print("Start Computation ...")
 time = 0
 tfinal = .25
@@ -69,10 +68,8 @@ u = Variable(domain=domain)
 v = Variable(domain=domain)
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
-# Call the transport solver
 S = DiffusionSolver(ne, vel=(u, v), Dxx=.1, Dyy=0., order=2, cfl=0.8)
 
-####Initialisation
 initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z: Pinit * (1. - x)
 
@@ -80,7 +77,6 @@ ts = MPI.Wtime()
 
 if RANK == 0: print("Start While loop ...")
 
-# loop over time
 while time < tfinal:
 
   d_t = S.stepper()
@@ -93,17 +89,14 @@ while time < tfinal:
 
   if niter == 1 or niter % tot == 0:
     if saving_at_node:
-      # save vtk files for the solution
       ne.update_halo_value()
       ne.update_ghost_value()
       ne.interpolate_celltonode()
 
-      # save vtk files for the solution
       u.update_halo_value()
       u.update_ghost_value()
       u.interpolate_celltonode()
 
-      # save vtk files for the solution
       v.update_halo_value()
       v.update_ghost_value()
       v.interpolate_celltonode()
