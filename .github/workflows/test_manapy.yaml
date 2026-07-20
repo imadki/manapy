@@ -1,34 +1,32 @@
-name: Build
+name: CI
 
 on:
   push:
     branches:
       - main
-      - tests
-      - feature-*
   pull_request:
     branches:
       - main
 
 jobs:
-  test-manapy:
+  test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Update the system
-        run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install vim -y
+      # The image bundles the full toolchain (MPI, PETSc/petsc4py, MUMPS/mumps4py,
+      # SuiteSparse). Building it compiles PETSc/SuiteSparse from source and is slow;
+      # to speed CI up, push it to a registry once and `docker pull` it here instead.
+      - name: Build the manapy environment image
+        run: docker build -t manapy:ci -f Docker/Dockerfile .
 
-      - name: Build Docker image
+      # Mount the checked-out source into the image, install manapy, and run the
+      # test suite (pytest + a parallel MPI smoke test) via Docker/tests.sh.
+      - name: Install manapy and run the tests
         run: |
-          cd Docker
-          sudo bash ./build_image.sh
-          
-      - name: Run the container
-        run: |
-          sudo docker run manapy:0.4
-
+          docker run --rm --user root \
+            -v "${{ github.workspace }}:/workspace/manapy" \
+            -w /workspace/manapy \
+            manapy:ci \
+            bash -c "python -m pip install -e . && bash Docker/tests.sh"
