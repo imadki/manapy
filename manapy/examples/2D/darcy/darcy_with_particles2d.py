@@ -150,7 +150,7 @@ tfinal = 10
 fi = 0.81
 perm0 = 6.83e-9
 test = "pression"
-filename = "big/carre.msh"
+filename = "uns_square.msh"
 
 if test_para == "test_2":
   C0 = 0.
@@ -165,7 +165,7 @@ if test_para == "test_2":
   tfinal = 10
 
   test = "pression"
-  filename = "big/carre.msh"
+  filename = "uns_square.msh"
   # filename = "TMesh.msh"
 
 else: # Default test
@@ -178,7 +178,7 @@ else: # Default test
 
   test = "pression"
   # filename = "Geom_exp3.msh"
-  filename = "big/carre.msh"
+  filename = "uns_square.msh"
 
 
 
@@ -191,7 +191,7 @@ try:
 except KeyError:
   BASE_DIR = os.path.dirname(os.path.realpath(__file__))
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
-  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)

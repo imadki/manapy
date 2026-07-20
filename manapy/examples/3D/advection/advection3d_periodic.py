@@ -12,7 +12,7 @@ delivered as translated halo cells, same as in 2D.
 Mesh requirement: a periodic-tagged cube whose six faces carry the physical tags
 in=11(x=0) out=22(x=Lx) upper=33(y=Ly) bottom=44(y=0) front=55(z=0) back=66(z=Lz),
 AND is conforming across opposite faces. A structured HEX cube works
-(`meshes/periodic_cube_hex.msh`, gmsh transfinite + Recombine + Periodic Surface);
+(`meshes/geo/periodic_cube_hex.msh`, gmsh transfinite + Recombine + Periodic Surface);
 tetrahedral transfinite cubes are currently rejected by the mesh reader.
 
 Run:
@@ -35,7 +35,7 @@ try:
   MESH_DIR = os.environ['MESH_DIR']
 except KeyError:
   BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-  MESH_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..', 'meshes')
+  MESH_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..', 'meshes', 'geo')
 filename = os.environ.get('MESH', 'periodic_cube_hex.msh')  # 6 faces tagged 11..66
 mesh_path = os.path.join(MESH_DIR, filename)
 

@@ -14,7 +14,7 @@ Initial / exact field:
     u = a = 2,  v = w = 0,  p = 1,  gamma = 1.4
 
 Run:
-    MESH_DIR=../../../../meshes/geo MESH_FILE=cube.msh mpirun -n 1 python3 euler3d_gpu.py
+    MESH_DIR=../../../../meshes/geo MESH_FILE=uns_cube.msh mpirun -n 1 python3 euler3d_gpu.py
 """
 from mpi4py import MPI
 import os
@@ -36,7 +36,7 @@ except KeyError:
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
   MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
-filename = os.environ.get('MESH_FILE', 'cube.msh')
+filename = os.environ.get('MESH_FILE', 'uns_cube.msh')
 dim = 3
 mesh_path = os.path.join(MESH_DIR, filename)
 

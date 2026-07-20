@@ -65,8 +65,8 @@ try:
   MESH_DIR = os.environ['MESH_DIR']
 except KeyError:
   BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-  MESH_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..', 'meshes')
-filename = os.environ.get('MESH', 'big/carre.msh')   # ideally a PERIODIC unit square
+  MESH_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..', 'meshes', 'geo')
+filename = os.environ.get('MESH', 'uns_square.msh')   # ideally a PERIODIC unit square
 mesh_path = os.path.join(MESH_DIR, filename)
 
 domain = Domain.create_domain(mesh_path, 2, Partitioning.Par_Nodal, recreate=True)
