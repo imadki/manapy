@@ -72,3 +72,4 @@ graphify-out/
 
 # experimental / cluster-specific scratch (ginkgo benchmarks, Toubkal jobs)
 other/
+
