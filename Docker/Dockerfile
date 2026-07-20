@@ -68,13 +68,14 @@ RUN cd /tmp && \
     make install && \
     rm -rf /tmp/mpfr-4.2.1 /tmp/mpfr-4.2.1.tar.gz
 
-RUN cd /tmp && \
-    git clone --branch stable https://github.com/DrTimothyAldenDavis/SuiteSparse.git && \
-    cd SuiteSparse && \
-    make -j 12 && \
-    make install && \
-    python -m pip install scipy scikit-umfpack && \
-    rm -rf /tmp/SuiteSparse
+# scipy is a hard dependency; scikit-umfpack is an OPTIONAL direct solver used
+# only by ScipySolver(method='umfpack') (default is 'superlu') and is not
+# exercised by the test suite. Its meson/SWIG build is currently broken upstream
+# on recent Python, so keep it best-effort: SuiteSparse itself is already
+# provided by the suitesparse-devel package installed above.
+RUN python -m pip install scipy && \
+    (python -m pip install scikit-umfpack || \
+     echo "WARNING: scikit-umfpack unavailable; ScipySolver(method='umfpack') disabled, 'superlu' still works")
 
 RUN useradd -m manapy
 USER manapy
