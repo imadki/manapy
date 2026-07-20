@@ -75,27 +75,13 @@ def centertovertex_3d(start: 'int', stride: 'int', w_c: 'float[:]', w_ghost: 'fl
       alpha = (1.0 + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / denom
       acc += alpha * w_halo[cell]
 
-    if node_oldname[i] == 11 or node_oldname[i] == 22:
+    if node_oldname[i] >= 11:
+      # unified periodic branch, full cell_shift: an edge/corner node carries
+      # partner cells from >1 periodic direction, each imaged by its own shift.
       for j in range(node_periodicid[i][-1]):
         cell = node_periodicid[i][j]
         xdiff = cell_center[cell][0] + cell_shift[cell][0] - nodes[i][0]
-        ydiff = cell_center[cell][1] - nodes[i][1]
-        zdiff = cell_center[cell][2] - nodes[i][2]
-        alpha = (1.0 + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / denom
-        acc += alpha * w_c[cell]
-    elif node_oldname[i] == 33 or node_oldname[i] == 44:
-      for j in range(node_periodicid[i][-1]):
-        cell = node_periodicid[i][j]
-        xdiff = cell_center[cell][0] - nodes[i][0]
         ydiff = cell_center[cell][1] + cell_shift[cell][1] - nodes[i][1]
-        zdiff = cell_center[cell][2] - nodes[i][2]
-        alpha = (1.0 + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / denom
-        acc += alpha * w_c[cell]
-    elif node_oldname[i] == 55 or node_oldname[i] == 66:
-      for j in range(node_periodicid[i][-1]):
-        cell = node_periodicid[i][j]
-        xdiff = cell_center[cell][0] - nodes[i][0]
-        ydiff = cell_center[cell][1] - nodes[i][1]
         zdiff = cell_center[cell][2] + cell_shift[cell][2] - nodes[i][2]
         alpha = (1.0 + node_lambda_x[i] * xdiff + node_lambda_y[i] * ydiff + node_lambda_z[i] * zdiff) / denom
         acc += alpha * w_c[cell]

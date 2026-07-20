@@ -148,7 +148,7 @@ class LocalDomain:
 
     # Check if mesh is will constructed
     log_step.log("_check_phy_faces")
-    self._check_phy_faces(self.face_cellid, self.face_haloid)
+    self._check_phy_faces(self.face_cellid, self.face_haloid, self.face_to_phyid)
     log_step.out()
 
     ## TODO the use of this tables !?
@@ -156,6 +156,12 @@ class LocalDomain:
     self.cell_periodicnid = np.zeros((self.nb_cells, 2), dtype=types.np_int_type)
     self.cell_periodicfid = np.zeros(self.nb_cells, dtype=types.np_int_type)
     self.cell_shift = np.zeros((self.nb_cells, 3), dtype=types.np_float_type)
+
+    # Same-rank periodic pairing: fill cell_shift + face_cellid partners for
+    # periodic faces (names 11/22/33/44) BEFORE the geometry kernels consume them.
+    log_step.log("_build_periodic_samerank")
+    self._build_periodic_samerank()
+    log_step.out()
 
     log_step.log("_face_gradient_info")
     (
@@ -414,6 +420,15 @@ class LocalDomain:
     intersect = np.zeros(shape=2, dtype=types.np_int_type)
     compute.create_bf_cellid(phy_faces, node_cellid, phyid_to_faceid, cell_faceid, intersect, bf_cellid)
 
+    # Periodic faces (names 11/22/33/44/55/66) are NOT physical boundaries: their
+    # partner cell is delivered through the (periodic) halo, so they must not get a
+    # ghost. An unvalued periodic ghost would bias the node interpolation of no-BC
+    # variables toward 0 (VTK). Mark them invalid so both ghost kernels skip them.
+    pn = self.phy_faces_name
+    per = (pn == 11) | (pn == 22) | (pn == 33) | (pn == 44) | (pn == 55) | (pn == 66)
+    if np.any(per):
+      bf_cellid[per] = -1
+
     # ---- ghost_info_flt, ghost_info_int
     ghost_info_data_size_flt = 10 # (ghostcenter_x&y&z, gamma, face_center_x&y&z, face_normal_x&y&z)
     ghost_info_data_size_int = 5 # (cell_id, face index inside the cell, face_oldname, cell global id, face_id)
@@ -531,11 +546,19 @@ class LocalDomain:
       node_haloghostid
     )
 
-  def _check_phy_faces(self, face_cellid, face_haloid):
+  def _check_phy_faces(self, face_cellid, face_haloid, face_to_phyid=None):
     if self.size == 1:
       ext_faces = np.sum(face_cellid[:, 1] == -1)
     else:
-      ext_faces = np.sum((face_cellid[:, 1] == -1) & (face_haloid == -1))
+      # Real boundary faces: no interior right cell and no halo.
+      ext = (face_cellid[:, 1] == -1) & (face_haloid == -1)
+      # CROSS-RANK periodic faces became halo faces (face_haloid != -1) yet are
+      # still physical faces (face_to_phyid != -1). Count them as boundary faces
+      # so the (physical == boundary) balance still holds. Real interface halo
+      # faces have face_to_phyid == -1 and are correctly excluded.
+      if face_to_phyid is not None:
+        ext = ext | ((face_haloid != -1) & (face_to_phyid != -1))
+      ext_faces = np.sum(ext)
     total_ext_faces = MPI.COMM_WORLD.reduce(ext_faces, op=MPI.SUM, root=0)
     if total_ext_faces == 0:
       print("No physical faces found", file=sys.stderr)
@@ -554,7 +577,10 @@ class LocalDomain:
       if ld[i].size == 1:
         ext_faces = np.sum(ld[i].face_cellid[:, 1] == -1)
       else:
-        ext_faces = np.sum((ld[i].face_cellid[:, 1] == -1) & (ld[i].face_haloid == -1))
+        ext = (ld[i].face_cellid[:, 1] == -1) & (ld[i].face_haloid == -1)
+        # cross-rank periodic faces are halo faces that are still physical faces
+        ext = ext | ((ld[i].face_haloid != -1) & (ld[i].face_to_phyid != -1))
+        ext_faces = np.sum(ext)
       total_ext_faces += ext_faces
       total_phy_faces += len(ld[i].phy_faces)
     if total_ext_faces == 0:
@@ -646,6 +672,80 @@ class LocalDomain:
     if self.dim == 2:
       compute.dist_ortho_function_2d(d_innerfaces, d_boundaryfaces, face_cellid, cell_center, face_center, face_normal, face_dist_ortho)
     return face_dist_ortho
+
+  def _build_periodic_samerank(self):
+    # SAME-RANK periodic pairing. For periodic pairs whose BOTH sides live in this
+    # subdomain it wires:
+    #   * face_cellid[face][1] = partner cell + cell_shift (image across boundary),
+    #     so the flux and geometry kernels treat the periodic face like interior;
+    #   * node_periodicid[node] = partner node's cells, so the VTK node
+    #     interpolation sees both sides (else its least-squares stencil is
+    #     one-sided -> singular).
+    # Sign of the shift by the boundary a cell touches: x=0/y=0/z=0 (tags
+    # 11/44/55) -> +L on that component, x=Lx/y=Ly/z=Lz (tags 22/33/66) -> -L.
+    #
+    # CROSS-RANK pairs are NOT seen here: the C++ partitioner
+    # (handle_periodic_faces) already turned them into halo faces (face_name==10,
+    # translated halo_centvol), so they no longer carry tags 11/22/33/44/55/66.
+    #
+    # The matching itself is done in COMPILED kernels (domain_compute:
+    # pair_periodic_faces / match_periodic_nodes / fill_node_periodicid). They are
+    # sort-based (no Python dict) and O(#periodic boundary faces/nodes), so this
+    # stays cheap even in 3D where those are O(N^2) surface quantities.
+    #
+    # Lx/Ly/Lz come from the LOCAL node extent, which is EXACT for same-rank
+    # pairs: a same-rank pair needs both boundaries of that axis in THIS
+    # subdomain, so it spans the full box on that axis (max-min == global length).
+    fname = self.face_name
+    if not np.any((fname == 11) | (fname == 22) | (fname == 33) |
+                  (fname == 44) | (fname == 55) | (fname == 66)):
+      return
+
+    nmin = np.array([self.nodes[:, 0].min(), self.nodes[:, 1].min(),
+                     self.nodes[:, 2].min()], dtype=types.np_float_type)
+    nmax = np.array([self.nodes[:, 0].max(), self.nodes[:, 1].max(),
+                     self.nodes[:, 2].max()], dtype=types.np_float_type)
+    dtol = 1e-6 * float(np.max(nmax - nmin))   # transverse-match tolerance
+    Lx = float(nmax[0] - nmin[0])
+    Ly = float(nmax[1] - nmin[1])
+    Lz = float(nmax[2] - nmin[2])
+    t2 = 2 if self.dim == 3 else -1
+
+    # faces: (name_lo, name_hi, taxis0, taxis1, shift_axis, L)
+    fdirs = [(11, 22, 1, t2, 0, Lx), (44, 33, 0, t2, 1, Ly)]
+    if self.dim == 3:
+      fdirs.append((55, 66, 0, 1, 2, Lz))
+    for (name_lo, name_hi, t0, t1, sax, L) in fdirs:
+      r = compute.pair_periodic_faces(self.face_name, self.face_center,
+                                      self.face_cellid, self.cell_shift, nmin,
+                                      name_lo, name_hi, t0, t1, sax, L, dtol)
+      if r < 0:
+        raise ValueError(
+          "same-rank periodic face pairing failed (code %d) for tags %d/%d: a "
+          "periodic face has no local partner (cross-rank should already be a "
+          "halo) or the two boundaries are non-conforming." % (r, name_lo, name_hi))
+
+    # nodes: per-node periodic-boundary bitmask (from the periodic faces), then
+    # accumulate partner cells per periodic axis into node_periodicid. An edge or
+    # corner node carries several bits, so it collects partners from EVERY
+    # direction it touches -- fixing the 3D one-sided-stencil div-by-zero that a
+    # single node_oldname tag caused. Width 3*node_cellid gives room for up to 3
+    # directions of partners.
+    node_bits = np.zeros(self.nb_nodes, dtype=types.np_int_type)
+    compute.node_periodic_bits(self.faces, self.face_name, node_bits)
+    npid = np.zeros((self.nb_nodes, 3 * self.node_cellid.shape[1]),
+                    dtype=types.np_int_type)
+    node_fill = np.zeros(self.nb_nodes, dtype=types.np_int_type)
+    # bits: 1=x-lo(11) 2=x-hi(22) 4=y-hi(33) 8=y-lo(44) 16=z-lo(55) 32=z-hi(66)
+    compute.accum_periodic_dir(node_bits, self.nodes, self.node_cellid, npid,
+                               node_fill, nmin, 1, 2, 1, t2, dtol)   # x -> (y[,z])
+    compute.accum_periodic_dir(node_bits, self.nodes, self.node_cellid, npid,
+                               node_fill, nmin, 8, 4, 0, t2, dtol)   # y -> (x[,z])
+    if self.dim == 3:
+      compute.accum_periodic_dir(node_bits, self.nodes, self.node_cellid, npid,
+                                 node_fill, nmin, 16, 32, 0, 1, dtol)  # z -> (x,y)
+    if np.any(node_fill > 0):
+      self.node_periodicid = npid
 
   def _update_boundaries(self, face_name, node_name):
 
@@ -752,11 +852,27 @@ class LocalDomain:
 
     BCs = {"in": ["neumann", 1], "out": ["neumann", 2], "upper": ["neumann", 3], "bottom": ["neumann", 4]}
 
-    if len(periodicinfaces) != 0:
+    # Detect periodic boundaries GLOBALLY. With cross-rank periodic support, a
+    # periodic face may have been turned into a halo face (name 10) on this rank,
+    # so the per-rank periodic*faces lists can be empty even though the boundary
+    # IS periodic. The physical-face TAG survives the halo relabel, so use the
+    # local physical-face names and OR them across ranks so every rank agrees
+    # (the Variable BC consistency check requires a domain-wide answer).
+    pfn = self.phy_faces_name
+    has_inout = bool(np.any(pfn == 11) or np.any(pfn == 22)) if pfn.shape[0] else False
+    has_updown = bool(np.any(pfn == 33) or np.any(pfn == 44)) if pfn.shape[0] else False
+    has_frontback = bool(np.any(pfn == 55) or np.any(pfn == 66)) if pfn.shape[0] else False
+    if self.size > 1:
+      has_inout = MPI.COMM_WORLD.allreduce(has_inout, op=MPI.LOR)
+      has_updown = MPI.COMM_WORLD.allreduce(has_updown, op=MPI.LOR)
+      if self.dim == 3:
+        has_frontback = MPI.COMM_WORLD.allreduce(has_frontback, op=MPI.LOR)
+
+    if has_inout:
       BCs["in"] = ["periodic", 11]
       BCs["out"] = ["periodic", 22]
 
-    if len(periodicupperfaces) != 0:
+    if has_updown:
       BCs["bottom"] = ["periodic", 44]
       BCs["upper"] = ["periodic", 33]
 
@@ -764,7 +880,7 @@ class LocalDomain:
       BCs["front"] = ["neumann", 5]
       BCs["back"] = ["neumann", 6]
 
-      if len(periodicfrontfaces) != 0:
+      if has_frontback:
         BCs["front"] = ["periodic", 55]
         BCs["back"] = ["periodic", 66]
 

@@ -581,6 +581,9 @@ def _create_ghost_info(bf_cellid: 'int[:, :]', cell_center: 'float[:, :]', cell_
 
   for i in range(bf_cellid.shape[0]):
     cid = bf_cellid[i, 0]
+    if cid == -1:
+      ghost_info_int[i, 0] = -1  # periodic face: mark invalid so ghost tables skip it
+      continue
     bf = bf_cellid[i, 1]  # index of the face in the cell
     fid = cell_faceid[cid, bf]
 
@@ -634,6 +637,8 @@ def _create_ghost_tables(ghost_info_int: 'int[:, :]', faces: 'int[:, :]', cell_f
 
   for i in range(ghost_info_int.shape[0]):
     bc = ghost_info_int[i, 0]
+    if bc == -1:
+      continue  # periodic face marked invalid in _create_ghost_info: no ghost table entry
     bf = ghost_info_int[i, 1]
     # face_id
     fid = cell_faceid[bc, bf]
@@ -1189,29 +1194,13 @@ def _variables_2d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
       node_number[i] += 1
 
     # periodic boundary old vertex names)
-    if node_oldname[i] == 11 or node_oldname[i] == 22:
+    if node_oldname[i] >= 11:
+      # Unified periodic branch with the FULL cell_shift vector, so a corner node
+      # (periodic in x AND y) gets both its x- and y-partner cells imaged right.
       for j in range(node_periodicid[i][-1]):
         cell = node_periodicid[i][j]
-        center_x = cell_center[cell][0] + cell_shift[cell][0]
-        center_y = cell_center[cell][1]
-
-        Rx = center_x - nodes[i][0]
-        Ry = center_y - nodes[i][1]
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_xy += (Rx * Ry)
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_number[i] += 1
-
-    elif node_oldname[i] == 33 or node_oldname[i] == 44:
-      for j in range(node_periodicid[i][-1]):
-        cell = node_periodicid[i][j]
-        center_x = cell_center[cell][0]
-        center_y = cell_center[cell][1] + cell_shift[cell][1]
-
-        Rx = center_x - nodes[i][0]
-        Ry = center_y - nodes[i][1]
+        Rx = cell_center[cell][0] + cell_shift[cell][0] - nodes[i][0]
+        Ry = cell_center[cell][1] + cell_shift[cell][1] - nodes[i][1]
         I_xx += (Rx * Rx)
         I_yy += (Ry * Ry)
         I_xy += (Rx * Ry)
@@ -1312,62 +1301,16 @@ def _variables_3d(cell_center: 'float[:,:]', node_cellid: 'int[:,:]', node_haloi
       node_number[i] += 1
 
     # periodic boundary old vertex names)
-    if node_oldname[i] == 11 or node_oldname[i] == 22:
+    if node_oldname[i] >= 11:
+      # One unified periodic branch: apply the FULL cell_shift vector so that a
+      # partner cell coming from ANY periodic direction is imaged correctly. An
+      # edge/corner node carries partners from >1 direction (each partner cell
+      # holds its own shift, zero on the non-periodic components).
       for j in range(node_periodicid[i][-1]):
         cell = node_periodicid[i][j]
-        center_x = cell_center[cell][0] + cell_shift[cell][0]
-        center_y = cell_center[cell][1]
-        center_z = cell_center[cell][2]
-
-        Rx = center_x - nodes[i][0]
-        Ry = center_y - nodes[i][1]
-        Rz = center_z - nodes[i][2]
-
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_zz += (Rz * Rz)
-        I_xy += (Rx * Ry)
-        I_xz += (Rx * Rz)
-        I_yz += (Ry * Rz)
-
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_R_z[i] += Rz
-        node_number[i] = node_number[i] + 1
-
-    elif node_oldname[i] == 33 or node_oldname[i] == 44:
-      for j in range(node_periodicid[i][-1]):
-        cell = node_periodicid[i][j]
-        center_x = cell_center[cell][0]
-        center_y = cell_center[cell][1] + cell_shift[cell][1]
-        center_z = cell_center[cell][2]
-
-        Rx = center_x - nodes[i][0]
-        Ry = center_y - nodes[i][1]
-        Rz = center_z - nodes[i][2]
-
-        I_xx += (Rx * Rx)
-        I_yy += (Ry * Ry)
-        I_zz += (Rz * Rz)
-        I_xy += (Rx * Ry)
-        I_xz += (Rx * Rz)
-        I_yz += (Ry * Rz)
-
-        node_R_x[i] += Rx
-        node_R_y[i] += Ry
-        node_R_z[i] += Rz
-        node_number[i] = node_number[i] + 1
-
-    elif node_oldname[i] == 55 or node_oldname[i] == 66:
-      for j in range(node_periodicid[i][-1]):
-        cell = node_periodicid[i][j]
-        center_x = cell_center[cell][0]
-        center_y = cell_center[cell][1]
-        center_z = cell_center[cell][2] + cell_shift[cell][2]
-
-        Rx = center_x - nodes[i][0]
-        Ry = center_y - nodes[i][1]
-        Rz = center_z - nodes[i][2]
+        Rx = cell_center[cell][0] + cell_shift[cell][0] - nodes[i][0]
+        Ry = cell_center[cell][1] + cell_shift[cell][1] - nodes[i][1]
+        Rz = cell_center[cell][2] + cell_shift[cell][2] - nodes[i][2]
 
         I_xx += (Rx * Rx)
         I_yy += (Ry * Ry)
@@ -1531,6 +1474,168 @@ compute_cell_center_volume_3d = manapy_c_api.compute_cell_center_volume_3d
 _agnostic_done = False
 _dims_done = set()
 
+def _pair_periodic_faces(face_name: 'int[:]', face_center: 'float[:,:]',
+                         face_cellid: 'int[:,:]', cell_shift: 'float[:,:]',
+                         cmin: 'float[:]', name_lo: 'int', name_hi: 'int',
+                         taxis0: 'int', taxis1: 'int', saxis: 'int',
+                         L: 'float', dtol: 'float'):
+  # Same-rank periodic face pairing (compiled). Matches faces tagged name_lo
+  # (owner shift +L on component saxis) to name_hi (shift -L) by their transverse
+  # coordinate(s) taxis0[,taxis1], and wires face_cellid[.,1] + cell_shift.
+  # Matching is sort-based (no dict): a unique integer key is built from the
+  # rounded transverse coords, both sides are argsorted, and paired in order.
+  # Returns nlo on success, -1 if the two sides have different counts (cross-rank
+  # leftover / malformed), -2 if a transverse key has no match.
+  MULT = 2147483648  # 2^31, key = k0*MULT + k1 (fits int64 for any realistic mesh)
+  nf = len(face_name)
+  nlo = 0
+  nhi = 0
+  for i in range(nf):
+    if face_name[i] == name_lo:
+      nlo += 1
+    elif face_name[i] == name_hi:
+      nhi += 1
+  if nlo == 0 and nhi == 0:
+    return 0
+  if nlo != nhi:
+    return -1
+  lo = np.empty(nlo, dtype=np.int64)
+  hi = np.empty(nhi, dtype=np.int64)
+  klo = np.empty(nlo, dtype=np.int64)
+  khi = np.empty(nhi, dtype=np.int64)
+  a = 0
+  b = 0
+  for i in range(nf):
+    if face_name[i] == name_lo or face_name[i] == name_hi:
+      k0 = np.int64((face_center[i][taxis0] - cmin[taxis0]) / dtol + 0.5)
+      k1 = np.int64(0)
+      if taxis1 >= 0:
+        k1 = np.int64((face_center[i][taxis1] - cmin[taxis1]) / dtol + 0.5)
+      key = k0 * MULT + k1
+      if face_name[i] == name_lo:
+        lo[a] = i
+        klo[a] = key
+        a += 1
+      else:
+        hi[b] = i
+        khi[b] = key
+        b += 1
+  olo = np.argsort(klo)
+  ohi = np.argsort(khi)
+  for j in range(nlo):
+    if klo[olo[j]] != khi[ohi[j]]:
+      return -2
+    f = lo[olo[j]]
+    fb = hi[ohi[j]]
+    ca = face_cellid[f][0]
+    cb = face_cellid[fb][0]
+    face_cellid[f][1] = cb
+    face_cellid[fb][1] = ca
+    cell_shift[ca][saxis] = L
+    cell_shift[cb][saxis] = -L
+  return nlo
+
+
+def _node_periodic_bits(faces: 'int[:,:]', face_name: 'int[:]', node_bits: 'int[:]'):
+  # Per-node bitmask of the periodic boundaries the node lies on, taken from the
+  # periodic faces it is a vertex of. This is what lets an EDGE/CORNER node be
+  # matched in every periodic direction it touches (node_oldname carries only one
+  # tag and cannot express that). Bits: 1=11(x-lo) 2=22(x-hi) 4=33(y-hi)
+  # 8=44(y-lo) 16=55(z-lo) 32=66(z-hi).
+  nf = len(face_name)
+  for f in range(nf):
+    nm = face_name[f]
+    bit = 0
+    if nm == 11:
+      bit = 1
+    elif nm == 22:
+      bit = 2
+    elif nm == 33:
+      bit = 4
+    elif nm == 44:
+      bit = 8
+    elif nm == 55:
+      bit = 16
+    elif nm == 66:
+      bit = 32
+    if bit != 0:
+      for j in range(faces[f][-1]):
+        nd = faces[f][j]
+        node_bits[nd] = node_bits[nd] | bit
+
+
+def _accum_periodic_dir(node_bits: 'int[:]', nodes: 'float[:,:]', node_cellid: 'int[:,:]',
+                        node_periodicid: 'int[:,:]', node_fill: 'int[:]', cmin: 'float[:]',
+                        lo_bit: 'int', hi_bit: 'int', taxis0: 'int', taxis1: 'int', dtol: 'float'):
+  # For ONE periodic axis: match the boundary nodes carrying lo_bit to those
+  # carrying hi_bit by their transverse coordinate(s), and APPEND each side's
+  # partner cells into node_periodicid (per-node running counter node_fill).
+  # Called once per periodic axis, so an edge/corner node (which carries several
+  # bits) accumulates partners from every direction. Tolerant two-pointer merge:
+  # unmatched nodes (cross-rank) are left to the halo branch.
+  MULT = 2147483648
+  nn = len(node_bits)
+  nlo = 0
+  nhi = 0
+  for i in range(nn):
+    if (node_bits[i] & lo_bit) != 0:
+      nlo += 1
+    if (node_bits[i] & hi_bit) != 0:
+      nhi += 1
+  if nlo == 0 or nhi == 0:
+    return 0
+  lo = np.empty(nlo, dtype=np.int64)
+  hi = np.empty(nhi, dtype=np.int64)
+  klo = np.empty(nlo, dtype=np.int64)
+  khi = np.empty(nhi, dtype=np.int64)
+  a = 0
+  b = 0
+  for i in range(nn):
+    haslo = (node_bits[i] & lo_bit) != 0
+    hashi = (node_bits[i] & hi_bit) != 0
+    if haslo or hashi:
+      k0 = np.int64((nodes[i][taxis0] - cmin[taxis0]) / dtol + 0.5)
+      k1 = np.int64(0)
+      if taxis1 >= 0:
+        k1 = np.int64((nodes[i][taxis1] - cmin[taxis1]) / dtol + 0.5)
+      key = k0 * MULT + k1
+      if haslo:
+        lo[a] = i
+        klo[a] = key
+        a += 1
+      if hashi:
+        hi[b] = i
+        khi[b] = key
+        b += 1
+  olo = np.argsort(klo)
+  ohi = np.argsort(khi)
+  ia = 0
+  ib = 0
+  while ia < nlo and ib < nhi:
+    ka = klo[olo[ia]]
+    kb = khi[ohi[ib]]
+    if ka == kb:
+      na = lo[olo[ia]]
+      nb = hi[ohi[ib]]
+      cnt_b = node_cellid[nb][-1]
+      for j in range(cnt_b):
+        node_periodicid[na][node_fill[na]] = node_cellid[nb][j]
+        node_fill[na] += 1
+      node_periodicid[na][-1] = node_fill[na]
+      cnt_a = node_cellid[na][-1]
+      for j in range(cnt_a):
+        node_periodicid[nb][node_fill[nb]] = node_cellid[na][j]
+        node_fill[nb] += 1
+      node_periodicid[nb][-1] = node_fill[nb]
+      ia += 1
+      ib += 1
+    elif ka < kb:
+      ia += 1
+    else:
+      ib += 1
+  return 0
+
+
 def setup(dim):
   global _agnostic_done
 
@@ -1544,6 +1649,7 @@ def setup(dim):
     global count_max_bcell_halophyid, create_bcell_halophyid, create_ghost_new_index, create_halo_ghost_tables
     global create_normal_face_of_cell, get_max_b_ncellid, create_b_ncellid, create_bf_cellid, get_cell_nb_phyid
     global fv_face_geometry
+    global pair_periodic_faces, node_periodic_bits, accum_periodic_dir
 
     # nested helpers first (must be dispatchers before their callers)
     _is_in_array = compile(_is_in_array)
@@ -1577,6 +1683,9 @@ def setup(dim):
     create_bf_cellid = compile(_create_bf_cellid)
     get_cell_nb_phyid = compile(_get_cell_nb_phyid)
     fv_face_geometry = compile(_fv_face_geometry)
+    pair_periodic_faces = compile(_pair_periodic_faces)
+    node_periodic_bits = compile(_node_periodic_bits)
+    accum_periodic_dir = compile(_accum_periodic_dir)
 
     _agnostic_done = True
 
