@@ -3,9 +3,13 @@ from manapy.domain import Domain
 from manapy.helpers import get_test_mesh, get_mesh
 import numpy as np
 import pytest
+
+# jax is only needed here to build autodiff reference gradients. It is installed
+# best-effort in the CI image; if its wheel is unavailable (e.g. very recent
+# Python), skip this module cleanly rather than fail collection.
+pytest.importorskip("jax")
 import jax.numpy as jnp
 from jax import grad, vmap
-import numpy as np
 
 # Absolute tolerance for "exact" gradient reconstruction on linear functions
 ATOL_LINEAR = 1e-6

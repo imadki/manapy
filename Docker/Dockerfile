@@ -55,6 +55,12 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
     python -m pip install cython mpi4py pythran pytest && \
     python -m pip install petsc petsc4py
 
+# jax provides the autodiff reference gradients for tests/variable/test_gradient.py.
+# Best-effort: on very recent Python a matching jaxlib wheel may not exist yet, in
+# which case the test module skips itself (pytest.importorskip) instead of failing.
+RUN python -m pip install jax || \
+    echo "WARNING: jax unavailable; tests/variable/test_gradient.py will be skipped"
+
 RUN git clone https://github.com/imadki/mumps4py.git && \
     cd mumps4py && \
     python -m pip install .
