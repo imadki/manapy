@@ -25,9 +25,9 @@ try:
 except KeyError:
   BASE_DIR = os.path.dirname(os.path.realpath(__file__))
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
-  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
-filename = 'big/carre.msh'
+filename = 'uns_square.msh'
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
 domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)

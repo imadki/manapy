@@ -22,7 +22,7 @@ Initial / exact field:
     U = grad(P) = (PIN, 0),  P = PIN*(1 - x)
 
 Run:
-    MESH_DIR=../../../../meshes/geo MESH_FILE=square.msh mpirun -n 1 python3 darcy2d_gpu.py
+    MESH_DIR=../../../../meshes/geo MESH_FILE=uns_square.msh mpirun -n 1 python3 darcy2d_gpu.py
 """
 from mpi4py import MPI
 import os
@@ -45,7 +45,7 @@ except KeyError:
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
   MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
-filename = os.environ.get('MESH_FILE', 'square.msh')
+filename = os.environ.get('MESH_FILE', 'uns_square.msh')
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
 

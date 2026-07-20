@@ -26,7 +26,7 @@ try:
 except KeyError:
   BASE_DIR = os.path.dirname(os.path.realpath(__file__))
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
-  MESH_DIR = os.path.join(BASE_DIR, 'meshes')
+  MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
 filename = 'hybrid3d.msh'
 dim = 3

@@ -10,7 +10,7 @@ A VTK snapshot of the density is written each output step. The WENO solution is
 sharper and non-oscillatory at the shock/contact compared to first order.
 
 Run (numba compiles the 3D WENO build + kernels on first use):
-    MESH_DIR=../../../../meshes python3 weno_euler_sod3d.py
+    MESH_DIR=../../../../meshes/geo python3 weno_euler_sod3d.py
 """
 from mpi4py import MPI
 import os
@@ -21,7 +21,7 @@ from manapy.core.Variable import Variable
 from manapy.solvers.euler.weno_euler import WenoEulerSolver
 
 RANK = MPI.COMM_WORLD.Get_rank()
-BASE = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'meshes')
+BASE = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'meshes', 'geo')
 mesh = os.path.join(os.environ.get('MESH_DIR', BASE), os.environ.get('MESH_FILE', 'hybrid3d.msh'))
 domain = Domain.create_domain(mesh, 3, Partitioning.Par_Nodal, recreate=True)
 cells = domain.cells

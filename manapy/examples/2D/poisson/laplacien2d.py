@@ -29,7 +29,7 @@ except KeyError:
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
   MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
-filename = "carre.msh"
+filename = "uns_square.msh"
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
 

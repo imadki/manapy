@@ -23,7 +23,7 @@ branching mixing them):
                               L2(rho) vs the exact solution. Default mode.
 
 Env knobs (mirror the other benchmark drivers):
-    MESH_FILE  shared 2D triangle .msh (required; same file fed to pyBaram / OpenFOAM)
+    MESH_FILE  shared 2D triangle .msh (required; e.g. MESH_FILE=uns_square.msh; same file fed to pyBaram / OpenFOAM)
     ORDER      1 (upwind) or 2 (MUSCL)                                  (default 1)
     DT         fixed dt. MODE=run requires DT>0 (from the dt provider).
     TFINAL     final time                                              (default 0.25)

@@ -11,7 +11,7 @@ solver change is needed.
 
 Mesh requirement: a periodic-tagged square whose four sides carry the physical
 tags in=11, out=22, upper=33, bottom=44 (that is what makes the domain build the
-periodic connectivity). `meshes/periodic_square48.msh` is such a mesh; generate
+periodic connectivity). `meshes/geo/periodic_square.msh` is such a mesh; generate
 one with manapy.api.meshgen + a `Periodic Line` gmsh directive if you need
 another resolution.
 
@@ -35,8 +35,8 @@ try:
   MESH_DIR = os.environ['MESH_DIR']
 except KeyError:
   BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-  MESH_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..', 'meshes')
-filename = os.environ.get('MESH', 'periodic_square48.msh')  # sides tagged 11/22/33/44
+  MESH_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..', 'meshes', 'geo')
+filename = os.environ.get('MESH', 'periodic_square.msh')  # sides tagged 11/22/33/44
 mesh_path = os.path.join(MESH_DIR, filename)
 
 domain = Domain.create_domain(mesh_path, 2, Partitioning.Par_Nodal, recreate=True)
