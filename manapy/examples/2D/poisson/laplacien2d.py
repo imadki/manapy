@@ -49,7 +49,6 @@ tt = COMM.reduce(end - start, op=MPI.MAX, root=0)
 if RANK == 0:
   print("Time to create the domain", tt)
 
-# TODO tfinal
 miter = 0
 niter = 1
 Pinit = 10.
@@ -69,23 +68,15 @@ values = {"in": 20,
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
 
-# L = GinkgoDistributedSolver(domain=domain, var=P, reuse_mtx=True,
-#                             precond="jacobi", scheme='diamond',
-#                             device="cpu"
-                            # )
+L = GinkgoDistributedSolver(domain=domain, var=P, reuse_mtx=True,
+                            precond="jacobi", scheme='diamond',
+                            device="cpu"
+                            )
 
-L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
-              precond='gamg', sub_precond="amg",  # with_mtx=False,
-              eps_a=1e-10, eps_r=1e-10, method="gmres")
-
-# L = MUMPSSolver(domain=domain, var=P, reuse_mtx=True, scheme='fv_corrected')
-
-# Solve the system
 ts = MPI.Wtime()
 L()
 te = MPI.Wtime()
 
-# L.view()
 P.update_halo_value()
 P.update_ghost_value()
 P.interpolate_celltonode()

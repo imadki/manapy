@@ -43,7 +43,6 @@ nbcells = domain.nbcells
 
 ts = MPI.Wtime()
 
-# TODO tfinal
 if RANK == 0: print("Start Computation ...")
 time = 0
 tfinal = .15
@@ -56,18 +55,15 @@ ne = Variable(domain=domain)
 u = Variable(domain=domain)
 v = Variable(domain=domain)
 w = Variable(domain=domain)
-P = Variable(domain=domain)  # , BC=boundaries, values=values)
+P = Variable(domain=domain)
 
-# Call the transport solver
 S = AdvectionDiffusionSolver(ne, vel=(u, v, w), Dxx=0.01, Dyy=0., order=2, cfl=0.8)
 
-####Initialisation
 initialisation_gaussian_3d(ne.cell, u.cell, v.cell, w.cell, P.cell, cells.center, Pinit)
 f = lambda x, y, z: Pinit * (1. - x)
 
 if RANK == 0: print("Start While loop ...")
 
-# loop over time
 while time < tfinal:
 
   u.face[:] = 2.
@@ -88,22 +84,18 @@ while time < tfinal:
 
   if niter == 1 or niter % tot == 0:
     if saving_at_node:
-      # save vtk files for the solution
       ne.update_halo_value()
       ne.update_ghost_value()
       ne.interpolate_celltonode()
 
-      # save vtk files for the solution
       u.update_halo_value()
       u.update_ghost_value()
       u.interpolate_celltonode()
 
-      # save vtk files for the solution
       v.update_halo_value()
       v.update_ghost_value()
       v.interpolate_celltonode()
 
-      # save vtk files for the solution
       w.update_halo_value()
       w.update_ghost_value()
       w.interpolate_celltonode()
