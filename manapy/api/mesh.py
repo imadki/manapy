@@ -100,13 +100,23 @@ class Mesh:
 
   # ------------------------------------------------- on-the-fly generators
   @classmethod
-  def rectangle(cls, bounds=((0, 1), (0, 1)), n=20, cell_type="triangle", **kwargs):
-    """Generate a 2D rectangle mesh (no .msh file needed)."""
-    path = meshgen.rectangle(bounds=bounds, n=n, cell_type=cell_type)
+  def rectangle(cls, bounds=((0, 1), (0, 1)), n=20, cell_type="triangle",
+                transfinite=True, recombine=None, **kwargs):
+    """Generate a 2D rectangle mesh (no .msh file needed).
+
+    transfinite=False -> unstructured; recombine=True -> quads (or hybrid if also
+    unstructured). See manapy.api.meshgen.rectangle for the full combination table."""
+    path = meshgen.rectangle(bounds=bounds, n=n, cell_type=cell_type,
+                             transfinite=transfinite, recombine=recombine)
     return cls(path, dim=2, **kwargs)
 
   @classmethod
-  def box(cls, bounds=((0, 1), (0, 1), (0, 1)), n=10, cell_type="tetra", **kwargs):
-    """Generate a 3D box mesh (no .msh file needed)."""
-    path = meshgen.box(bounds=bounds, n=n, cell_type=cell_type)
+  def box(cls, bounds=((0, 1), (0, 1), (0, 1)), n=10, cell_type="tetra",
+          transfinite=True, recombine=None, **kwargs):
+    """Generate a 3D box mesh (no .msh file needed).
+
+    transfinite=False -> unstructured; recombine=True -> hexes (or hybrid if also
+    unstructured). See manapy.api.meshgen.box for the full combination table."""
+    path = meshgen.box(bounds=bounds, n=n, cell_type=cell_type,
+                       transfinite=transfinite, recombine=recombine)
     return cls(path, dim=3, **kwargs)

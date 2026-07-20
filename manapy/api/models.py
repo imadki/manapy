@@ -66,13 +66,36 @@ class _ExplicitModel:
     self._solver = None
     self._out_vars, self._out_names = _resolve_output(output, var)
 
-  def run(self, T, output_every=50, output_mode="node"):
+  def run(self, T, output_every=50, output_mode="node", exact=None):
+    """Advance to time T.
+
+    exact : optional callable ``f(x, y, z, t)`` returning the exact cell values.
+            When given, an ``<var>_exact`` field is maintained, saved next to the
+            solution in every output frame, and the final L2/L-infinity errors are
+            printed and stored on ``self.l2_error`` / ``self.linf_error``.
+            (Use output_mode="cell" with exact -- the reference field has no BCs.)
+    """
     domain = self._mesh.domain
     solver = self._solver
     time, niter, miter = 0.0, 1, 0
 
+    out_vars, out_names = list(self._out_vars), list(self._out_names)
+    exact_var = None
+    self.l2_error = self.linf_error = None
+    if exact is not None:
+      base = self._var.name or "u"
+      exact_var = self._mesh.field(base + "_exact")
+      cc = domain.cells.center
+
+      def _refresh_exact(t):
+        exact_var.cell[:] = exact(cc[:, 0], cc[:, 1], cc[:, 2], t)
+
+      out_vars = out_vars + [exact_var]
+      out_names = out_names + [base + "_exact"]
+
     if RANK == 0:
-      print(f"[{self._label}] T={T}  output_every={output_every}")
+      print(f"[{self._label}] T={T}  output_every={output_every}"
+            + ("  (+exact)" if exact is not None else ""))
 
     while time < T:
       d_t = solver.stepper()
@@ -80,12 +103,26 @@ class _ExplicitModel:
       solver.compute_fluxes()
       solver.compute_new_val()
       if niter == 1 or niter % output_every == 0:
-        _save(domain, self._out_vars, self._out_names, d_t, time, niter, miter, output_mode)
+        if exact_var is not None:
+          _refresh_exact(time)
+        _save(domain, out_vars, out_names, d_t, time, niter, miter, output_mode)
         miter += 1
       niter += 1
 
+    if exact_var is not None:
+      _refresh_exact(time)
+      err = np.asarray(self._var.cell) - np.asarray(exact_var.cell)
+      vol = np.asarray(domain.cells.volume)
+      num = COMM.allreduce(float(np.sum(vol * err * err)), op=MPI.SUM)
+      den = COMM.allreduce(float(np.sum(vol)), op=MPI.SUM)
+      self.linf_error = COMM.allreduce(float(np.max(np.abs(err))), op=MPI.MAX)
+      self.l2_error = (num / den) ** 0.5
+
     if RANK == 0:
       print(f"[{self._label}] done — {niter - 1} iters, t={time:.6f}")
+      if exact_var is not None:
+        print(f"[{self._label}] vs exact @ t={time:.4f} :  "
+              f"L2 = {self.l2_error:.3e}   Linf = {self.linf_error:.3e}")
 
 
 class AdvectionModel(_ExplicitModel):
@@ -113,6 +150,70 @@ class DiffusionModel(_ExplicitModel):
                 for i, v in enumerate(velocity))
     self._solver = AdvectionDiffusionSolver(var, vel=vel, Dxx=Dxx, Dyy=Dyy, Dzz=Dzz,
                                             order=order, cfl=cfl, scheme=scheme)
+
+
+class BurgersModel(_ExplicitModel):
+  """Explicit nonlinear (viscous) Burgers: u_t + div(u^2/2) = nu*lap(u).
+
+  The field advects itself (no prescribed velocity); `nu` is the isotropic
+  viscosity (nu=0 -> inviscid). Order 2 is MUSCL with a slope limiter.
+
+  Example
+  -------
+  u = mesh.field("u", init=lambda x, y, z: np.where(x < 0.25, 1.0, 0.0),
+                 bc={"in": ("dirichlet", 1), "out": ("dirichlet", 0),
+                     "upper": "neumann", "bottom": "neumann"}, limiter="vanalbada")
+  BurgersModel(u, mesh, nu=0.01, order=2).run(T=1.0)
+  """
+
+  _label = "BurgersModel"
+
+  def __init__(self, var, mesh, nu=0.0, cfl=0.4, order=2, scheme="rusanov", output=None):
+    super().__init__(var, mesh, output)
+    # Local import keeps the (numba-compiling) burgers module off the api import path.
+    from manapy.solvers.burgers.system import BurgersSolver
+    self._solver = BurgersSolver(var, nu=nu, order=order, cfl=cfl, scheme=scheme)
+
+
+class MultilayerSWModel(_ExplicitModel):
+  """Variable-density multilayer shallow water for dense (brine) plumes.
+
+  `layers` is a list of dicts ``{'h','hu','hv','s'}`` of Variables, ordered
+  bottom -> top (index 0 = densest, at the bed). `rho` is the per-layer density.
+  Inter-layer baroclinic coupling is carried by a per-layer effective bed; v2
+  turbulent entrainment (``entrain=True``) dilutes the dense current.
+
+  ``scheme='srnh'`` is the well-balanced subcritical default; ``scheme='hllc'`` is
+  robust through the sonic point Fr=1 -- use it for transcritical plunging plumes.
+
+  Example
+  -------
+  NEU = {"in": "neumann", "out": "neumann", "upper": "neumann", "bottom": "neumann"}
+  layers = [{'h': mesh.field("h1", init=h1_0, bc=NEU), 'hu': mesh.field("hu1", bc=NEU),
+             'hv': mesh.field("hv1", bc=NEU), 's': mesh.field("s1", init=h1_0, bc=NEU)},
+            {'h': mesh.field("h2", init=h2_0, bc=NEU), 'hu': mesh.field("hu2", bc=NEU),
+             'hv': mesh.field("hv2", bc=NEU), 's': mesh.field("s2", bc=NEU)}]
+  MultilayerSWModel(layers, mesh, rho=[1035, 1000], Z=Z, scheme="hllc",
+                    entrain=True, Mann=0.01).run(T=3.0, output_every=200, output_mode="cell")
+  """
+
+  _label = "MultilayerSWModel"
+
+  def __init__(self, layers, mesh, rho, Z=None, grav=9.81, cfl=0.8, order=1, Mann=0.0,
+               scheme="srnh", entrain=False, E0=0.075, a_par=718.0, n_par=2.4,
+               rho0=None, cap_frac=0.2, output=None):
+    if output is None:
+      output = []
+      for k, lay in enumerate(layers):
+        output.append((lay['h'], f"h{k + 1}"))
+        output.append((lay['s'], f"s{k + 1}"))
+    super().__init__(layers[0]['h'], mesh, output)
+    # Local import keeps the (numba-compiling) multilayer module off the api import path.
+    from manapy.solvers.multilayer.system import MultilayerSWSolver
+    self._solver = MultilayerSWSolver(layers, rho=rho, Z=Z, grav=grav, cfl=cfl, order=order,
+                                      Mann=Mann, scheme=scheme, entrain=entrain, E0=E0,
+                                      a_par=a_par, n_par=n_par, rho0=rho0, cap_frac=cap_frac)
+    self._layers = layers
 
 
 # --------------------------------------------------------------------------- #

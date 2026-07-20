@@ -68,3 +68,6 @@ myvenv/
 # benchmark comparison outputs (VTK, meshes, OpenFOAM cases) — not versioned
 bubble_bench/
 bubble_compare/
+
+# graphify knowledge-graph output (généré)
+graphify-out/

@@ -2,6 +2,9 @@
 #define NO_IMPORT_ARRAY
 #include <numpy/arrayobject.h>
 #include "manapy_part.h"
+#include <cmath>
+#include <array>
+#include <utility>
 
 /**
  * @file partitioning.cpp
@@ -726,6 +729,7 @@ PyArray<idx_t, 2> *node_cellid,
 PyArray<idx_t, 2> *cells,
 PyArray<int8_t, 1> *cells_type,
 PyArray<idx_t, 2> *node_phyid,
+PyArray<idx_t, 1> *phy_faces_name,
 const std::vector<int8_t> &node_is_boundary,
 const VecMapNodes &vec_map_nodes,
 const std::vector<idx_t> &part_phyid,
@@ -862,6 +866,16 @@ const idx_t nb_parts
                 const idx_t phy_id_part = part_phyid[phy_id]; // partition owning this face
 
                 if (part != phy_id_part) {
+                    // Periodic faces (11/22/33/44/55/66) are NOT physical boundaries:
+                    // their partner arrives through the periodic halo, so they must not
+                    // spawn a cross-rank phyid/ghost/haloghost. Skipping only the
+                    // cross-rank branch (not the local count) keeps the ghost-table
+                    // sizes consistent with the Python side while removing the
+                    // unvalued haloghost slot that corrupted node interpolation (VTK).
+                    const idx_t pnm = phy_faces_name->get(phy_id);
+                    if (pnm == 11 || pnm == 22 || pnm == 33 ||
+                        pnm == 44 || pnm == 55 || pnm == 66)
+                        continue;
                     // It is ok to use map and set here the access is rare, does not affect performance.
                     // Physical face belongs to a different partition → register as exterior phyid.
                     ld[part].map_phyid_recv[phy_id_part].insert(phy_id);
@@ -920,6 +934,214 @@ static PyObject *get_result_as_py_list(LocalDomainStruct *ld, const idx_t nb_par
     }
 
     return py_list_result;
+}
+
+// ============================================================================
+// handle_periodic_faces   (CROSS-RANK periodic support)
+// ============================================================================
+/**
+ * @brief Turn CROSS-RANK periodic faces into translated halo faces.
+ *
+ * Periodic boundary faces carry physical tags 11/22 (x-periodic) and 33/44
+ * (y-periodic) [and 55/66 for z in 3D]. A periodic face's partner cell lives on
+ * the OPPOSITE side of the box and shares NO node with it, so the normal
+ * shared-node halo discovery (loop_through_cells) never finds it.
+ *
+ * Here we globally match periodic faces by their transverse centroid and, for
+ * every matched pair whose two owner cells live in DIFFERENT partitions
+ * (cross-rank), inject the partner as a *translated* halo cell:
+ *   - map_int_halos  : the partner cell is registered as an exterior halo so it
+ *                      is serialized by create_halos and exchanged over MPI.
+ *   - vec_node_halos : the partner halo is attached to the LOCAL nodes of the
+ *                      near-side periodic face, so the existing node-intersection
+ *                      in Python _create_halo_cells sets face_haloid, and
+ *                      _define_face_name then relabels the face to name 10.
+ *   - periodic_shift : record the +/-L translation to apply to the partner halo
+ *                      centroid after create_halos computes it (area/volume is
+ *                      translation-invariant, so only the centroid moves).
+ *
+ * No solver change is needed: the face becomes an ordinary halo face (name 10)
+ * whose halo value arrives unchanged through the standard halo exchange
+ * (translation periodicity), and whose halo centroid is the translated partner.
+ *
+ * SAME-RANK periodic pairs (both owner cells in one partition) are intentionally
+ * left untouched here (A.part == B.part is skipped) and handled in Python by
+ * LocalDomain._build_periodic_samerank.
+ *
+ * @param ld               Array of partition descriptors (read/write).
+ * @param part_vert        Global cell -> partition id.
+ * @param node_cellid      Global node -> incident cells (owner recovery).
+ * @param nodes            Global node coordinates.
+ * @param cells            Global cell-node connectivity (halo cell node counts).
+ * @param phy_faces        Global physical face connectivity.
+ * @param phy_faces_name   Global physical face tags.
+ * @param vec_map_nodes    (global_node, partition) -> local_node_id.
+ * @param cell_glob_to_loc Global cell id -> local cell id inside its partition.
+ * @param periodic_shift   Output: per partition, map (global halo cell -> shift).
+ * @param nb_parts         Number of partitions.
+ * @param dim              Spatial dimension (2 or 3).
+ */
+static void handle_periodic_faces(
+    LocalDomainStruct *ld,
+    PyArray<idx_t, 1> *part_vert,
+    PyArray<idx_t, 2> *node_cellid,
+    PyArray<fdx_t, 2> *nodes,
+    PyArray<idx_t, 2> *cells,
+    PyArray<idx_t, 2> *phy_faces,
+    PyArray<idx_t, 1> *phy_faces_name,
+    const VecMapNodes &vec_map_nodes,
+    const std::vector<idx_t> &cell_glob_to_loc,
+    std::vector<std::map<idx_t, std::array<fdx_t, 3>>> &periodic_shift,
+    const idx_t nb_parts,
+    const idx_t dim
+) {
+    struct PFace { idx_t face_index; idx_t owner; idx_t part; double c[3]; };
+    std::vector<PFace> f11, f22, f33, f44, f55, f66;
+
+    std::vector<idx_t> intersect_cell(2);
+    bool has_periodic = false;
+
+    // --- collect periodic faces per tag + recover owner cell and centroid ---
+    for (idx_t i = 0; i < phy_faces->shape[0]; i++) {
+        const idx_t name = phy_faces_name->get(i);
+        if (name != 11 && name != 22 && name != 33 && name != 44 && name != 55 && name != 66)
+            continue;
+        has_periodic = true;
+
+        auto face = phy_faces->sub_array(i);
+        const idx_t nb = face.last();
+
+        // owner cell = the single cell touching all nodes of this face
+        intersect_arr(node_cellid, &face, nb, intersect_cell);
+        const idx_t owner = intersect_cell[0];
+        if (owner == -1)
+            continue;
+        const idx_t part = part_vert->get(owner);
+
+        double c[3] = {0.0, 0.0, 0.0};
+        for (idx_t j = 0; j < nb; j++) {
+            const idx_t nd = face.get(j);
+            c[0] += static_cast<double>(nodes->get2(nd, 0));
+            c[1] += static_cast<double>(nodes->get2(nd, 1));
+            c[2] += static_cast<double>(nodes->get2(nd, 2));
+        }
+        c[0] /= static_cast<double>(nb);
+        c[1] /= static_cast<double>(nb);
+        c[2] /= static_cast<double>(nb);
+
+        PFace pf{ i, owner, part, {c[0], c[1], c[2]} };
+        if (name == 11) f11.push_back(pf);
+        else if (name == 22) f22.push_back(pf);
+        else if (name == 33) f33.push_back(pf);
+        else if (name == 44) f44.push_back(pf);
+        else if (name == 55) f55.push_back(pf);
+        else f66.push_back(pf);
+    }
+    if (!has_periodic)
+        return;
+
+    // --- global box lengths (rank 0 has the full global mesh here) ---
+    double minx = 0, maxx = 0, miny = 0, maxy = 0, minz = 0, maxz = 0;
+    for (idx_t i = 0; i < nodes->shape[0]; i++) {
+        const double x = static_cast<double>(nodes->get2(i, 0));
+        const double y = static_cast<double>(nodes->get2(i, 1));
+        const double z = static_cast<double>(nodes->get2(i, 2));
+        if (i == 0 || x < minx) minx = x;
+        if (i == 0 || x > maxx) maxx = x;
+        if (i == 0 || y < miny) miny = y;
+        if (i == 0 || y > maxy) maxy = y;
+        if (i == 0 || z < minz) minz = z;
+        if (i == 0 || z > maxz) maxz = z;
+    }
+    const double Lx = maxx - minx;
+    const double Ly = maxy - miny;
+    const double Lz = maxz - minz;
+
+    const double SCALE = 1e8; // robust FP transverse-coordinate matching (~1e-8)
+
+    // push a local cell id into a map_int_halos vector only if not already present
+    auto push_unique = [](std::vector<idx_t> &v, const idx_t val) {
+        for (const idx_t x : v)
+            if (x == val) return;
+        v.push_back(val);
+    };
+
+    // Attach translated partner halo `halo_gcell` to partition `p` across the
+    // near-side periodic face `face_index`: wire vec_node_halos on the face's
+    // LOCAL nodes (so node-intersection sets face_haloid), grow the halo cell
+    // node-width, and record the centroid shift.
+    auto attach = [&](const idx_t p, const idx_t face_index, const idx_t halo_gcell,
+                      const double sx, const double sy, const double sz) {
+        auto face = phy_faces->sub_array(face_index);
+        const idx_t nb = face.last();
+        for (idx_t j = 0; j < nb; j++) {
+            const idx_t gnode = face.get(j);
+            const idx_t lnode = vec_map_nodes(gnode, p);
+            ld[p].vec_node_halos.push_back(lnode);
+            ld[p].vec_node_halos.push_back(halo_gcell); // global cell id (translated to halo row in create_halos)
+        }
+        const idx_t nb_hcell_nodes = cells->last2(halo_gcell);
+        ld[p].max_halo_cell_nodeid = std::max(ld[p].max_halo_cell_nodeid, nb_hcell_nodes);
+        periodic_shift[p][halo_gcell] = { static_cast<fdx_t>(sx), static_cast<fdx_t>(sy), static_cast<fdx_t>(sz) };
+    };
+
+    // Match `lo` faces against `hi` faces by transverse centroid and inject the
+    // cross-rank pairs. taxis0/taxis1 select the transverse coordinate axes
+    // (taxis1 < 0 means "unused", i.e. 2D). (sxlo,sylo,szlo) is the shift of the
+    // partner as seen from a lo-face; (sxhi,syhi,szhi) as seen from a hi-face.
+    auto match_and_inject = [&](std::vector<PFace> &lo, std::vector<PFace> &hi,
+                                const int taxis0, const int taxis1,
+                                const double sxlo, const double sylo, const double szlo,
+                                const double sxhi, const double syhi, const double szhi) {
+        if (lo.empty() && hi.empty())
+            return;
+        std::map<std::pair<long long, long long>, idx_t> hmap;
+        for (idx_t k = 0; k < static_cast<idx_t>(hi.size()); k++) {
+            const long long a = llround(hi[k].c[taxis0] * SCALE);
+            const long long b = (taxis1 >= 0) ? llround(hi[k].c[taxis1] * SCALE) : 0;
+            hmap[{a, b}] = k;
+        }
+        for (idx_t k = 0; k < static_cast<idx_t>(lo.size()); k++) {
+            const long long a = llround(lo[k].c[taxis0] * SCALE);
+            const long long b = (taxis1 >= 0) ? llround(lo[k].c[taxis1] * SCALE) : 0;
+            const auto it = hmap.find({a, b});
+            if (it == hmap.end())
+                continue; // no transverse match (malformed periodic mesh); leave it for Python
+
+            PFace &A = lo[k];
+            PFace &B = hi[it->second];
+            if (A.part == B.part)
+                continue; // same-rank pair: handled by Python _build_periodic_samerank
+
+            // cross-rank: A.owner in A.part, B.owner in B.part
+            const idx_t localA = cell_glob_to_loc[A.owner];
+            const idx_t localB = cell_glob_to_loc[B.owner];
+
+            // A.owner becomes an exterior halo of B.part; B.owner an exterior halo of A.part
+            push_unique(ld[A.part].map_int_halos[B.part], localA);
+            push_unique(ld[B.part].map_int_halos[A.part], localB);
+
+            // A.part sees B.owner shifted by (sxlo,sylo,szlo) across A's face
+            attach(A.part, A.face_index, B.owner, sxlo, sylo, szlo);
+            // B.part sees A.owner shifted by (sxhi,syhi,szhi) across B's face
+            attach(B.part, B.face_index, A.owner, sxhi, syhi, szhi);
+        }
+    };
+
+    // 11 (low-x) <-> 22 (high-x): transverse (y[,z]); partner shift -Lx / +Lx
+    match_and_inject(f11, f22, 1, (dim == 3 ? 2 : -1), -Lx, 0, 0,  +Lx, 0, 0);
+    // 44 (low-y) <-> 33 (high-y): transverse (x[,z]); partner shift -Ly / +Ly
+    match_and_inject(f44, f33, 0, (dim == 3 ? 2 : -1), 0, -Ly, 0,  0, +Ly, 0);
+    // 55 (low-z) <-> 66 (high-z): transverse (x,y); partner shift -Lz / +Lz  (3D only)
+    if (dim == 3)
+        match_and_inject(f55, f66, 0, 1, 0, 0, -Lz,  0, 0, +Lz);
+
+    // A corner owner cell gains at most `dim` periodic halo neighbours; grow the
+    // per-partition cell_halonid width so Python _create_halo_cells cannot overflow.
+    for (idx_t p = 0; p < nb_parts; p++) {
+        if (!periodic_shift[p].empty())
+            ld[p].max_cell_halonid += dim;
+    }
 }
 
 // ============================================================================
@@ -985,13 +1207,47 @@ PyObject *create_sub_domains(
     DEBUG_TIME_IT("");
     loop_through_nodes(ld, part_vert, node_cellid, nodes, node_is_boundary, vec_map_nodes, max_local_nodes, nb_parts);
     loop_through_physical_faces(ld, part_vert, node_cellid, phy_faces, phy_faces_name, vec_node_oldname, part_phyid);
-    loop_through_cells(ld, part_vert, node_cellid, cells, cells_type, node_phyid, node_is_boundary, vec_map_nodes, part_phyid, nb_parts);
+    loop_through_cells(ld, part_vert, node_cellid, cells, cells_type, node_phyid, phy_faces_name, node_is_boundary, vec_map_nodes, part_phyid, nb_parts);
     DEBUG_TIME_IT("loop_through");
+
+    // Cross-rank periodic faces: inject the (translated) partner cells as halos
+    // BEFORE create_halos serializes the halo structures.
+    DEBUG_TIME_IT("");
+    // Global cell id -> local cell id inside its owning partition (invert cell_loctoglob).
+    std::vector<idx_t> cell_glob_to_loc(cells->shape[0], -1);
+    for (idx_t p = 0; p < nb_parts; p++) {
+        const auto *l2g = ld[p].cell_loctoglob;
+        if (l2g == nullptr) continue;
+        for (idx_t l = 0; l < l2g->shape[0]; l++)
+            cell_glob_to_loc[l2g->get(l)] = l;
+    }
+    // Per partition: global halo cell id -> centroid shift (applied after create_halos).
+    std::vector<std::map<idx_t, std::array<fdx_t, 3>>> periodic_shift(nb_parts);
+    handle_periodic_faces(ld, part_vert, node_cellid, nodes, cells, phy_faces, phy_faces_name,
+                          vec_map_nodes, cell_glob_to_loc, periodic_shift, nb_parts, dim);
+    DEBUG_TIME_IT("handle_periodic_faces");
+
     //part2
     DEBUG_TIME_IT("");
     std::vector<idx_t> vec_max(max_local_nodes, 0);
     for (idx_t p = 0; p < nb_parts; p++) {
         create_halos(ld, cells, nodes, vec_cell_to_halo, vec_max, p, dim);
+
+        // Translate the centroid of each injected cross-rank periodic halo cell.
+        // vec_cell_to_halo[g_cell] is the halo row of g_cell inside partition p,
+        // just filled by create_halos(p). Area/volume is translation-invariant.
+        if (!periodic_shift[p].empty()) {
+            const idx_t nb_halos = static_cast<idx_t>(ld[p].halo_centvol->shape[0]);
+            for (const auto &kv : periodic_shift[p]) {
+                const idx_t g_cell = kv.first;
+                const idx_t row = vec_cell_to_halo[g_cell];
+                if (row < 0 || row >= nb_halos) continue; // defensive
+                ld[p].halo_centvol->get2(row, 0) += kv.second[0];
+                ld[p].halo_centvol->get2(row, 1) += kv.second[1];
+                ld[p].halo_centvol->get2(row, 2) += kv.second[2];
+            }
+        }
+
         create_phy(ld, p, phy_faces_name, phy_faces, vec_node_oldname, vec_map_nodes);
     }
     DEBUG_TIME_IT("create_halos, create_phy");
