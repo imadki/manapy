@@ -16,10 +16,6 @@ authors:
     given-names: Ayoub
     orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO
     affiliation: "Mohammed VI Polytechnic University (UM6P)"
-  - family-names: Haikal
-    given-names: Mouad
-    orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO
-    affiliation: "Mohammed VI Polytechnic University (UM6P)"
 version: "1.0.0"
 date-released: "2026-07-20"   # TODO: update to the release date
 license: MIT
