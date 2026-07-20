@@ -11,27 +11,43 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
 
-      # The image bundles the full toolchain (MPI, PETSc/petsc4py, MUMPS/mumps4py).
-      # Compiling PETSc from source is slow, and the source is mounted at run time
-      # (not COPYed in), so the image only changes when Docker/Dockerfile changes.
-      # Cache the build layers across runs via the GitHub Actions cache: the first
-      # run is slow, later runs reuse the unchanged PETSc/MUMPS layers.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build the manapy environment image
-        uses: docker/build-push-action@v6
+      # The image bundles the full toolchain (MPI, PETSc/petsc4py, MUMPS/mumps4py)
+      # and takes ~20 min to build from source. The source is mounted at run time
+      # (not COPYed in), so the image only depends on Docker/Dockerfile.
+      #
+      # Instead of rebuilding every run (the GitHub Actions layer cache is too
+      # small for this multi-GB image and gets evicted), we build the image ONCE
+      # and store it in GHCR, tagged by a hash of the Dockerfile. As long as
+      # Docker/Dockerfile is unchanged, later runs just `docker pull` it (~1-2 min)
+      # instead of recompiling PETSc/MUMPS.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: Docker/Dockerfile
-          tags: manapy:ci
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the manapy image (or reuse it from GHCR)
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER}/manapy-ci:$(sha256sum Docker/Dockerfile | cut -c1-12)"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          if docker pull "$IMAGE" 2>/dev/null; then
+            echo "Reusing cached image $IMAGE"
+          else
+            echo "Building image $IMAGE (Dockerfile changed or first build)"
+            docker build -t "$IMAGE" -f Docker/Dockerfile .
+            # Push so future runs reuse it. May fail for PRs from forks (no
+            # package-write token); that is non-fatal, we still have it locally.
+            docker push "$IMAGE" || echo "WARNING: could not push image to GHCR (fork PR?); continuing"
+          fi
 
       # Mount the checked-out source into the image, install manapy, and run the
       # test suite (pytest + a parallel MPI smoke test) via Docker/tests.sh.
@@ -40,5 +56,5 @@ jobs:
           docker run --rm --user root \
             -v "${{ github.workspace }}:/workspace/manapy" \
             -w /workspace/manapy \
-            manapy:ci \
+            "$IMAGE" \
             bash -c "python -m pip install -e . && bash Docker/tests.sh"
