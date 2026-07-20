@@ -14,8 +14,7 @@ from manapy.domain import Domain, Partitioning
 from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.solvers.advecdiff.system import AdvectionDiffusionSolver
 
-from manapy.solvers.ls import (MUMPSSolver, PETScKrylovSolver, GinkgoDistributedSolver,
-                               GinkgoSolver)
+from manapy.solvers.ls import GinkgoDistributedSolver
 
 from manapy.core.Variable import Variable
 
@@ -80,38 +79,9 @@ P = Variable(domain=domain, BC=boundaries, values_dict=values)
 S = AdvectionDiffusionSolver(ne, vel=(u, v), Dxx=0., Dyy=0., order=2, cfl=0.8)
 
 ####Initialisation
-# Init sur HOST (lambda/np) puis copie explicite vers les champs (le backend du
-# domaine decide : device sous GPU, host sous CPU).
-be = domain.backend
 _ne = np.zeros(nbcells); _u = np.zeros(nbcells); _v = np.zeros(nbcells); _P = np.zeros(nbcells)
-initialisation_gaussian_2d(_ne, _u, _v, _P, be.to_host(cells.center), Pinit)
-be.copy(ne.cell, _ne); be.copy(u.cell, _u)
-be.copy(v.cell, _v); be.copy(P.cell, _P)
-f = lambda x, y, z: Pinit * (1. - x)
-
-
-# # Ginkgo bicgstab (the diamond matrix is non-symmetric, so NOT cg) preconditioned
-# # by AMG: Multigrid/Pgm with a Schwarz(Jacobi) smoother and a Cg coarse solver.
-# # AMG cuts the Krylov iteration count drastically vs unpreconditioned gmres/bicgstab.
-# amg_args = {
-#     "type": "solver::Bicgstab",
-#     "preconditioner": {
-#         "type": "solver::Multigrid", "max_levels": 10, "min_coarse_rows": 2,
-#         "mg_level": [{"type": "multigrid::Pgm", "deterministic": True}],
-#         "pre_smoother": [{"type": "solver::Ir", "relaxation_factor": 0.9,
-#             "solver": {"type": "preconditioner::Schwarz",
-#                         "local_solver": {"type": "preconditioner::Jacobi"}},
-#             "criteria": [{"type": "Iteration", "max_iters": 2}]}],
-#         "post_uses_pre": True,
-#         "coarsest_solver": {"type": "solver::Cg",
-#                             "criteria": [{"type": "Iteration", "max_iters": 4}]},
-#         "default_initial_guess": "zero",
-#         "criteria": [{"type": "Iteration", "max_iters": 1}]},
-#     "criteria": [{"type": "Iteration", "max_iters": 1000},
-#                   {"type": "ResidualNorm", "reduction_factor": 1e-8}],
-# }
-# L = GinkgoDistributedSolver(domain=domain, var=P, device="cpu", scheme='fv',
-#                             reuse_mtx=True, verbose=False, solver_args=amg_args)
+initialisation_gaussian_2d(_ne, _u, _v, _P, cells.center, Pinit)
+ne.cell[:] = _ne; u.cell[:] = _u; v.cell[:] = _v; P.cell[:] = _P
 
 
 ###Linear sys confi###
@@ -127,15 +97,6 @@ L = GinkgoDistributedSolver(domain=domain, var=P,
                             verbose=False,
                             reuse_mtx=True
                             )
-
-# L = PETScKrylovSolver(domain=domain, var=P, reuse_mtx=True, scheme='diamond',
-#               precond='gamg', sub_precond="amg",  # with_mtx=False,
-#               eps_a=1e-10, eps_r=1e-10, method="gmres")
-
-# L = MUMPSSolver(domain=domain, var=P, 
-#                 reuse_mtx=True,
-#                 # precond="jacobi", 
-#                 scheme='diamond')
 
 
 ts = MPI.Wtime()
@@ -156,9 +117,9 @@ while time < tfinal:
   
   # print("Max P grad", P.gradfacex.max())
 
-  # u.face <- grad(P) : copie explicite (device->device sous GPU, host sous CPU).
-  be.copy(u.face, P.gradfacex)
-  be.copy(v.face, P.gradfacey)
+  # u.face <- grad(P)
+  u.face[:] = P.gradfacex
+  v.face[:] = P.gradfacey
 
   u.interpolate_facetocell()
   v.interpolate_facetocell()
@@ -188,12 +149,9 @@ while time < tfinal:
       v.update_ghost_value()
       v.interpolate_celltonode()
 
-      # .node a ete calcule sur device par interpolate_celltonode : transfert
-      # explicite vers host pour la sauvegarde (qui lit des arrays host).
       domain.save_on_node_multi(
         ["ne", "u", "v", "P"],
-        [be.to_host(ne.node), be.to_host(u.node),
-         be.to_host(v.node), be.to_host(P.node)], d_t, time, niter, miter)
+        [ne.node, u.node, v.node, P.node], d_t, time, niter, miter)
     else:
       domain.save_on_cell_multi(["ne", "u", "v", "P"],
                                 [ne.cell, u.cell, v.cell, P.cell], d_t, time, niter, miter)
