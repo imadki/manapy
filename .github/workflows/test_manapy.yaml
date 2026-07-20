@@ -51,9 +51,14 @@ jobs:
 
       # Mount the checked-out source into the image, install manapy, and run the
       # test suite (pytest + a parallel MPI smoke test) via Docker/tests.sh.
+      # The container runs as root; the domain test fixtures spawn `mpirun`
+      # subprocesses, and OpenMPI refuses to run as root unless explicitly
+      # allowed. These env vars grant that (equivalent to --allow-run-as-root).
       - name: Install manapy and run the tests
         run: |
           docker run --rm --user root \
+            -e OMPI_ALLOW_RUN_AS_ROOT=1 \
+            -e OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
             -v "${{ github.workspace }}:/workspace/manapy" \
             -w /workspace/manapy \
             "$IMAGE" \
