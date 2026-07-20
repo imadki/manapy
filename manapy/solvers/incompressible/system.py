@@ -30,7 +30,7 @@ class IncompressibleSolver:
                poisson=None, implicit_momentum=False, mom_predictor=True, momentum=None,
                backend='mumps', alpha=None, rho1=None, rho2=None, mu1=None, mu2=None,
                cAlpha=1.0, gravity=(0.0, 0.0), sigma=0.0,
-               n_outer=1, n_alpha_sub=1, ddt_corr=False, conv_order=1):
+               n_outer=1, n_alpha_sub=1, ddt_corr=False, conv_order=1, n_nonorth=0):
     """
     u, v, P : cell velocity / pressure Variables. P must carry BCs (Neumann on the
               walls + one Dirichlet reference so the pure-Neumann system is regular),
@@ -76,6 +76,10 @@ class IncompressibleSolver:
     self.conv_order = int(conv_order)
     if self.conv_order not in (1, 2):
       raise ValueError("conv_order must be 1 or 2")
+    # deferred non-orthogonal pressure correctors (single-phase). 0 = the current
+    # orthogonal-only projection (exact on quads). >0 restores consistency on
+    # non-orthogonal meshes (triangles) via the over-relaxed correction.
+    self.n_nonorth = int(n_nonorth)
     self.backend = str(backend).lower()
     if self.backend not in ('mumps', 'petsc'):
       raise ValueError("backend must be 'mumps' or 'petsc'")
@@ -105,6 +109,20 @@ class IncompressibleSolver:
     # coefficient the scheme='fv' pressure Laplacian assembles, so the divergence,
     # the Poisson and the correction share one operator.
     self.af = np.asarray(dom.faces.fv_coeff)
+    # non-orthogonal correction geometry: the over-relaxed decomposition gives
+    #   Sf . grad(P)_f = af_geom (P_R - P_P) + fv_corr . interp(grad P)_f
+    # fv_corr = Sf - af_geom * d  (precomputed per face); fv_wl = linear face weight.
+    self.fv_corrx = np.asarray(dom.faces.fv_corrx)
+    self.fv_corry = np.asarray(dom.faces.fv_corry)
+    self.fv_wl = np.asarray(dom.faces._fv_weight_left)
+    self._nof = np.zeros(self.nf)
+    # cell-gradient buffers for the deferred momentum viscous non-ortho correction
+    self._gnux = np.zeros(self.nc); self._gnuy = np.zeros(self.nc)
+    self._gnvx = np.zeros(self.nc); self._gnvy = np.zeros(self.nc)
+    # halo-exchanged gradients for the non-ortho correction on partition faces (MPI)
+    self._gxh = np.zeros(self.nh); self._gyh = np.zeros(self.nh)
+    self._gnuxh = np.zeros(self.nh); self._gnuyh = np.zeros(self.nh)
+    self._gnvxh = np.zeros(self.nh); self._gnvyh = np.zeros(self.nh)
     self.uw = np.zeros(self.nf); self.vw = np.zeros(self.nf)
     for name, val in (u_bc or {}).items():
       self.uw[self.fname == codes[name]] = val
@@ -113,6 +131,7 @@ class IncompressibleSolver:
     self._is_int = self.fname == 0
     self._is_hal = self.fname == 10
     self._bnd = ~self._is_int
+    self._pb = self._bnd & ~self._is_hal          # physical (non-partition) boundary faces
 
     # pressure Poisson: reuse manapy's two-point FV Laplacian (scheme='fv') through a
     # distributed linear solver -- backend is the caller's choice ('mumps' by default).
@@ -396,6 +415,88 @@ class IncompressibleSolver:
     np.add.at(d, self.cellid[self._bnd, 0], phi[self._bnd])
     return d / self.vol
 
+  def _nonortho_flux(self):
+    """Deferred non-orthogonal pressure face flux:
+        nof_f = interp(rAU)_f * ( fv_corr . interp(grad P)_f )
+    i.e. the (Sf - af_geom*d).grad part of the face pressure gradient, scaled by the
+    pressure coefficient. Added to the orthogonal D_f (P_R-P_P) it recovers the FULL
+    face gradient Df/af_geom * Sf.grad(P)_f, consistent on non-orthogonal meshes.
+    Interior + partition(halo) faces; physical Neumann boundaries carry no pressure flux
+    (the Rhie-Chow flux keeps phiHbyA there). Caller must have refreshed P.halo."""
+    self._gg_grad(self.P.cell, self.P.halo, self.normal, self.cellid, self.halofid,
+                  self.fname, self.vol, self._gx, self._gy)
+    nof = self._nof
+    nof[:] = 0.0
+    ii = self._is_int
+    cL = self.cellid[ii, 0]; cR = self.cellid[ii, 1]
+    wl = self.fv_wl[ii]; wr = 1.0 - wl
+    gfx = wl * self._gx[cL] + wr * self._gx[cR]
+    gfy = wl * self._gy[cL] + wr * self._gy[cR]
+    corr = self.fv_corrx[ii] * gfx + self.fv_corry[ii] * gfy
+    nof[ii] = (self.Df[ii] / self.af_geom[ii]) * corr
+    if self.nh:
+      # partition faces: interpolate with the neighbour-rank gradient (halo-exchanged)
+      self.domain.halo_comm.exchange(np.ascontiguousarray(self._gx), recv_buffer=self._gxh)
+      self.domain.halo_comm.exchange(np.ascontiguousarray(self._gy), recv_buffer=self._gyh)
+      hh = self._is_hal
+      cLh = self.cellid[hh, 0]; nb = self.halofid[hh]
+      wlh = self.fv_wl[hh]; wrh = 1.0 - wlh
+      gfxh = wlh * self._gx[cLh] + wrh * self._gxh[nb]
+      gfyh = wlh * self._gy[cLh] + wrh * self._gyh[nb]
+      corrh = self.fv_corrx[hh] * gfxh + self.fv_corry[hh] * gfyh
+      nof[hh] = (self.Df[hh] / self.af_geom[hh]) * corrh
+    return nof
+
+  def _mom_nonortho_source(self):
+    """Deferred non-orthogonal VISCOUS correction for the momentum. The face viscous
+    flux is muf*(af_geom (U_R-U_P) + fv_corr . interp(grad U)_f); the matrix carries the
+    orthogonal af_geom part, so the fv_corr part is added (extensive, per cell) to the
+    momentum source bsu/bsv. Uses the current (lagged) cell velocity. Interior + halo faces."""
+    self.u.update_halo_value(); self.v.update_halo_value()
+    self._gg_grad(self.u.cell, self.u.halo, self.normal, self.cellid, self.halofid,
+                  self.fname, self.vol, self._gnux, self._gnuy)
+    self._gg_grad(self.v.cell, self.v.halo, self.normal, self.cellid, self.halofid,
+                  self.fname, self.vol, self._gnvx, self._gnvy)
+    ii = self._is_int
+    cL = self.cellid[ii, 0]; cR = self.cellid[ii, 1]
+    wl = self.fv_wl[ii]; wr = 1.0 - wl
+    cx = self.fv_corrx[ii]; cy = self.fv_corry[ii]; mf = self.muf[ii]
+    gux = wl * self._gnux[cL] + wr * self._gnux[cR]
+    guy = wl * self._gnuy[cL] + wr * self._gnuy[cR]
+    gvx = wl * self._gnvx[cL] + wr * self._gnvx[cR]
+    gvy = wl * self._gnvy[cL] + wr * self._gnvy[cR]
+    fu = mf * (cx * gux + cy * guy)
+    fv = mf * (cx * gvx + cy * gvy)
+    np.add.at(self.bsu, cL, fu); np.add.at(self.bsu, cR, -fu)
+    np.add.at(self.bsv, cL, fv); np.add.at(self.bsv, cR, -fv)
+    if self.nh:
+      # partition faces: interpolate with the neighbour-rank gradient; add to the owner
+      # cell only (the neighbour rank adds its own equal-and-opposite contribution).
+      self.domain.halo_comm.exchange(np.ascontiguousarray(self._gnux), recv_buffer=self._gnuxh)
+      self.domain.halo_comm.exchange(np.ascontiguousarray(self._gnuy), recv_buffer=self._gnuyh)
+      self.domain.halo_comm.exchange(np.ascontiguousarray(self._gnvx), recv_buffer=self._gnvxh)
+      self.domain.halo_comm.exchange(np.ascontiguousarray(self._gnvy), recv_buffer=self._gnvyh)
+      hh = self._is_hal
+      cLh = self.cellid[hh, 0]; nb = self.halofid[hh]
+      wlh = self.fv_wl[hh]; wrh = 1.0 - wlh
+      cxh = self.fv_corrx[hh]; cyh = self.fv_corry[hh]; mfh = self.muf[hh]
+      guxh = wlh * self._gnux[cLh] + wrh * self._gnuxh[nb]
+      guyh = wlh * self._gnuy[cLh] + wrh * self._gnuyh[nb]
+      gvxh = wlh * self._gnvx[cLh] + wrh * self._gnvxh[nb]
+      gvyh = wlh * self._gnvy[cLh] + wrh * self._gnvyh[nb]
+      np.add.at(self.bsu, cLh, mfh * (cxh * guxh + cyh * guyh))
+      np.add.at(self.bsv, cLh, mfh * (cxh * gvxh + cyh * gvyh))
+    # physical (Dirichlet-velocity) wall faces: the wall viscous flux nu*a_f*(uw-u_L)
+    # is orthogonal too; add the non-ortho part with the OWNER-cell gradient (no
+    # neighbour). Without this the boundary layer stays non-ortho-inconsistent -> the
+    # ~1.5% edge offset seen on triangles (but not on orthogonal quads).
+    pb = self._pb
+    if pb.any():
+      cLb = self.cellid[pb, 0]
+      cxb = self.fv_corrx[pb]; cyb = self.fv_corry[pb]; mfb = self.muf[pb]
+      np.add.at(self.bsu, cLb, mfb * (cxb * self._gnux[cLb] + cyb * self._gnuy[cLb]))
+      np.add.at(self.bsv, cLb, mfb * (cxb * self._gnvx[cLb] + cyb * self._gnvy[cLb]))
+
   def _advance_alpha(self, dt):
     """Transport alpha (optionally sub-cycled n_alpha_sub times) by the current flux
     self._phi, accumulate the step-effective bounded alpha face flux self._alphaPhi, and
@@ -488,6 +589,8 @@ class IncompressibleSolver:
                       self._fcy, self._hcx, self._hcy, self.cellid, self.halofid,
                       self.fname, self._sou, self._sov)
         self.bsu += self._sou; self.bsv += self._sov
+      if self.n_nonorth > 0 and not self.two_phase:
+        self._mom_nonortho_source()          # deferred non-ortho viscous source (bsu/bsv)
       # rAU = V/a_P and its halo; face pressure coeff D_f = a_f interp(rAU); body/ddt
       # fluxes. Computed BEFORE the predictor: the two-phase predictor source needs the
       # body-force face flux (it only depends on aP, final after the assembly).
@@ -574,11 +677,22 @@ class IncompressibleSolver:
           self._phiH += self._ddtc
         if self.two_phase and self._has_body:
           self._phiH += self._phist
-        self._psolve(self._psign * self._mom_divergence(self._phiH))
+        div_phiH = self._mom_divergence(self._phiH)
+        self._psolve(self._psign * div_phiH)
         self.L.reuse_mtx = True
         self.P.update_halo_value(); self.P.update_ghost_value()
+        # deferred non-orthogonal correctors: keep the compact orthogonal operator in
+        # the matrix, add the explicit non-ortho flux divergence to the RHS and re-solve.
+        # Restores consistency on non-orthogonal (triangle) meshes without breaking the
+        # div-grad projection. Single-phase only for now.
+        do_nonortho = self.n_nonorth > 0 and not self.two_phase
+        for _no in range(self.n_nonorth if do_nonortho else 0):
+          self._psolve(self._psign * (div_phiH - self._mom_divergence(self._nonortho_flux())))
+          self.P.update_halo_value(); self.P.update_ghost_value()
         self._corr_flux(self._phiH, self.Df, self.P.cell, self.P.halo, self.cellid,
                         self.halofid, self.fname, self._phinew)
+        if do_nonortho:
+          self._phinew -= self._nonortho_flux()   # subtract the non-orthogonal pressure flux
         if self.two_phase:
           # cell velocity from the balanced flux: u = HbyA + rAU reconstruct((phig -
           # pEqn.flux())/rAUf); the ddtCorr is a flux-only term (excluded here).
