@@ -5,8 +5,6 @@
 *.out
 *.so
 *.msh
-!meshes/*.msh
-!meshes/**/*.msh
 !tests/data/meshes/*.msh
 
 .env
