@@ -75,7 +75,6 @@ ts = MPI.Wtime()
 if RANK == 0:
   print("Start While loop ...")
 
-# loop over time
 while time < tfinal:
 
   d_t = S.stepper()
@@ -88,17 +87,14 @@ while time < tfinal:
 
   if niter == 1 or niter % tot == 0:
     if saving_at_node:
-      # save vtk files for the solution
       h.update_halo_value()
       h.update_ghost_value()
       h.interpolate_celltonode()
 
-      # save vtk files for the solution
       hu.update_halo_value()
       hu.update_ghost_value()
       hu.interpolate_celltonode()
 
-      # save vtk files for the solution
       hv.update_halo_value()
       hv.update_ghost_value()
       hv.interpolate_celltonode()

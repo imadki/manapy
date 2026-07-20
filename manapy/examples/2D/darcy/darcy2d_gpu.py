@@ -52,7 +52,7 @@ mesh_path = os.path.join(MESH_DIR, filename)
 # --- GPU backend ---
 gpu = GPUBackend(float_precision="float64", int_precision="int32", cache=False)
 gpu.init_stream()
-gpu.set_config(free=True, nb_threads=128)   # 256 threads/bloc au lieu de 32
+gpu.set_config(free=True, nb_threads=128)
 
 backend = gpu
 

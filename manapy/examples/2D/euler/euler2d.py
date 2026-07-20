@@ -49,7 +49,6 @@ if RANK == 0:
 cells = domain.cells
 nbcells = domain.nbcells
 
-# physical parameters
 gamma = 1.4
 a = 2.0          # advection speed (x)
 sigma = 0.05
