@@ -18,8 +18,6 @@ from manapy.solvers.ls import (MUMPSSolver, PETScKrylovSolver, GinkgoDistributed
                                GinkgoSolver)
 
 from manapy.core.Variable import Variable
-from manapy.backends.gpu import GPUBackend
-from manapy.backends.gpu import GPUArray
 
 
 COMM = MPI.COMM_WORLD
@@ -39,13 +37,7 @@ filename = 'carre.msh'
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
 
-gpu = GPUBackend(float_precision="float64", int_precision="int32", cache=True)
-gpu.init_stream()
-gpu.set_config(free=True)
-
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True,
-                                backend=gpu
-                               )
+domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -98,6 +90,30 @@ be.copy(v.cell, _v); be.copy(P.cell, _P)
 f = lambda x, y, z: Pinit * (1. - x)
 
 
+# # Ginkgo bicgstab (the diamond matrix is non-symmetric, so NOT cg) preconditioned
+# # by AMG: Multigrid/Pgm with a Schwarz(Jacobi) smoother and a Cg coarse solver.
+# # AMG cuts the Krylov iteration count drastically vs unpreconditioned gmres/bicgstab.
+# amg_args = {
+#     "type": "solver::Bicgstab",
+#     "preconditioner": {
+#         "type": "solver::Multigrid", "max_levels": 10, "min_coarse_rows": 2,
+#         "mg_level": [{"type": "multigrid::Pgm", "deterministic": True}],
+#         "pre_smoother": [{"type": "solver::Ir", "relaxation_factor": 0.9,
+#             "solver": {"type": "preconditioner::Schwarz",
+#                         "local_solver": {"type": "preconditioner::Jacobi"}},
+#             "criteria": [{"type": "Iteration", "max_iters": 2}]}],
+#         "post_uses_pre": True,
+#         "coarsest_solver": {"type": "solver::Cg",
+#                             "criteria": [{"type": "Iteration", "max_iters": 4}]},
+#         "default_initial_guess": "zero",
+#         "criteria": [{"type": "Iteration", "max_iters": 1}]},
+#     "criteria": [{"type": "Iteration", "max_iters": 1000},
+#                   {"type": "ResidualNorm", "reduction_factor": 1e-8}],
+# }
+# L = GinkgoDistributedSolver(domain=domain, var=P, device="cpu", scheme='fv',
+#                             reuse_mtx=True, verbose=False, solver_args=amg_args)
+
+
 ###Linear sys confi###
 # If you want the default options please do conf = Struct()
 # reuse_mtx: matrix does not change during the while loop
@@ -105,7 +121,7 @@ f = lambda x, y, z: Pinit * (1. - x)
 # verbose: printing the mumps/petsc output
 L = GinkgoDistributedSolver(domain=domain, var=P,
                             # precond="jacobi",
-                            device="cuda",
+                            device="cpu",
                             scheme='diamond',
                             method="cg",
                             verbose=False,
