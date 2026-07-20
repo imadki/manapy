@@ -96,8 +96,16 @@ def _term_source_srnh_SW(src_h: 'float[:]', src_hu: 'float[:]', src_hv: 'float[:
         h_1p = h_c[i]
         z_1p = Z_c[i]
 
-        h_p1 = h_c[cell_cellfid[i][j]]
-        z_p1 = Z_c[cell_cellfid[i][j]]
+        # Neighbour across face f must be taken from face_cellid (the same
+        # neighbour the convective flux uses). cell_cellfid does NOT match the
+        # flux neighbour for boundary cells in this framework, which breaks the
+        # C-property on the boundary cells (interior cells are unaffected).
+        if face_cellid[f][0] == i:
+          nbr = face_cellid[f][1]
+        else:
+          nbr = face_cellid[f][0]
+        h_p1 = h_c[nbr]
+        z_p1 = Z_c[nbr]
 
       else:
         h_1p = h_c[i]
@@ -591,6 +599,258 @@ def _term_wind_SW(Tx_wind: 'float[:]', Ty_wind: 'float[:]', wind_wx: 'float[:]',
 
 
 ############################################################################
+# FVC (Finite Volume Characteristics) scheme -- Benkhaldoun-Seaid family.
+#
+# Eigenstructure-FREE flux: instead of a Riemann solver (SRNH's Roe/Cardano,
+# which arccos-NaNs at Froude=1), the interface state is obtained by the method
+# of characteristics -- a semi-Lagrangian "departure point" back-trace along the
+# flow + a half-step predictor carrying the pressure-gradient (acoustic) coupling.
+# The physical flux is then evaluated at that predicted state. Robust across the
+# sonic point, low-diffusion, and generic (same idea for SW / Euler / MHD).
+#
+# WELL-BALANCING (C-property): the pressure + bed source reuse the proven Audusse
+# hydrostatic reconstruction (hLs) + per-side correction `corr` from the HLLC path
+# (machine-zero here), which is INDEPENDENT of the predicted state: at rest u=0 =>
+# the advective flux vanishes and only the balanced pressure/corr remains => rest
+# is preserved to machine precision. The predictor's pressure forcing uses the
+# free-surface gradient d(h+Z)/dn (=0 at rest), so no spurious rest momentum.
+#
+# Pipeline per step: cell->node interp of (h,hu,hv,hc) -> ValForInterp stencil;
+# face gradients of (u,v,eta) via the Diamond scheme; departure() -> predictor()
+# -> explicitscheme_convective_SW_fvc(). Stencil geometry is static (built once).
+# --------------------------------------------------------------------------- #
+
+def _node_value_for_interpolation_2d(ValForInterp: 'float64[:,:]', w_cell: 'float64[:]', w_node: 'float64[:]', w_ghost: 'float64[:]', w_halo: 'float64[:]', nodefid: 'int32[:,:]', cellfid: 'int32[:,:]', halofid: 'int32[:]', name: 'int32[:]'):
+  # 4-point interpolation stencil per face: [node0, node1, cellL, (cellR|halo|ghost)].
+  nbfaces = len(nodefid)
+  for i in range(nbfaces):
+    ValForInterp[i][0] = w_node[nodefid[i][0]]
+    ValForInterp[i][1] = w_node[nodefid[i][1]]
+    ValForInterp[i][2] = w_cell[cellfid[i][0]]
+    if name[i] == 0:
+      ValForInterp[i][3] = w_cell[cellfid[i][1]]
+    elif name[i] == 10:
+      ValForInterp[i][3] = w_halo[halofid[i]]
+    else:
+      ValForInterp[i][3] = w_ghost[i]
+
+
+def _weight_parameters_carac_2d(xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64'):
+  # least-squares weights for a linear-exact interpolation at (X0,Y0) over the 4 points.
+  I_xx = 0.; I_yy = 0.; I_xy = 0.; R_x = 0.; R_y = 0.
+  for i in range(0, 4):
+    Rx = xCenterForInterp[i] - X0
+    Ry = yCenterForInterp[i] - Y0
+    I_xx += (Rx * Rx)
+    I_yy += (Ry * Ry)
+    I_xy += (Rx * Ry)
+    R_x += Rx
+    R_y += Ry
+  D = I_xx * I_yy - I_xy * I_xy
+  if np.fabs(D) < 1e-30:
+    D = 1e-30
+  lambda_x = (I_xy * R_y - I_yy * R_x) / D
+  lambda_y = (I_xy * R_x - I_xx * R_y) / D
+  return R_x, R_y, lambda_x, lambda_y
+
+
+def _set_carac_field_2d(ValForInterp: 'float64[:]', xCenterForInterp: 'float64[:]', yCenterForInterp: 'float64[:]', X0: 'float64', Y0: 'float64'):
+  # linearity-preserving interpolation of a field at the departure point (X0,Y0).
+  R_x, R_y, lambda_x, lambda_y = _weight_parameters_carac_2d(xCenterForInterp, yCenterForInterp, X0, Y0)
+  w_carac = 0.
+  for i in range(0, 4):
+    xdiff = xCenterForInterp[i] - X0
+    ydiff = yCenterForInterp[i] - Y0
+    denom = (4. + lambda_x * R_x + lambda_y * R_y)
+    alpha_interp = (1. + lambda_x * xdiff + lambda_y * ydiff) / denom
+    w_carac += alpha_interp * ValForInterp[i]
+  return w_carac
+
+
+def _departure_SW_2d(X0: 'float64[:]', Y0: 'float64[:]',
+                     hValForInterp: 'float64[:,:]', huValForInterp: 'float64[:,:]', hvValForInterp: 'float64[:,:]',
+                     xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]',
+                     centerf: 'float64[:,:]', normal: 'float64[:,:]', mesure: 'float64[:]',
+                     dt: 'float64', alphaf: 'float64'):
+  # Foot of the characteristic reaching each face: back-trace from the face centre
+  # along the (interpolated) normal velocity over alpha*dt.
+  nbfaces = len(centerf)
+  for i in range(nbfaces):
+    X0[i] = centerf[i][0]
+    Y0[i] = centerf[i][1]
+    h_ed = _set_carac_field_2d(hValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+    if h_ed < 1e-10:
+      h_ed = 1e-10
+    u_ed = _set_carac_field_2d(huValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i]) / h_ed
+    v_ed = _set_carac_field_2d(hvValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i]) / h_ed
+    nnx = normal[i][0] / mesure[i]
+    nny = normal[i][1] / mesure[i]
+    u_n = u_ed * nnx + v_ed * nny
+    X0[i] = X0[i] - alphaf * dt * u_n * nnx
+    Y0[i] = Y0[i] - alphaf * dt * u_n * nny
+
+
+def _predictor_SW_2d(h_p: 'float64[:]', hu_p: 'float64[:]', hv_p: 'float64[:]', hc_p: 'float64[:]',
+                     hValForInterp: 'float64[:,:]', huValForInterp: 'float64[:,:]', hvValForInterp: 'float64[:,:]', hcValForInterp: 'float64[:,:]',
+                     xCenterForInterp: 'float64[:,:]', yCenterForInterp: 'float64[:,:]', X0: 'float64[:]', Y0: 'float64[:]',
+                     ugradfacex: 'float64[:]', ugradfacey: 'float64[:]', vgradfacex: 'float64[:]', vgradfacey: 'float64[:]',
+                     etagradfacex: 'float64[:]', etagradfacey: 'float64[:]',
+                     grav: 'float64', dt: 'float64', alphaf: 'float64', normal: 'float64[:,:]', mesure: 'float64[:]'):
+  # Interface state at t^{n+1/2}: material transport (interp at the departure point)
+  # + a half characteristic step for the pressure/acoustic coupling. The pressure
+  # forcing uses the FREE-SURFACE gradient d(eta)/dn = d(h+Z)/dn (0 at rest -> WB).
+  nbfaces = len(h_p)
+  for i in range(nbfaces):
+    h_ed = _set_carac_field_2d(hValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+    hu_ed = _set_carac_field_2d(huValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+    hv_ed = _set_carac_field_2d(hvValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+    hc_ed = _set_carac_field_2d(hcValForInterp[i], xCenterForInterp[i], yCenterForInterp[i], X0[i], Y0[i])
+    if h_ed < 1e-10:
+      h_ed = 1e-10
+    up = hu_ed / h_ed
+    vp = hv_ed / h_ed
+    nnx = normal[i][0] / mesure[i]
+    nny = normal[i][1] / mesure[i]
+    # normal derivative of the normal velocity (compressibility term)
+    unx = ugradfacex[i] * nnx + vgradfacex[i] * nny
+    uny = ugradfacey[i] * nnx + vgradfacey[i] * nny
+    Un_grad = unx * nnx + uny * nny
+    # normal derivative of the free surface (pressure-gradient forcing, WB)
+    En_grad = etagradfacex[i] * nnx + etagradfacey[i] * nny
+    # normal / tangential momentum at the departure state
+    hu_n = hu_ed * nnx + hv_ed * nny
+    hu_t = hv_ed * nnx - hu_ed * nny
+    # half-step characteristic update
+    h_p[i] = h_ed * (1.0 - alphaf * dt * Un_grad)
+    hu_np = hu_n - alphaf * dt * (hu_n * Un_grad + grav * h_ed * En_grad)
+    hu_tp = hu_t - alphaf * dt * (hu_t * Un_grad)
+    hc_p[i] = hc_ed * (1.0 - alphaf * dt * Un_grad)
+    # rotate the momentum back to (x, y)
+    hu_p[i] = hu_np * nnx - hu_tp * nny
+    hv_p[i] = hu_np * nny + hu_tp * nnx
+
+
+def _explicitscheme_convective_SW_fvc(rez_h: 'float[:]', rez_hu: 'float[:]', rez_hv: 'float[:]', rez_hc: 'float[:]',
+                                      rez_Z: 'float[:]',
+                                      h_p: 'float[:]', hu_p: 'float[:]', hv_p: 'float[:]', hc_p: 'float[:]',
+                                      h_c: 'float[:]', Z_c: 'float[:]',
+                                      h_ghost: 'float[:]', Z_ghost: 'float[:]',
+                                      h_halo: 'float[:]', Z_halo: 'float[:]',
+                                      face_cellid: 'int[:,:]', face_measure: 'float[:]', face_normal: 'float[:,:]',
+                                      face_haloid: 'int[:]',
+                                      d_innerfaces: 'int[:]', d_halofaces: 'int[:]', d_boundaryfaces: 'int[:]',
+                                      grav: 'float'):
+  # Corrector: physical flux at the predicted interface state (advection) + the
+  # Audusse well-balanced hydrostatic pressure/correction (from the CELL states).
+  rez_h[:] = 0.
+  rez_hu[:] = 0.
+  rez_hv[:] = 0.
+  rez_hc[:] = 0.
+  rez_Z[:] = 0.
+
+  for idx in range(len(d_innerfaces)):
+    i = d_innerfaces[idx]
+    L = face_cellid[i][0]
+    R = face_cellid[i][1]
+    nx = face_normal[i][0]
+    ny = face_normal[i][1]
+    mesure = face_measure[i]
+    nnx = nx / mesure
+    nny = ny / mesure
+    hp = h_p[i]
+    if hp < 1e-10:
+      hp = 1e-10
+    up = hu_p[i] / hp
+    vp = hv_p[i] / hp
+    cp = hc_p[i] / hp
+    qn = hu_p[i] * nnx + hv_p[i] * nny            # normal mass flux (per length)
+    # Audusse hydrostatic reconstruction (well-balancing), from the cell states
+    dz = Z_c[L] if Z_c[L] > Z_c[R] else Z_c[R]
+    hLs = h_c[L] + Z_c[L] - dz
+    if hLs < 0.:
+      hLs = 0.
+    hRs = h_c[R] + Z_c[R] - dz
+    if hRs < 0.:
+      hRs = 0.
+    P = 0.5 * grav * hLs * hLs
+    F_h = qn * mesure
+    F_hu = (qn * up + P * nnx) * mesure
+    F_hv = (qn * vp + P * nny) * mesure
+    F_hc = qn * cp * mesure
+    corrL = 0.5 * grav * (h_c[L] * h_c[L] - hLs * hLs)
+    corrR = 0.5 * grav * (h_c[R] * h_c[R] - hRs * hRs)
+    rez_h[L] -= F_h
+    rez_h[R] += F_h
+    rez_hu[L] -= F_hu + corrL * nx
+    rez_hu[R] += F_hu + corrR * nx
+    rez_hv[L] -= F_hv + corrL * ny
+    rez_hv[R] += F_hv + corrR * ny
+    rez_hc[L] -= F_hc
+    rez_hc[R] += F_hc
+
+  for idx in range(len(d_halofaces)):
+    i = d_halofaces[idx]
+    L = face_cellid[i][0]
+    k = face_haloid[i]
+    nx = face_normal[i][0]
+    ny = face_normal[i][1]
+    mesure = face_measure[i]
+    nnx = nx / mesure
+    nny = ny / mesure
+    hp = h_p[i]
+    if hp < 1e-10:
+      hp = 1e-10
+    up = hu_p[i] / hp
+    vp = hv_p[i] / hp
+    cp = hc_p[i] / hp
+    qn = hu_p[i] * nnx + hv_p[i] * nny
+    dz = Z_c[L] if Z_c[L] > Z_halo[k] else Z_halo[k]
+    hLs = h_c[L] + Z_c[L] - dz
+    if hLs < 0.:
+      hLs = 0.
+    P = 0.5 * grav * hLs * hLs
+    F_h = qn * mesure
+    F_hu = (qn * up + P * nnx) * mesure
+    F_hv = (qn * vp + P * nny) * mesure
+    F_hc = qn * cp * mesure
+    corrL = 0.5 * grav * (h_c[L] * h_c[L] - hLs * hLs)
+    rez_h[L] -= F_h
+    rez_hu[L] -= F_hu + corrL * nx
+    rez_hv[L] -= F_hv + corrL * ny
+    rez_hc[L] -= F_hc
+
+  for idx in range(len(d_boundaryfaces)):
+    i = d_boundaryfaces[idx]
+    L = face_cellid[i][0]
+    nx = face_normal[i][0]
+    ny = face_normal[i][1]
+    mesure = face_measure[i]
+    nnx = nx / mesure
+    nny = ny / mesure
+    hp = h_p[i]
+    if hp < 1e-10:
+      hp = 1e-10
+    up = hu_p[i] / hp
+    vp = hv_p[i] / hp
+    cp = hc_p[i] / hp
+    qn = hu_p[i] * nnx + hv_p[i] * nny
+    dz = Z_c[L] if Z_c[L] > Z_ghost[i] else Z_ghost[i]
+    hLs = h_c[L] + Z_c[L] - dz
+    if hLs < 0.:
+      hLs = 0.
+    P = 0.5 * grav * hLs * hLs
+    F_h = qn * mesure
+    F_hu = (qn * up + P * nnx) * mesure
+    F_hv = (qn * vp + P * nny) * mesure
+    F_hc = qn * cp * mesure
+    corrL = 0.5 * grav * (h_c[L] * h_c[L] - hLs * hLs)
+    rez_h[L] -= F_h
+    rez_hu[L] -= F_hu + corrL * nx
+    rez_hv[L] -= F_hv + corrL * ny
+    rez_hc[L] -= F_hc
+
+
+############################################################################
 # NOTHING is compiled at import. Call setup(dim) once (uniformly on all MPI
 # ranks) before using any kernel below; ShallowWaterSolver does this in __init__.
 # The shallow-water kernels are dimension-agnostic, so they are compiled once.
@@ -604,8 +864,10 @@ def setup(dim):
     raise ValueError(f"Unsupported dimension: {dim}")
   if not _agnostic_done:
     global _srnh_scheme  # nested helper first
+    global _weight_parameters_carac_2d, _set_carac_field_2d  # FVC nested helpers first
     global update_SW, time_step_SW, term_source_srnh_SW, explicitscheme_convective_SW
     global term_coriolis_SW, term_friction_SW, term_wind_SW
+    global node_value_for_interpolation_2d, departure_SW_2d, predictor_SW_2d, explicitscheme_convective_SW_fvc
     _srnh_scheme = compile(_srnh_scheme)
     update_SW = compile(_update_SW)
     time_step_SW = compile(_time_step_SW)
@@ -614,4 +876,11 @@ def setup(dim):
     term_coriolis_SW = compile(_term_coriolis_SW)
     term_friction_SW = compile(_term_friction_SW)
     term_wind_SW = compile(_term_wind_SW)
+    # FVC pipeline (nested helpers compiled and rebound before their callers)
+    _weight_parameters_carac_2d = compile(_weight_parameters_carac_2d)
+    _set_carac_field_2d = compile(_set_carac_field_2d)
+    node_value_for_interpolation_2d = compile(_node_value_for_interpolation_2d)
+    departure_SW_2d = compile(_departure_SW_2d)
+    predictor_SW_2d = compile(_predictor_SW_2d)
+    explicitscheme_convective_SW_fvc = compile(_explicitscheme_convective_SW_fvc)
     _agnostic_done = True

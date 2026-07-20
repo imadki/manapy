@@ -47,6 +47,8 @@ class ShallowWaterSolver:
           fc: float = 0,
           grav: float = 9.81,
           wind: bool = False,
+          scheme: str = "srnh",
+          alphaf: float = 1.0,
   ):
 
 
@@ -99,7 +101,102 @@ class ShallowWaterSolver:
     self._term_wind_SW = fvm_utils_compute.term_wind_SW
     self._term_source_srnh = fvm_utils_compute.term_source_srnh_SW
 
+    # --- numerical-flux scheme ------------------------------------------------
+    self.scheme = str(scheme).lower()
+    self.alphaf = alphaf
+    if self.scheme not in ("srnh", "fvc"):
+      raise ValueError(f"unknown scheme '{scheme}'; choose 'srnh' or 'fvc'")
+    if self.scheme == "fvc":
+      # Finite-Volume-Characteristics pipeline (eigenstructure-free, WB).
+      self._node_value_for_interp = fvm_utils_compute.node_value_for_interpolation_2d
+      self._departure = fvm_utils_compute.departure_SW_2d
+      self._predictor = fvm_utils_compute.predictor_SW_2d
+      self._explicitscheme_convective_fvc = fvm_utils_compute.explicitscheme_convective_SW_fvc
+      self._init_fvc_workspace()
+
+  def _init_fvc_workspace(self):
+    # Helper primitive variables (for the Diamond face gradients feeding the
+    # predictor) + the static 4-point interpolation-stencil geometry + work arrays.
+    # NOTE: helper variables inherit the domain boundary types (BC=None); FVC thus
+    # currently supports neumann / periodic domains (the far-field / open cases).
+    dom = self.domain
+    faces = dom.faces
+    nbfaces = dom.nbfaces
+    self.u = Variable(domain=dom)
+    self.v = Variable(domain=dom)
+    self.eta = Variable(domain=dom)
+    nodeid = np.asarray(faces.nodeid)
+    cellid = np.asarray(faces.cellid)
+    name = np.asarray(faces.name)
+    halofid = np.asarray(faces.halofid)
+    vx = np.asarray(dom.nodes.vertex)
+    cc = np.asarray(dom.cells.center)
+    xC = np.zeros((nbfaces, 4))
+    yC = np.zeros((nbfaces, 4))
+    xC[:, 0] = vx[nodeid[:, 0], 0]; xC[:, 1] = vx[nodeid[:, 1], 0]
+    yC[:, 0] = vx[nodeid[:, 0], 1]; yC[:, 1] = vx[nodeid[:, 1], 1]
+    xC[:, 2] = cc[cellid[:, 0], 0]; yC[:, 2] = cc[cellid[:, 0], 1]
+    inner = (name == 0); halo = (name == 10); bnd = ~(inner | halo)
+    xC[inner, 3] = cc[cellid[inner, 1], 0]; yC[inner, 3] = cc[cellid[inner, 1], 1]
+    if np.any(halo):
+      hcv = np.asarray(dom.halos.centvol)
+      xC[halo, 3] = hcv[halofid[halo], 0]; yC[halo, 3] = hcv[halofid[halo], 1]
+    if np.any(bnd):
+      gid = np.asarray(faces.ghost_id)
+      gif = np.asarray(dom.ghost.info_flt)
+      xC[bnd, 3] = gif[gid[bnd], 0]; yC[bnd, 3] = gif[gid[bnd], 1]
+    self._xC = xC
+    self._yC = yC
+    z2 = lambda: np.zeros((nbfaces, 4))
+    z1 = lambda: np.zeros(nbfaces)
+    self._hVal = z2(); self._huVal = z2(); self._hvVal = z2(); self._hcVal = z2()
+    self._X0 = z1(); self._Y0 = z1()
+    self._h_p = z1(); self._hu_p = z1(); self._hv_p = z1(); self._hc_p = z1()
+
+  def explicit_convective_fvc(self):
+    # FVC: method-of-characteristics predictor + physical flux (well-balanced).
+    dom = self.domain
+    faces = dom.faces
+    hsafe = np.maximum(self.h.cell, 1e-10)
+    self.u.cell[:] = self.hu.cell / hsafe
+    self.v.cell[:] = self.hv.cell / hsafe
+    self.eta.cell[:] = self.h.cell + self.Z.cell
+    # boundary/halo closure + Diamond face gradients of the primitive fields
+    for var in (self.u, self.v, self.eta):
+      if MPI.COMM_WORLD.size > 1:
+        dom.halo_comm.exchange(var.cell, recv_buffer=var.halo)
+      var.update_ghost_value()
+      var.interpolate_celltonode()
+      var.compute_face_gradient()
+    # cell->node interpolation of the conservative variables -> ValForInterp stencil
+    for var in (self.h, self.hu, self.hv, self.hc):
+      var.interpolate_celltonode()
+    self._node_value_for_interp(self._hVal, self.h.cell, self.h.node, self.h.ghost, self.h.halo,
+                                faces.nodeid, faces.cellid, faces.halofid, faces.name)
+    self._node_value_for_interp(self._huVal, self.hu.cell, self.hu.node, self.hu.ghost, self.hu.halo,
+                                faces.nodeid, faces.cellid, faces.halofid, faces.name)
+    self._node_value_for_interp(self._hvVal, self.hv.cell, self.hv.node, self.hv.ghost, self.hv.halo,
+                                faces.nodeid, faces.cellid, faces.halofid, faces.name)
+    self._node_value_for_interp(self._hcVal, self.hc.cell, self.hc.node, self.hc.ghost, self.hc.halo,
+                                faces.nodeid, faces.cellid, faces.halofid, faces.name)
+    self._departure(self._X0, self._Y0, self._hVal, self._huVal, self._hvVal,
+                    self._xC, self._yC, faces.center, faces.normal, faces.mesure, self.dt, self.alphaf)
+    self._predictor(self._h_p, self._hu_p, self._hv_p, self._hc_p,
+                    self._hVal, self._huVal, self._hvVal, self._hcVal, self._xC, self._yC, self._X0, self._Y0,
+                    self.u.gradfacex, self.u.gradfacey, self.v.gradfacex, self.v.gradfacey,
+                    self.eta.gradfacex, self.eta.gradfacey, self.grav, self.dt, self.alphaf,
+                    faces.normal, faces.mesure)
+    self._explicitscheme_convective_fvc(self.h.convective, self.hu.convective, self.hv.convective, self.hc.convective,
+                                        self.Z.convective, self._h_p, self._hu_p, self._hv_p, self._hc_p,
+                                        self.h.cell, self.Z.cell, self.h.ghost, self.Z.ghost, self.h.halo, self.Z.halo,
+                                        faces.cellid, faces.mesure, faces.normal, faces.halofid,
+                                        dom.innerfaces, dom.halofaces, dom.boundaryfaces, self.grav)
+
   def explicit_convective(self):
+
+    if self.scheme == "fvc":
+      self.explicit_convective_fvc()
+      return
 
     if self.order == 2:
       self.h.compute_cell_gradient()
@@ -207,8 +304,10 @@ class ShallowWaterSolver:
       self.h.interpolate_celltonode()
       self.explicit_dissipative()
 
-    # update term source
-    self.update_term_source()
+    # update term source (SRNH only; FVC folds the well-balanced pressure/bed
+    # source directly into the convective residual via Audusse reconstruction)
+    if self.scheme != "fvc":
+      self.update_term_source()
 
     if self.fc != 0:
       # update coriolis forces
