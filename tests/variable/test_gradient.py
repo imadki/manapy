@@ -93,9 +93,12 @@ def _check_cell_gradient(domain, fun, atol=ATOL_LINEAR):
 
   grad_cell_x = var.gradcellx
   grad_cell_y = var.gradcelly
-  x, y = _reference(var.cell, fun)
+  # Analytic gradient (via jax autodiff) evaluated at the cell centres, not at
+  # the field values: _reference expects (x, y) coordinates.
+  x, y = _reference(domain.cells.center, fun)
 
   np.testing.assert_almost_equal(grad_cell_x, x, decimal=4)
+  np.testing.assert_almost_equal(grad_cell_y, y, decimal=4)
   # assert np.allclose(var.gradcellx, a, atol=atol), \
   #   f"gradcellx expected {a}, got max deviation {np.max(np.abs(var.gradcellx - a)):.2e}"
   # assert np.allclose(var.gradcelly, b, atol=atol), \
@@ -147,8 +150,8 @@ def duplicate_config(a):
   "config",
   duplicate_config([
     {
-      "dim": get_mesh('big/carre.msh')[0],
-      "mesh_path": get_mesh('big/carre.msh')[1],
+      "dim": get_test_mesh('carre.msh')[0],
+      "mesh_path": get_test_mesh('carre.msh')[1],
       "partitioning_type": Domain.PartitioningClass.Par_Nodal,
     }
   ]),
@@ -157,14 +160,11 @@ def duplicate_config(a):
 class TestGradient:
   def test_linear(self, domain):
     """
-    grad(a*x + b*y + p) = a + b
+    grad(a*x + b*y + p) = (a, b)
     """
-    _check_cell_gradient(domain, a=0, b=1, p=0)
-    _check_cell_gradient(domain, a=1, b=0, p=0)
-    _check_cell_gradient(domain, a=0, b=0, p=0)
-    _check_cell_gradient(domain, a=0, b=0, p=6)
-    _check_cell_gradient(domain, a=3, b=-1, p=0)
-    _check_cell_gradient(domain, a=7, b=-10, p=0)
+    # _check_cell_gradient takes the field function fun(x, y), not (a, b, p).
+    for a, b, p in [(0, 1, 0), (1, 0, 0), (0, 0, 0), (0, 0, 6), (3, -1, 0), (7, -10, 0)]:
+      _check_cell_gradient(domain, lambda x, y, a=a, b=b, p=p: a * x + b * y + p)
 
   # Only work with carre.msh, does not work with kx=2*np.pi
   def test_sinusoidal(self, domain):

@@ -21,6 +21,7 @@ meshes_list = [
   # These are test meshes used for unit testing (don't renamed them)
   (2, f"{test_meshes_folder}/rectangles.msh"),
   (2, f"{test_meshes_folder}/triangles.msh"),
+  (2, f"{test_meshes_folder}/carre.msh"),
   (2, f"{test_meshes_folder}/smallTriangles.msh"),
   (2, f"{test_meshes_folder}/smallHybrid2D.msh"),
   (2, f"{test_meshes_folder}/hybrid2d.msh"),
