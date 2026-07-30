@@ -10,7 +10,7 @@ name = "manapy"
 dynamic = ["version"]
 description = "Finite-volume tools for unstructured meshes."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
     { name = "Imad Kissami", email = "kissami.imad@gmail.ma" },

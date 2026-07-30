@@ -151,7 +151,7 @@ class LocalDomain1Cpu(LocalDomain):
     # ------------------------------------------------------------------
     # Share
     # ------------------------------------------------------------------
-    LocalDomain._local_share_ghost_info(local_domain_objs)
+    LocalDomain1Cpu._local_share_ghost_info(local_domain_objs)
     # ------------------------------------------------------------------
     # Part 2
     # ------------------------------------------------------------------
@@ -269,3 +269,57 @@ class LocalDomain1Cpu(LocalDomain):
 
 
     return local_domain_objs
+
+  @staticmethod
+  def _local_share_ghost_info(local_domains: 'LocalDomain[:]'):
+    if len(local_domains) == 1:
+      local_domains[0].ext_ghost_info_flt = np.zeros(shape=(0, 0), dtype=self.config.float_dtype)
+      local_domains[0].ext_ghost_info_int = np.zeros(shape=(0, 0), dtype=self.config.int_dtype)
+      return
+
+    size = len(local_domains)
+    recv_data = np.ndarray(shape=(size, size), dtype=object)
+    recv_data.fill((None, None))
+
+    # ------------------------------------------------------------------
+    # 1. Send
+    # ------------------------------------------------------------------
+    for rank in range(size):
+      domain : LocalDomain = local_domains[rank]
+      ghost_info_flt = domain.ghost_info_flt
+      ghost_info_int = domain.ghost_info_int
+
+      send_displs = np.insert(np.cumsum(domain.phyid_neighbor[:, 1]), 0, 0)
+      neighbors = domain.phyid_neighbor[:, 0]
+      phyid_send = domain.phyid_send
+      for i in range(neighbors.shape[0]):
+        dest_part = neighbors[i]
+        a = send_displs[i]
+        b = send_displs[i + 1]
+        data_indices = phyid_send[a:b]
+        data_flt = ghost_info_flt[data_indices]
+        data_int = ghost_info_int[data_indices]
+        data_int = data_int[:, [0, 2, 3]]
+        recv_data[rank][dest_part] = (data_indices, data_int, data_flt)
+
+    # ------------------------------------------------------------------
+    # 2. Receive
+    # ------------------------------------------------------------------
+    for rank in range(size):
+      domain : LocalDomain = local_domains[rank]
+      ext_ghost_info_flt = []
+      ext_ghost_info_int = []
+
+      neighbors = domain.phyid_neighbor[:, 0]
+      for i in range(neighbors.shape[0]):
+        sender = neighbors[i]
+        (data_indices, data_int, data_flt) = recv_data[sender][rank]
+        ext_ghost_info_flt.extend(data_flt)
+        ext_ghost_info_int.extend(data_int)
+
+      if len(ext_ghost_info_flt) == 0:
+        ext_ghost_info_flt = [[]]
+      if len(ext_ghost_info_int) == 0:
+        ext_ghost_info_int = [[]]
+      domain.ext_ghost_info_flt = np.array(ext_ghost_info_flt, dtype=self.config.float_dtype)
+      domain.ext_ghost_info_int = np.array(ext_ghost_info_int, dtype=self.config.int_dtype)

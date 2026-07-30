@@ -7,9 +7,14 @@ import manapy.backends.types as types
 import shutil
 import threading
 import time
+from manapy.backends import ManapyArray
 
 class VTKWriter:
     def __init__(self, nodes, dim, cells, cell_type, comm=MPI.COMM_WORLD, vtk_precision="Float64"):
+        assert isinstance(nodes.vertex, ManapyArray), "nodes.vertex must be a ManapyArray"
+        assert isinstance(cells, ManapyArray), "cells must be a ManapyArray"
+        assert isinstance(cell_type, ManapyArray), "cell_type must be a ManapyArray"
+
         self.nodes = nodes
         self.comm = comm
         self.rank = comm.rank
@@ -47,8 +52,11 @@ class VTKWriter:
             shutil.rmtree(p, ignore_errors=True)
 
     @staticmethod
-    def _get_cells_tuple(dim, cells, cells_type):
+    def _get_cells_tuple(dim, cells: ManapyArray, cells_type: ManapyArray):
         res = []
+
+        cells = cells.cpu_r() # host read only
+        cells_type = cells_type.cpu_r()
 
         if dim == 2:
             quads = cells[cells_type == types.MeshCell.QUAD][:, :4]
@@ -68,18 +76,12 @@ class VTKWriter:
         return res
 
 
-    @staticmethod
-    def _as_host_array(value):
-        if hasattr(value, "to_host"):
-            return np.asarray(value.to_host())
-        return np.asarray(value)
-
     # --------------------------------------------------
-    def _log(self, niter: int, time: int, dt: int, variables: list[str], values: list[npt.NDArray]):
+    def _log(self, niter: int, time: int, dt: int, variables: list[str], values: list[ManapyArray]):
         # Compute max for each variable
         maxvals = {}
         for var, val in zip(variables, values):
-            local_max = np.array([np.max(self._as_host_array(val))], dtype=np.float64)
+            local_max = np.array([np.max(val.cpu_r())], dtype=np.float64)
             global_max = np.zeros(1, dtype=np.float64)
             self.comm.Reduce(local_max, global_max, op=MPI.MAX, root=0)
             maxvals[var] = global_max[0]
@@ -107,7 +109,7 @@ class VTKWriter:
     # --------------------------------------------------
     # FIX 3: Correct cell_data structure for meshio
     # --------------------------------------------------
-    def _format_cell_data(self, variables: list[str], values: list[npt.NDArray]):
+    def _format_cell_data(self, variables: list[str], values: list[ManapyArray]):
         """
         meshio requires:
         cell_data = {name: [array_block1, array_block2, ...]}
@@ -121,15 +123,16 @@ class VTKWriter:
             "pyramid": types.MeshCell.PYRAMID
         }
         formatted = {}
+        cell_type = self.cell_type.cpu_r()
 
         for i in range(len(variables)):
             name = variables[i]
-            data = self._as_host_array(values[i])
+            data = values[i].cpu_r()
 
             split_data = []
 
             for cell_type_name, _ in self.cells:
-                block_data = data[self.cell_type == cell_type_dic[cell_type_name]]
+                block_data = data[cell_type == cell_type_dic[cell_type_name]]
                 split_data.append(block_data)
 
             formatted[name] = split_data
@@ -180,7 +183,7 @@ class VTKWriter:
     # PUBLIC METHODS
     # ==================================================
 
-    def save_node_multi(self, variables: list[str], values: list[npt.NDArray], miter: int, niter: int, time: int, dt: int):
+    def save_node_multi(self, variables: list[str], values: list[ManapyArray], miter: int, niter: int, time: int, dt: int):
         if len(variables) == 0 or len(values) == 0:
             return
         if len(variables) != len(values):
@@ -189,16 +192,16 @@ class VTKWriter:
             assert len(item) == self.nbnodes
 
         self._log(niter, time, dt, variables, values)
-        points = np.asarray(self.nodes.vertex[:, :3], dtype=types.np_float_type)
+        points = np.asarray(self.nodes.vertex.cpu_r()[:, :3], dtype=types.np_float_type)
 
-        point_data = {var: self._as_host_array(val) for var, val in zip(variables, values)}
+        point_data = {var: val.cpu_r() for var, val in zip(variables, values)}
         fname = f"visu{self.rank}-{miter}.vtu"
         self._write_vtu(fname, points, point_data=point_data)
         self._write_pvtu(miter, variables, "point")
 
     # --------------------------------------------------
 
-    def save_cell_multi(self, variables: list[str], values: list[npt.NDArray], miter: int, niter: int, time: int, dt: int):
+    def save_cell_multi(self, variables: list[str], values: list[ManapyArray], miter: int, niter: int, time: int, dt: int):
         if len(variables) == 0 or len(values) == 0:
             return
         if len(variables) != len(values):
@@ -207,7 +210,7 @@ class VTKWriter:
             assert len(item) == self.nbcells
 
         self._log(niter, time, dt, variables, values)
-        points = np.asarray(self.nodes.vertex[:, :3], dtype=types.np_float_type)
+        points = np.asarray(self.nodes.vertex.cpu_r()[:, :3], dtype=types.np_float_type)
 
         cell_data = self._format_cell_data(variables, values)
         fname = f"visu{self.rank}-{miter}.vtu"

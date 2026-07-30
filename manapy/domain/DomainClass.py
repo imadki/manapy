@@ -1,5 +1,6 @@
 import os
 
+from backends.ManapyArray import Device
 from manapy.domain.LocalDomainClass import LocalDomain
 from manapy.domain.MeshClass import Mesh
 from manapy.domain.PartitioningClass import Partitioning
@@ -7,18 +8,17 @@ from manapy.domain.geometry import Cell, Node, Halo, Face, Ghost
 import shutil
 from mpi4py import MPI
 from manapy.domain import VTKWriter
-import manapy.backends.types as types
 from manapy.domain.LocalDomainInterface import LocalDomainInterface
-import manapy.domain.domain_compute as compute
 from manapy.backends.debug import log_step
-
+from manapy.backends.config import ManapyConfig
+from manapy.backends import ManapyArray
+import numpy as np
 
 class Domain:
   PartitioningClass = Partitioning
-  def __init__(self, local_domain: 'LocalDomain', backend=None):
-    from manapy.backends import get_backend
-    self.backend = get_backend("cpu") if backend is None else (get_backend(backend) if isinstance(backend, str) else backend)
-    # Init
+  # Domain always constructed on cpu
+  def __init__(self, local_domain: 'LocalDomain', config: ManapyConfig):
+    self.config = config
     self.rank = local_domain.rank
     self.size = local_domain.size
     self.dim = local_domain.dim
@@ -128,10 +128,6 @@ class Domain:
     self.ghost._ext_info_flt = local_domain.ext_ghost_info_flt
     self.ghost._faceid = local_domain.phyid_to_faceid
 
-    # VTK
-    vtkprecision = "Float32" if types.FLOAT_TYPE == "float32" else "Float64"
-    self.vtk_writer = VTKWriter(self.nodes, self.dim, self.cells.nodeid, self.cells.type, self.comm, vtkprecision)
-
     # Domain
     self._bounds = local_domain.bounds
     self._BCs = local_domain.BCs
@@ -196,15 +192,17 @@ class Domain:
     self.backnodes = self._backnodes
     self.bounds = self._bounds
 
-    if self.backend.name == "gpu":
-      self._prepare_gpu_storage()
+    # From variable
+    self.Pbordnode = np.zeros(self.nbnodes, self.config.float_dtype)
+    self.Pbordface = np.zeros(self.nbfaces, self.config.float_dtype)
 
-  def _prepare_gpu_storage(self):
-    from manapy.backends.gpu import set_active_backend, GPUArray
-    from manapy.comms import GPUNeighborCommunication
-    set_active_backend(self.backend)
-    GPUArray.convert_to_gpu_array([self, self.cells, self.faces, self.nodes, self.halos, self.ghost])
-    self.halo_comm = GPUNeighborCommunication(self.halo_comm, self.backend)
+    ManapyArray.convert_to_manapy_array([self, self.cells, self.faces, self.nodes, self.ghost, self.halos], self.config.device)
+    if self.config.device == Device.CUDA:
+      self.halo_comm.set_device("gpu")
+
+    # VTK initialized after conversion to ManapyArray
+    vtkprecision = "Float32" if self.config.float_precision == "float32" else "Float64"
+    self.vtk_writer = VTKWriter(self.nodes, self.dim, self.cells.nodeid, self.cells.type, self.comm, vtkprecision)
 
 
   @staticmethod
@@ -232,7 +230,7 @@ class Domain:
     return names.get(partitioning_method, str(partitioning_method))
 
   @staticmethod
-  def _print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh=None):
+  def _print_run_info(mesh_path, dim, size, partitioning_method, recreate, config: ManapyConfig, mesh=None):
     print(f"====> mesh: {mesh}", flush=True)
     print("====> Run info <=====", flush=True)
     print(f"  MPI ranks: {size}", flush=True)
@@ -240,7 +238,7 @@ class Domain:
     print(f"  Mesh: {mesh_path}", flush=True)
     print(f"  Partitioning: {Domain._partitioning_method_name(partitioning_method)}", flush=True)
     print(f"  Local domains: {'recreate' if recreate else 'reuse if available'}", flush=True)
-    print(f"  Precision: {types.INT_TYPE} {types.FLOAT_TYPE}", flush=True)
+    print(f"  Precision: {config.int_precision} {config.float_precision}", flush=True)
     if mesh is not None:
       print(f"  Cells: {len(mesh.cells)}", flush=True)
       print(f"  Nodes: {len(mesh.points)}", flush=True)
@@ -249,32 +247,25 @@ class Domain:
     print("====================", flush=True)
 
   @staticmethod
-  def create_domain(mesh_path, dim, partitioning_method=Partitioning.Par_Nodal, recreate=True, backend=None):
+  def create_domain(mesh_path, dim, config: ManapyConfig, partitioning_method=Partitioning.Par_Nodal, recreate=True):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
 
-    # Compile all domain kernels here, once, uniformly on every rank (before the
-    # rank-0-only partitioning step). Keeps zero compilation at import while
-    # staying barrier-safe.
-    log_step.log("domain: compute.setup")
-    compute.setup(dim)
-    log_step.out("domain: compute.setup")
-
     if size == 1:
       if recreate == True or not Domain._all_local_mesh_files_exist(size):
-        mesh = Mesh(mesh_path, dim, show_info=True)
+        mesh = Mesh(mesh_path, dim, config)
         Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
         partitioner = Partitioning(mesh)
         local_domain_data = partitioner.create_sub_domains()
-        LocalDomainInterface.save_local_domains(local_domain_data, size)
-        local_domain = LocalDomain(local_domain_data[0], rank, size, backend=backend)
-        return Domain(local_domain, backend=backend)
+        LocalDomainInterface.save_local_domains(local_domain_data, size, config)
+        local_domain = LocalDomain(local_domain_data[0], rank, size)
+        return Domain(local_domain, config)
       else:
         try:
-          local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
-          local_domain = LocalDomain(local_domain_struct, rank, size, backend=backend)
-          return Domain(local_domain, backend=backend)
+          local_domain_struct = LocalDomainInterface.load_and_create(rank, size, config)
+          local_domain = LocalDomain(local_domain_struct, rank, size)
+          return Domain(local_domain, config)
         except Exception as e:
           import traceback
           print(f"[Rank {rank}] failed: {e} {traceback.format_exc()}")
@@ -286,12 +277,12 @@ class Domain:
           if recreate == True or not Domain._all_local_mesh_files_exist(size):
             print("here====>")
             Domain._delete_local_domain_folder(size)
-            mesh = Mesh(mesh_path, dim, show_info=True)
+            mesh = Mesh(mesh_path, dim, config)
             Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
             partitioner = Partitioning(mesh)
             partitioner.set_part_vert(size, partitioning_method)
             local_domains = partitioner.create_sub_domains()
-            LocalDomainInterface.save_local_domains(local_domains, size)
+            LocalDomainInterface.save_local_domains(local_domains, size, config)
             print("====> Domain ready <=====", flush=True)
           else:
             Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate)
@@ -306,10 +297,10 @@ class Domain:
 
       try:
         log_step.log("domain: load hdf5")
-        local_domain_struct = LocalDomainInterface.load_and_create(rank, size)
+        local_domain_struct = LocalDomainInterface.load_and_create(rank, size, config)
         log_step.out("domain: load hdf5")
         log_step.log("domain: LocalDomain build")
-        local_domain = LocalDomain(local_domain_struct, rank, size, backend=backend)
+        local_domain = LocalDomain(local_domain_struct, rank, size)
         log_step.out("domain: LocalDomain build")
       except Exception as e:
         import traceback
@@ -320,14 +311,14 @@ class Domain:
       comm.Barrier()
       log_step.out("domain: final barrier")
       log_step.log("domain: Domain wrap")
-      d = Domain(local_domain, backend=backend)
+      d = Domain(local_domain, config)
       log_step.out("domain: Domain wrap")
       return d
 
 
-  def save_on_node_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
+  def save_on_node_multi(self, variables: list[str], values: list[ManapyArray], dt=0, time=0, niter=0, miter=0):
     self.vtk_writer.save_node_multi(variables, values, miter, niter, time, dt)
 
-  def save_on_cell_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
+  def save_on_cell_multi(self, variables: list[str], values: list[ManapyArray], dt=0, time=0, niter=0, miter=0):
     self.vtk_writer.save_cell_multi(variables, values, miter, niter, time, dt)
 

@@ -2,23 +2,6 @@
 import numpy as np
 
 
-def _rhs_value_dirichlet_node(Pbordnode: 'float[:]', nodes: 'int[:]', value: 'float[:]'):
-  for i in nodes:
-    Pbordnode[i] = value[i]
-
-
-def _rhs_value_dirichlet_face(Pbordface: 'float[:]', faces: 'int[:]', value: 'float[:]'):
-  for i in faces:
-    Pbordface[i] = value[i]
-
-
-def _rhs_value_neumannNH_face(w_c: 'float[:]', Pbordface: 'float[:]', cellid: 'int[:,:]', faces: 'int[:]',
-                             cst: 'float[:]', dist: 'float[:]'):
-  for i in faces:
-    val = w_c[cellid[i][0]] + cst[i] * dist[i]
-    Pbordface[i] = (val + w_c[cellid[i][0]]) / 2.
-
-
 # Corps grid-stride: meme source pour CPU et GPU quand le kernel s'y prete.
 def ghost_value_dirichlet(start: 'int', stride: 'int', value: 'float[:]', w_ghost: 'float[:]',
                           face_cellid: 'int[:,:]', bc_faces: 'int[:]', cst: 'float[:]',
@@ -64,7 +47,11 @@ def haloghost_value_neumann(start: 'int', stride: 'int', w_halo: 'float[:]', w_h
         w_haloghost[ghost_id] = w_halo[ghost_ext_info_int[ghost_id, 0]]
 
 
-def haloghost_value_dirichlet(start: 'int', stride: 'int', w_halo: 'float[:]', w_haloghost: 'float[:]',
+# NB: unlike the other haloghost bodies, the first array here is NOT the halo
+# cell field -- it is the prescribed per-halo-ghost value array (Variable's
+# `valuehalo`, sized halos.sizehaloghost and evaluated at each ghost's face
+# centre), hence the ghost_id indexing. Named accordingly to avoid confusion.
+def haloghost_value_dirichlet(start: 'int', stride: 'int', value_haloghost: 'float[:]', w_haloghost: 'float[:]',
                               node_haloghostid: 'int[:, :]', ghost_ext_info_int: 'int[:,:]',
                               ghost_ext_info_flt: 'float[:, :]', BCindex: 'int', d_halonodes: 'int[:]',
                               cst: 'float[:]'):
@@ -73,7 +60,7 @@ def haloghost_value_dirichlet(start: 'int', stride: 'int', w_halo: 'float[:]', w
     for j in range(node_haloghostid[i, -1]):
       ghost_id = node_haloghostid[i, j]
       if ghost_ext_info_int[ghost_id, 1] == BCindex:
-        w_haloghost[ghost_id] = w_halo[ghost_id]
+        w_haloghost[ghost_id] = value_haloghost[ghost_id]
 
 
 def haloghost_value_neumannNH(start: 'int', stride: 'int', w_halo: 'float[:]', w_haloghost: 'float[:]',
@@ -86,7 +73,12 @@ def haloghost_value_neumannNH(start: 'int', stride: 'int', w_halo: 'float[:]', w
       ghost_id = node_haloghostid[i, j]
       if ghost_ext_info_int[ghost_id, 1] == BCindex:
         dist = 2.0 * abs(ghost_ext_info_flt[ghost_id, 0])
-        w_haloghost[ghost_id] = w_halo[ghost_ext_info_int[ghost_id, 0]] + cst[i] * dist
+        # cst is per halo ghost (Variable's `valuehalo`), not per node: a ghost
+        # is reachable from every node of its face, and those nodes carry
+        # different values (a corner node even carries a *neighbouring*
+        # boundary's tag), so indexing by the node made the result depend on
+        # which node visited the ghost last.
+        w_haloghost[ghost_id] = w_halo[ghost_ext_info_int[ghost_id, 0]] + cst[ghost_id] * dist
 
 
 def haloghost_value_nonslip(start: 'int', stride: 'int', w_halo: 'float[:]', w_haloghost: 'float[:]',
@@ -98,7 +90,11 @@ def haloghost_value_nonslip(start: 'int', stride: 'int', w_halo: 'float[:]', w_h
     for j in range(node_haloghostid[i, -1]):
       ghost_id = node_haloghostid[i, j]
       if ghost_ext_info_int[ghost_id, 1] == BCindex:
-        w_haloghost[ghost_id] = -1.0 * w_halo[ghost_id]
+        # w_halo is the halo *cell* field, so it must be indexed by the halo
+        # cell behind the ghost (column 0), exactly as haloghost_value_neumann
+        # does -- not by ghost_id, which lives in a different index space
+        # (halos.sizehaloghost vs nbhalos).
+        w_haloghost[ghost_id] = -1.0 * w_halo[ghost_ext_info_int[ghost_id, 0]]
 
 
 # ---------------------------------------------------------------------------

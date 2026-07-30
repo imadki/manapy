@@ -1,46 +1,42 @@
 import numpy as np
 import h5py
-import manapy.backends.types as types
-import manapy.c_api.manapy_c_api as manapy_c_api
 import os
 from concurrent.futures import ThreadPoolExecutor
 from mpi4py import MPI
+from backends.config import ManapyConfig
 
-def _env_enabled(*names):
-  for name in names:
-    value = os.environ.get(name, "").lower()
-    if value in {"1", "true", "yes", "on", "all", "rank0"}:
-      return True
-  return False
+
+
 
 # Created inside PartitioningClass
 class LocalDomainInterface:
-  def __init__(self):
+  def __init__(self, config: ManapyConfig):
     # Arrays: use zeros(1) as placeholder
     # Returned tables and Scalars
-    self.nodes = np.zeros((0, 0), dtype=types.np_float_type) # [[node x, y, z]]
-    self.cells = np.zeros((0, 0), dtype=types.np_int_type) # [[cells nodes]]
+    self.config = config
+    self.nodes = np.zeros((0, 0), dtype=self.config.float_dtype) # [[node x, y, z]]
+    self.cells = np.zeros((0, 0), dtype=self.config.int_dtype) # [[cells nodes]]
     self.cells_type = np.zeros(0, dtype=np.int8) # [cell type]
-    self.phy_faces = np.zeros((0, 0), dtype=types.np_int_type) # [[physical face nodes]]
-    self.phy_faces_name = np.zeros(0, dtype=types.np_int_type) # [physical face name]
+    self.phy_faces = np.zeros((0, 0), dtype=self.config.int_dtype) # [[physical face nodes]]
+    self.phy_faces_name = np.zeros(0, dtype=self.config.int_dtype) # [physical face name]
 
-    self.cell_loctoglob = np.zeros(0, dtype=types.np_int_type) # [cell global index]
-    self.node_loctoglob = np.zeros(0, dtype=types.np_int_type) # [node global index]
-    self.node_oldname = np.zeros(0, dtype=types.np_int_type) # [node old name, ...]
+    self.cell_loctoglob = np.zeros(0, dtype=self.config.int_dtype) # [cell global index]
+    self.node_loctoglob = np.zeros(0, dtype=self.config.int_dtype) # [node global index]
+    self.node_oldname = np.zeros(0, dtype=self.config.int_dtype) # [node old name, ...]
 
-    self.halo_neighsub = np.zeros((0, 0), dtype=types.np_int_type) # [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
-    self.node_halos = np.zeros(0, dtype=types.np_int_type) # int32[:] [NodiId, haloId, ...] shape=(2 * nb_halos) couple (NodeId, haloId) for each exthalo, HaloId is an index point to halo_halosext, nodeId is the local nodeId.
-    self.halo_halosext = np.zeros((0, 0), dtype=types.np_int_type) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2) Halos of a partition P is the Concatenation of Interiors of the neighbor parts that are connected to P.
-    self.halo_halosint = np.zeros(0, dtype=types.np_int_type) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
-    self.halo_centvol = np.zeros((0, 0), dtype=types.np_float_type)  # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
+    self.halo_neighsub = np.zeros((0, 0), dtype=self.config.int_dtype) # [[NeighborP1, NeighborP2, ...], [NbHalosIntConnectedToP1, ...]]
+    self.node_halos = np.zeros(0, dtype=self.config.int_dtype) # int32[:] [NodiId, haloId, ...] shape=(2 * nb_halos) couple (NodeId, haloId) for each exthalo, HaloId is an index point to halo_halosext, nodeId is the local nodeId.
+    self.halo_halosext = np.zeros((0, 0), dtype=self.config.int_dtype) # [[global index of halocell, global index of cell nodes, size]] shape=(nb_halos, max_cell_nodeid + 2) Halos of a partition P is the Concatenation of Interiors of the neighbor parts that are connected to P.
+    self.halo_halosint = np.zeros(0, dtype=self.config.int_dtype) # [HalosIntConnectedToP1 halos ..., HalosIntConnectedToP2 halos ..., ...]
+    self.halo_centvol = np.zeros((0, 0), dtype=self.config.float_dtype)  # [halocell_center_{x, y, z}, halocell_volume_{x, y, z}] # z axis only on 3D
 
-    self.phyid_neighbor = np.zeros((0, 0), dtype=types.np_int_type) # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
-    self.phyid_recv = np.zeros(0, dtype=types.np_int_type) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other partitions, all other tables that will use boundary faces must point to this table"
-    self.phyid_send = np.zeros(0, dtype=types.np_int_type) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
-    self.node_halophyid = np.zeros(0, dtype=types.np_int_type)
-    self.cell_halophyid = np.zeros(0, dtype=types.np_int_type)
+    self.phyid_neighbor = np.zeros((0, 0), dtype=self.config.int_dtype) # [[index0 point to halo_halobf, index1 ..., size]] shape=(nb_nodes, max_node_halobf + 1)
+    self.phyid_recv = np.zeros(0, dtype=self.config.int_dtype) # [boundary faces global index, ...] description="represent the global index of boundary faces that is needed from this partition either from itself or the other partitions, all other tables that will use boundary faces must point to this table"
+    self.phyid_send = np.zeros(0, dtype=self.config.int_dtype) # [recv_part_index, size, size indices point to phyid_recv, ...] description="used when this part need to send its boundary faces to recv_part"
+    self.node_halophyid = np.zeros(0, dtype=self.config.int_dtype)
+    self.cell_halophyid = np.zeros(0, dtype=self.config.int_dtype)
 
-    self.cell_tc = np.zeros(0, dtype=types.np_int_type) # Array stored only on rank0, its size = number of cells of global domain [rank0 loctoglob..., rank1 loctoglob..., rank2 loc.......]
+    self.cell_tc = np.zeros(0, dtype=self.config.int_dtype) # Array stored only on rank0, its size = number of cells of global domain [rank0 loctoglob..., rank1 loctoglob..., rank2 loc.......]
 
     # Scalars
     self.max_cell_nodeid = 0
@@ -52,69 +48,18 @@ class LocalDomainInterface:
     self.max_node_halophyid = 0
     self.max_cell_phyid = 0
     self.max_cell_halophyid = 0
-    self.float_precision = 32 if types.FLOAT_TYPE == 'float32' else 64
-    self.int_precision = 32 if types.INT_TYPE == 'int32' else 64
+    self.float_precision = 32 if self.config.float_precision == 'float32' else 64
+    self.int_precision = 32 if self.config.int_precision == 'int32' else 64
     self.dim = 0 # 2 or 3
 
 
   @staticmethod
-  def new_local_domains(nb):
+  def new_local_domains(nb, config: ManapyConfig):
     list_local_domains = []
     for i in range(nb):
-      obj = LocalDomainInterface()
+      obj = LocalDomainInterface(config)
       list_local_domains.append(obj)
     return list_local_domains
-
-  @staticmethod
-  def create_local_domains_wrapper(part_vert: 'int[:]', node_cellid: 'int[:, :]', node_phyid: 'int[:, :]', cells: 'int[:, :]', cells_type: 'int8[:]', nodes: 'float[:, :]', phy_faces: 'int[:, :]', phy_faces_name: 'int[:]', nb_parts: 'int', dim: 'int'):
-    c_res = manapy_c_api.create_local_domains(part_vert, node_cellid, node_phyid, cells, cells_type, nodes, phy_faces, phy_faces_name, nb_parts, dim)
-
-    list_local_domains = LocalDomainInterface.new_local_domains(nb_parts)
-    counter, cell_tc = 0, np.zeros(len(part_vert), dtype=types.np_int_type)
-    for i in range(nb_parts):
-      obj = list_local_domains[i]
-
-      k = 0
-      obj.nodes = c_res[i][k]; k+=1
-      obj.cells = c_res[i][k]; k+=1
-      obj.cells_type = c_res[i][k]; k+=1
-      obj.phy_faces = c_res[i][k]; k+=1
-      obj.phy_faces_name = c_res[i][k]; k+=1
-      obj.cell_loctoglob = c_res[i][k]; k+=1
-      obj.node_loctoglob = c_res[i][k]; k+=1
-      obj.node_oldname = c_res[i][k]; k+=1
-      obj.halo_neighsub = c_res[i][k]; k+=1
-      obj.node_halos = c_res[i][k]; k+=1
-      obj.halo_halosext = c_res[i][k]; k+=1
-      obj.halo_halosint = c_res[i][k]; k+=1
-      obj.halo_centvol = c_res[i][k]; k+=1
-      obj.phyid_neighbor = c_res[i][k]; k+=1
-      obj.phyid_recv = c_res[i][k]; k+=1
-      obj.phyid_send = c_res[i][k]; k+=1
-      obj.node_halophyid = c_res[i][k]; k+=1
-      obj.cell_halophyid = c_res[i][k]; k+=1
-      obj.max_cell_nodeid = c_res[i][k]; k+=1
-      obj.max_cell_faceid = c_res[i][k]; k+=1
-      obj.max_face_nodeid = c_res[i][k]; k+=1
-      obj.max_node_haloid = c_res[i][k]; k+=1
-      obj.max_cell_halonid = c_res[i][k]; k+=1
-      obj.max_node_phyid = c_res[i][k]; k+=1
-      obj.max_node_halophyid = c_res[i][k]; k+=1
-      obj.max_cell_phyid = c_res[i][k]; k+=1
-      obj.max_cell_halophyid = c_res[i][k]; k+=1
-      obj.dim = dim
-
-      # All ranks have cell_tc = array([], types.np_int_type)
-      # Build tc for rank0
-      cell_tc[counter:counter + len(obj.cells)] = obj.cell_loctoglob[:]
-      counter += len(obj.cells)
-
-    # Like the old version, only rank 0 stores cell_tc
-    list_local_domains[0].cell_tc = cell_tc
-
-
-    return list_local_domains
-
 
   @staticmethod
   def save_hdf5(ld: 'LocalDomainInterface', path):
@@ -152,8 +97,8 @@ class LocalDomainInterface:
       f.create_dataset('max_cell_halophyid', data=ld.max_cell_halophyid)
 
   @staticmethod
-  def load_hd5(path: 'str'):
-    local_domain = LocalDomainInterface()
+  def load_hd5(path: 'str', config: ManapyConfig):
+    local_domain = LocalDomainInterface(config)
 
     with h5py.File(path, 'r') as f:
       local_domain.nodes = f['nodes'][...]
@@ -190,12 +135,12 @@ class LocalDomainInterface:
 
     int_precision = 'int32' if local_domain.int_precision == 32 else 'int64'
     float_precision = 'float32' if local_domain.float_precision == 32 else 'float64'
-    if int_precision != types.INT_TYPE or float_precision != types.FLOAT_TYPE:
-      raise RuntimeError(f"Stored local domain has different (float/int) type precision from what types.py has. Consider changing types.py (float/int) types Or load different domain domain_types={float_precision}/{int_precision} types={types.FLOAT_TYPE}/{types.INT_TYPE}")
+    if int_precision != config.int_precision or float_precision != config.float_precision:
+      raise RuntimeError(f"Stored local domain has different (float/int) type precision from configue. Consider changing configue (float/int) types domain_types={float_precision}/{int_precision} configue={config.float_precision}/{config.int_precision}")
     return local_domain
 
   @staticmethod
-  def save_local_domains(local_domains, nb_parts: 'int'):
+  def save_local_domains(local_domains, nb_parts: 'int', config: ManapyConfig):
     folder_name = f"local_domain_{nb_parts}"
     os.makedirs(folder_name, exist_ok=True)
 
@@ -204,25 +149,17 @@ class LocalDomainInterface:
       path = os.path.join(folder_name, file_name)
       LocalDomainInterface.save_hdf5(local_domains[rank], path)
 
-    max_workers = int(os.environ.get("MANAPY_SAVE_THREADS", "1"))
-    if max_workers <= 0:
-      max_workers = 1
-
     ts = MPI.Wtime()
-    if max_workers == 1 or nb_parts <= 1:
-      for rank in range(nb_parts):
-        save_one(rank)
-    else:
-      with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(executor.map(save_one, range(nb_parts)))
+    with ThreadPoolExecutor(max_workers=config.manapy_save_threads) as executor:
+      list(executor.map(save_one, range(nb_parts)))
     te = MPI.Wtime()
 
-    if _env_enabled("MANAPY_DEBUG_TIMING", "MANAPY_TIMING_DEBUG", "MANAPY_SAVE_TIMING"):
-      print(f"====> Save local domains: {te - ts:.6f} s ({nb_parts} files, {max_workers} threads) <=====", flush=True)
+    if config.verbose_save_local_domains:
+      print(f"====> Save local domains: {te - ts:.6f} s ({nb_parts} files, {config.manapy_save_threads} threads) <=====", flush=True)
 
   @staticmethod
-  def load_and_create(rank: 'int', size: 'int'):
+  def load_and_create(rank: 'int', size: 'int', config: ManapyConfig):
     folder_name = f"local_domain_{size}"
     file_name = f"mesh{rank}.hdf5"
     path = os.path.join(folder_name, file_name)
-    return LocalDomainInterface.load_hd5(path)
+    return LocalDomainInterface.load_hd5(path, config)

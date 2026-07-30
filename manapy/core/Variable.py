@@ -7,11 +7,14 @@ Created on Wed Feb 16 20:53:35 2022
 """
 
 import numpy as np
+
+from manapy.backends import ManapyArray
+from manapy.backends.ManapyArray import Device
+from manapy.backends.config import ManapyConfig
 from manapy.domain import Domain
-import manapy.backends.types as types
 from manapy.boundary.Boundary import Boundary, update_slip_ghost
 from types import LambdaType
-from manapy.backends.types import FLOAT_TYPE
+from manapy.compute import VariableCompute
 
 """
 # self, domain=None, terms=None, comm=None, name=None, BC=None, values=None, *args, **kwargs
@@ -37,9 +40,6 @@ is_called = False
 """
 
 class Variable:
-  # Cache of compiled kernels per dimension. Mirrors the old `compile_func`:
-  # only the dimension actually used is ever compiled, and only once.
-  _compiled_funcs = {}
   # Available slope limiters for the 2nd-order (MUSCL) gradient reconstruction.
   # 'barth'  : Barth-Jespersen min(1, y) (default; == minmod in this multi-D
   #            neighbourhood-min/max framework, where the argument y is always >=0).
@@ -47,72 +47,21 @@ class Variable:
   #            of smooth extrema, smoother convergence. Same kernel signature.
   _LIMITER_KERNELS = {'barth': 'barthlimiter', 'vanalbada': 'vanalbadalimiter',
                       'venkatakrishnan': 'vanalbadalimiter'}
-  _limiter_cache = {}
 
-  @classmethod
-  def _get_limiter_kernel(cls, dim, backend, limiter):
-    """Compile (once, lazily) and return the chosen slope-limiter kernel. Only the
-    limiter actually requested is compiled, so the default 'barth' path pays nothing
-    extra (it reuses the kernel already in _get_compiled_funcs)."""
-    name = str(limiter).lower()
-    if name not in cls._LIMITER_KERNELS:
-      raise ValueError(f"unknown limiter '{limiter}'; choose from "
-                       f"{sorted(cls._LIMITER_KERNELS)}")
-    key = (backend.name, dim, name)
-    if key not in cls._limiter_cache:
-      if dim == 2:
-        import manapy.core.variable_compute_2d as K
-      else:
-        import manapy.core.variable_compute_3d as K
-      kern = getattr(K, f"{cls._LIMITER_KERNELS[name]}_{dim}d")
-      cls._limiter_cache[key] = backend.make_gridstride_kernel(kern, size_arg=0)
-    return cls._limiter_cache[key]
-
-  @classmethod
-  def _get_compiled_funcs(cls, dim, backend):
-    key = (backend.name, dim)
-    if key in cls._compiled_funcs:
-      return cls._compiled_funcs[key]
-
-    # Corps grid-stride unifies (meme source CPU/GPU quand le kernel s'y prete).
-    if dim == 2:
-      import manapy.core.variable_compute_2d as K
-    elif dim == 3:
-      import manapy.core.variable_compute_3d as K
-    else:
-      raise ValueError(f"Unsupported dimension: {dim}")
-
-    funcs = {
-      'facetocell': backend.make_gridstride_kernel(K.facetocell, size_arg=1),
-      'celltoface': backend.make_gridstride_kernel(K.celltoface, size_arg=(6, 7, 8)),
-    }
-    if dim == 2:
-      funcs['interp']        = backend.make_gridstride_kernel(K.centertovertex_2d, size_arg=13)
-      funcs['face_gradient'] = backend.make_gridstride_kernel(K.face_gradient_2d, size_arg=(16, 17, 18, 19, 20))
-      funcs['cell_gradient'] = backend.make_gridstride_kernel(K.cell_gradient_2d, size_arg=0)
-      funcs['barthlimiter']  = backend.make_gridstride_kernel(K.barthlimiter_2d, size_arg=0)
-    elif dim == 3:
-      funcs['interp']        = backend.make_gridstride_kernel(K.centertovertex_3d, size_arg=13)
-      funcs['face_gradient'] = backend.make_gridstride_kernel(K.face_gradient_3d, size_arg=(16, 17, 18, 19, 20))
-      funcs['cell_gradient'] = backend.make_gridstride_kernel(K.cell_gradient_3d, size_arg=0)
-      funcs['barthlimiter']  = backend.make_gridstride_kernel(K.barthlimiter_3d, size_arg=0)
-
-    cls._compiled_funcs[key] = funcs
-    return funcs
 
   def __init__(self, domain:Domain, BC:dict=None, values_dict:dict=None, name:str=None,
                limiter:str='barth'):
     if domain is None:
       raise ValueError("domain must be given")
 
-    # None / '' / 'none' all mean the default Barth limiter.
     self._limiter = str(limiter).lower() if limiter else 'barth'
     if self._limiter == 'none':
       self._limiter = 'barth'
     self._domain = domain
-    self.backend = domain.backend
+    self.config = self._domain.config
     self._values = values_dict
     self._name = name
+    self.compute = VariableCompute(self.config, self.domain.dim)
 
 
     self._dim = domain.dim
@@ -121,38 +70,34 @@ class Variable:
     self._nbnodes = domain.nbnodes
     self._nbhalos = domain.nbhalos
 
-    # Les champs sont alloues DANS la memoire du backend (device sous GPU, host
-    # sous CPU) : pas d'allocation host puis transfert.
-    _z = self.backend.zeros
-    _f = types.np_float_type
-    self.cell = _z(self._nbcells, _f)
-    self.node = _z(self._nbnodes, _f)
-    self.face = _z(self._nbfaces, _f)
-    self.ghost = _z(self._nbfaces, _f)  # !! Indexed by face not ghostid
-    self.halo = _z(self._nbhalos, _f)
+    float_precision = self.config.float_dtype
+    device = self.config.device
+    self.cell = ManapyArray.zeros(self._nbcells, float_precision, device)
+    self.node = ManapyArray.zeros(self._nbnodes, float_precision, device)
+    self.face = ManapyArray.zeros(self._nbfaces, float_precision, device)
+    self.ghost = ManapyArray.zeros(self._nbfaces, float_precision, device)  # !! Indexed by face not ghostid
+    self.halo = ManapyArray.zeros(self._nbhalos, float_precision, device)
 
-    self.gradcellx = _z(self._nbcells, _f)
-    self.gradcelly = _z(self._nbcells, _f)
-    self.gradcellz = _z(self._nbcells, _f)
+    self.gradcellx = ManapyArray.zeros(self._nbcells, float_precision, device)
+    self.gradcelly = ManapyArray.zeros(self._nbcells, float_precision, device)
+    self.gradcellz = ManapyArray.zeros(self._nbcells, float_precision, device)
 
-    self.gradhalocellx = _z(self._nbhalos, _f)
-    self.gradhalocelly = _z(self._nbhalos, _f)
-    self.gradhalocellz = _z(self._nbhalos, _f)
+    self.gradhalocellx = ManapyArray.zeros(self._nbhalos, float_precision, device)
+    self.gradhalocelly = ManapyArray.zeros(self._nbhalos, float_precision, device)
+    self.gradhalocellz = ManapyArray.zeros(self._nbhalos, float_precision, device)
 
-    self.gradfacex = _z(self._nbfaces, _f)
-    self.gradfacey = _z(self._nbfaces, _f)
-    self.gradfacez = _z(self._nbfaces, _f)
+    self.gradfacex = ManapyArray.zeros(self._nbfaces, float_precision, device)
+    self.gradfacey = ManapyArray.zeros(self._nbfaces, float_precision, device)
+    self.gradfacez = ManapyArray.zeros(self._nbfaces, float_precision, device)
 
-    self.psi = _z(self._nbcells, _f)
-    self.psihalo = _z(self._nbhalos, _f)
+    self.psi = ManapyArray.zeros(self._nbcells, float_precision, device)
+    self.psihalo = ManapyArray.zeros(self._nbhalos, float_precision, device)
 
-    self.halotosend = _z(len(domain.halos.halosint), _f)
-    self.haloghost = _z(domain.halos.sizehaloghost, _f)
+    self.halotosend = ManapyArray.zeros(len(domain.halos.halosint), float_precision, device)
+    self.haloghost = ManapyArray.zeros(domain.halos.sizehaloghost, float_precision, device)
 
-    # TODO these attribute should be declared inside domain class
     # Alloues sur le backend (device sous GPU) : ecrits par les kernels BC.
-    self._domain.Pbordnode = _z(self._nbnodes, _f)
-    self._domain.Pbordface = _z(self._nbfaces, _f)
+    # these are ManapyArray
     (self.neumannfaces,
     self.BCneumann,
     self.dirichletfaces,
@@ -190,23 +135,19 @@ class Variable:
       self._BCfront = self.BCs["front"]
       self._BCback = self.BCs["back"]
 
-    # Functions: compile only the kernels needed for this dimension, once.
-    funcs = Variable._get_compiled_funcs(self._dim, self.backend)
-    self._facetocell    = funcs['facetocell']
-    self._celltoface    = funcs['celltoface']
-    self._func_interp   = funcs['interp']
-    self._face_gradient = funcs['face_gradient']
-    self._cell_gradient = funcs['cell_gradient']
-    # default 'barth' reuses the kernel already compiled above; any other limiter
-    # is compiled lazily on first use (no extra compile cost for the default path).
-    if self._limiter == 'barth':
-      self._barthlimiter = funcs['barthlimiter']
-    else:
-      self._barthlimiter = Variable._get_limiter_kernel(self._dim, self.backend, self._limiter)
+
+    self._facetocell    = self.compute.facetocell
+    self._celltoface    = self.compute.celltoface
+    self._func_interp   = self.compute.interp
+    self._face_gradient = self.compute.face_gradient
+    self._cell_gradient = self.compute.cell_gradient
+    self._barthlimiter = self.compute.barthlimiter
+    if self._limiter == 'vanalbada' or self._limiter == 'venkatakrishnan':
+      self._barthlimiter = self.compute.vanalbadalimiter
 
   def add_term(self, name):
     # Alloue dans la memoire du backend (device sous GPU, host sous CPU).
-    self.__dict__[name] = self.backend.zeros(self._nbcells, FLOAT_TYPE)
+    self.__dict__[name] = ManapyArray.zeros(self._nbcells, self.config.float_dtype, self.config.device)
 
   def _fill_bc_values(self, value, bcfaces, bctypeindex, valueface, valuenode, valuehalo):
     """Fill the face / node / haloghost boundary arrays from a prescribed value.
@@ -256,9 +197,9 @@ class Variable:
       raise ValueError("BC value must be a number or a callable lambda(x, y, z)")
 
   def _update_boundaries(self, BC:dict, values_dict:dict):
-    valueface = np.zeros(self._domain.nbfaces, dtype=types.np_float_type)
-    valuenode = np.zeros(self._domain.nbnodes, dtype=types.np_float_type)
-    valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=types.np_float_type)
+    valueface = np.zeros(self._domain.nbfaces, dtype=self.config.float_dtype)
+    valuenode = np.zeros(self._domain.nbnodes, dtype=self.config.float_dtype)
+    valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=self.config.float_dtype)
     # Constantes de BC : remplies sur host (_fill_bc_values) ; transferees au bord
     # des kernels (read-only). Pas de wrap GPUArray.
 
@@ -281,9 +222,9 @@ class Variable:
         if domain_bc_typename == "periodic":
           BCs[loc] = Boundary(BCtype="periodic",
                               BCloc=loc,
-                              BCvalueface=np.array([],dtype=types.np_float_type),
-                              BCvaluenode=np.array([], dtype=types.np_float_type),
-                              BCvaluehalo=np.array([], dtype=types.np_float_type),
+                              BCvalueface=np.array([],dtype=self.config.float_dtype),
+                              BCvaluenode=np.array([], dtype=self.config.float_dtype),
+                              BCvaluehalo=np.array([], dtype=self.config.float_dtype),
                               BCtypeindex=domain_bc_type_idx,
                               domain=self._domain)
 
@@ -359,7 +300,12 @@ class Variable:
                                valueface, valuenode, valuehalo)
 
           bc.constNH = valueface
-          bc.constNHNode = valuenode
+          # Per halo ghost, evaluated at the ghost's face centre -- the halo
+          # counterpart of valueface. A per-node array cannot be used here: a
+          # halo ghost is reachable from every node of its face (and corner
+          # nodes carry a neighbouring boundary's tag), so the gradient applied
+          # would depend on which node reached the ghost last.
+          bc.constNHGhost = valuehalo
 
           bc.BCvalueface = self.cell
           bc.BCvaluenode = self.node
@@ -374,9 +320,9 @@ class Variable:
           bc.BCvaluehalo = self.halo
 
         elif bct == "periodic":
-          bc.BCvalueface = np.array([], dtype=types.np_float_type)
-          bc.BCvaluenode = np.array([], dtype=types.np_float_type)
-          bc.BCvaluehalo = np.array([], dtype=types.np_float_type)
+          bc.BCvalueface = np.array([], dtype=self.config.float_dtype)
+          bc.BCvaluenode = np.array([], dtype=self.config.float_dtype)
+          bc.BCvaluehalo = np.array([], dtype=self.config.float_dtype)
 
         elif bct == "slip":
           BCneumann.append(bc.BCtypeindex)
@@ -400,35 +346,13 @@ class Variable:
 
     neumannfaces.sort()
     dirichletfaces.sort()
-    neumannfaces = np.asarray(neumannfaces, dtype=types.np_int_type)
-    BCneumann = np.asarray(BCneumann, dtype=types.np_int_type)
-    dirichletfaces = np.asarray(dirichletfaces, dtype=types.np_int_type)
-    BCdirichlet = np.asarray(BCdirichlet, dtype=types.np_int_type)
-    neumannNHfaces = np.asarray(neumannNHfaces, dtype=types.np_int_type)
-    BCneumannNH = np.asarray(BCneumannNH, dtype=types.np_int_type)
+    neumannfaces = ManapyArray(np.asarray(neumannfaces, dtype=self.config.int_dtype), self.config.device)
+    BCneumann = ManapyArray(np.asarray(BCneumann, dtype=self.config.int_dtype), self.config.device)
+    dirichletfaces = ManapyArray(np.asarray(dirichletfaces, dtype=self.config.int_dtype), self.config.device)
+    BCdirichlet = ManapyArray(np.asarray(BCdirichlet, dtype=self.config.int_dtype), self.config.device)
+    neumannNHfaces = ManapyArray(np.asarray(neumannNHfaces, dtype=self.config.int_dtype), self.config.device)
+    BCneumannNH = ManapyArray(np.asarray(BCneumannNH, dtype=self.config.int_dtype), self.config.device)
 
-    if self.backend.name == "gpu":
-      neumannfaces = self.backend.asarray(neumannfaces, types.np_int_type)
-      BCneumann = self.backend.asarray(BCneumann, types.np_int_type)
-      dirichletfaces = self.backend.asarray(dirichletfaces, types.np_int_type)
-      BCdirichlet = self.backend.asarray(BCdirichlet, types.np_int_type)
-      neumannNHfaces = self.backend.asarray(neumannNHfaces, types.np_int_type)
-      BCneumannNH = self.backend.asarray(BCneumannNH, types.np_int_type)
-
-      converted_bc_arrays = {}
-      for bc in BCs.values():
-        if bc is None:
-          continue
-        for attr in ("BCvalueface", "BCvaluenode", "BCvaluehalo",
-                     "constNH", "constNHNode"):
-          value = getattr(bc, attr, None)
-          if isinstance(value, np.ndarray):
-            key = id(value)
-            device_value = converted_bc_arrays.get(key)
-            if device_value is None:
-              device_value = self.backend.asarray(value, value.dtype)
-              converted_bc_arrays[key] = device_value
-            setattr(bc, attr, device_value)
 
     return (neumannfaces,
             BCneumann,
@@ -437,57 +361,6 @@ class Variable:
             neumannNHfaces,
             BCneumannNH,
             BCs)
-
-  def __str__(self):
-    """Pretty printing"""
-    txt = '\n'
-    txt += '> dim   :: {dim}\n'.format(dim=self._dim)
-    txt += '> total cells  :: {cells}\n'.format(cells=self._nbcells)
-    txt += '> total nodes  :: {nodes}\n'.format(nodes=self._nbnodes)
-    txt += '> total faces  :: {faces}\n'.format(faces=self._nbfaces)
-    txt += '> Value on cells :: {faces}\n'.format(faces=self.cell)
-    txt += '> Value on faces  :: {faces}\n'.format(faces=self.face)
-    txt += '> Value on nodes  :: {faces}\n'.format(faces=self.node)
-    txt += '> Value on ghosts  :: {faces}\n'.format(faces=self.ghost)
-
-    return txt
-
-  def __add__(self, other):
-
-    # TODO should this has its own BC, name, values_dict
-    res = Variable(self._domain)
-
-    res.cell = self.cell + other.cell
-
-    return res
-
-  def __sub__(self, other):
-
-    res = Variable(self._domain)
-
-    res.cell = self.cell - other.cell
-
-    return res
-
-  def __mul__(self, other):
-
-    res = Variable(self._domain)
-
-    res.cell = self.cell * other.cell
-
-    return res
-
-  def __truediv__(self, other):
-
-    res = Variable(self._domain)
-
-    if np.all(other.cell != 0):
-      res.cell = self.cell / other.cell
-    else:
-      raise ValueError("Values of denominator must be different to 0")
-
-
-    return res
 
   def update_halo_value(self):
     # update the halo values
@@ -558,7 +431,7 @@ class Variable:
                      BC.BCfaces,
                      BC.constNH, self._domain.faces.dist_ortho)
       BC.func_haloghost(BC.BCvaluehalo, self.haloghost, self._domain.nodes.haloghostid,
-                         self._domain.ghost.ext_info_int, self._domain.ghost.ext_info_flt, BC.BCtypeindex, self._domain.halonodes, BC.constNHNode)
+                         self._domain.ghost.ext_info_int, self._domain.ghost.ext_info_flt, BC.BCtypeindex, self._domain.halonodes, BC.constNHGhost)
 
     # Coupled slip walls: apply the reflection on the whole velocity group that
     # auto-registered on the domain (in creation order u, v[, w]).
@@ -571,8 +444,8 @@ class Variable:
       order = 1
     assert self._nbcells == len(exact), 'exact solution must have length of cells'
 
-    Error = np.zeros(self._nbcells, dtype=types.np_float_type)
-    Ex = np.zeros(self._nbcells, dtype=types.np_float_type)
+    Error = np.zeros(self._nbcells, dtype=self.config.float_dtype)
+    Ex = np.zeros(self._nbcells, dtype=self.config.float_dtype)
 
     for i in range(len(exact)):
       Error[i] = np.fabs(self.cell[i] - exact[i]) * self._domain.cells.volume[i]

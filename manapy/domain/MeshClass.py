@@ -1,18 +1,20 @@
 import numpy as np
 import meshio
-import manapy.backends.types as types
+from manapy.backends.config import ManapyConfig
 
 class Mesh:
-  def __init__(self, mesh_path, dim, show_info=True):
+  def __init__(self, mesh_path: str, dim: int, config: ManapyConfig):
     if not (isinstance(dim, int) and dim == 2 or dim == 3):
       raise ValueError('Invalid dimension')
 
+    self.config = config
     mesh, cells_dict, points, cell_data_dict = self._read_mesh(mesh_path)
     cells, cells_type, max_cell_nodeid, max_cell_faceid, max_face_nodeid = self._create_cells(cells_dict, dim)
     phy_faces, phy_faces_name = self._create_phy_faces(cells_dict, cell_data_dict, dim)
     nb_faces = self._compute_nb_faces(cells_dict, len(phy_faces), dim)
-    #if show_info:
-    print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
+
+    if config.verbose:
+      print(f"Mesh Created: Cells: {len(cells)}, Nodes: {len(points)}, Faces: {nb_faces}, Physical Faces: {len(phy_faces)}")
 
     self.mesh = mesh
     self.cells = cells
@@ -66,7 +68,7 @@ class Mesh:
       cells_dict = mesh.cells_dict
       cell_data_dict = mesh.cell_data_dict
     points = mesh.points
-    points = np.array(points, dtype=types.np_float_type)
+    points = np.array(points, dtype=self.config.float_dtype)
 
     return mesh, cells_dict, points, cell_data_dict
 
@@ -86,15 +88,15 @@ class Mesh:
         elif k == 'quad':
           max_nb_face_nodes = max(max_nb_face_nodes, 4)
 
-    phy_faces = np.zeros(shape=(counter, max_nb_face_nodes + 1), dtype=types.np_int_type)
-    phy_faces_name = np.zeros(shape=counter, dtype=types.np_int_type)
+    phy_faces = np.zeros(shape=(counter, max_nb_face_nodes + 1), dtype=self.config.int_dtype)
+    phy_faces_name = np.zeros(shape=counter, dtype=self.config.int_dtype)
 
-    counter = types.np_int_type(0)
+    counter = self.config.int_dtype(0)
     for k in physicals_key:
       if physicals.get(k) is not None:
-        cells = np.array(cells_dict[k], dtype=types.np_int_type)
+        cells = np.array(cells_dict[k], dtype=self.config.int_dtype)
         self._append_cells(phy_faces, cells, counter)
-        physical = np.array(physicals[k], dtype=types.np_int_type)
+        physical = np.array(physicals[k], dtype=self.config.int_dtype)
         self._append_1d(phy_faces_name, physical, counter)
         counter += len(physicals[k])
 
@@ -165,16 +167,16 @@ class Mesh:
       if meshio_mesh_dic.get(item) is not None:
         number_of_cells += len(meshio_mesh_dic[item])
 
-    if number_of_cells * max_cell_faceid > 2 ** 31 - 1 and types.INT_TYPE == "int32":
+    if number_of_cells * max_cell_faceid > 2 ** 31 - 1 and self.config.int_precision == "int32":
       raise RuntimeError("The mesh is too large to be indexed with an int32")
 
-    cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=types.np_int_type)
+    cells = np.zeros(shape=(number_of_cells, max_cell_nodeid + 1), dtype=self.config.int_dtype)
     cells_type = np.zeros(shape=number_of_cells, dtype=np.int8)
 
-    counter = types.np_int_type(0)
+    counter = self.config.int_dtype(0)
     for item in allowed_cells:
       if meshio_mesh_dic.get(item) is not None:
-        cells_item = np.array(meshio_mesh_dic[item], dtype=types.np_int_type)
+        cells_item = np.array(meshio_mesh_dic[item], dtype=self.config.int_dtype)
         cells_type[counter:counter + len(cells_item)] = cell_type_dic[item]
         self._append_cells(cells, cells_item, counter)
         counter += len(cells_item)
