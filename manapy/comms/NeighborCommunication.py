@@ -6,6 +6,8 @@ from mpi4py import MPI
 import numpy as np
 import numpy.typing as npt
 
+from manapy.backends.ManapyArray import ManapyArray
+
 try:
   import cupy as cp
 except ImportError:
@@ -222,6 +224,27 @@ class NeighborCommunication:
     self._d_send_indices = None
     self._host_bufs = {}
 
+  # ------------------------------------------------- ManapyArray unwrapping
+
+  # Callers hand in either a raw numpy/cupy array or a ManapyArray. A
+  # ManapyArray is not array-like to numpy (no __array__, no .ndim), so it must
+  # be unwrapped to the buffer matching the resolved comm_mode BEFORE any of
+  # the metadata helpers below touch it -- np.ascontiguousarray() would
+  # otherwise silently wrap it in a 1-element object array.
+
+  def _send_buffer(self, data):
+    """Read-only view of the send field; the other side stays valid."""
+    if not isinstance(data, ManapyArray):
+      return data
+    return data.cpu_r() if self.comm_mode == self.CPU else data.gpu_r()
+
+  def _recv_buffer(self, buf):
+    """Write-only view of the halo buffer: MPI overwrites it whole, so no
+    transfer in, and the opposite side is invalidated."""
+    if not isinstance(buf, ManapyArray):
+      return buf
+    return buf.cpu_w() if self.comm_mode == self.CPU else buf.gpu_w()
+
   # ------------------------------------------------------------- collectives
 
   def exchange(self, data, recv_buffer=None):
@@ -231,12 +254,18 @@ class NeighborCommunication:
       # mistaken for data received from neighbors.
       if recv_buffer is not None:
         return recv_buffer
-      xp = self._array_module(data)
-      if data.ndim == 2:
-        return xp.empty((0, data.shape[1]), dtype=data.dtype)
+      shape = data.shape
+      xp = np if isinstance(data, ManapyArray) else self._array_module(data)
+      if len(shape) == 2:
+        return xp.empty((0, shape[1]), dtype=data.dtype)
       return xp.empty(0, dtype=data.dtype)
 
     self._prune_pending()
+
+    # Returned as given, so a ManapyArray caller gets its ManapyArray back.
+    out = recv_buffer
+    data = self._send_buffer(data)
+    recv_buffer = self._recv_buffer(recv_buffer)
 
     xp = self._array_module(data)
     mpi_type = self._mpi_type(data)
@@ -254,11 +283,12 @@ class NeighborCommunication:
         (send_data, (send_counts, send_displs), mpi_type),
         (recv_data, (recv_counts, recv_displs), mpi_type)
       )
-      return recv_data
+      return recv_data if out is None else out
 
     if self.comm_mode == self.GPU_STAGED:
-      return self._exchange_staged(data, recv_buffer, block_size, mpi_type,
-                                   (send_counts, send_displs, recv_counts, recv_displs))
+      staged = self._exchange_staged(data, recv_buffer, block_size, mpi_type,
+                                     (send_counts, send_displs, recv_counts, recv_displs))
+      return staged if out is None else out
 
     # --- device buffers straight into MPI ---
     d_send = data[self._d_send_indices]
@@ -272,7 +302,7 @@ class NeighborCommunication:
       (d_send, (send_counts, send_displs), mpi_type),
       (d_recv, (recv_counts, recv_displs), mpi_type)
     )
-    return d_recv
+    return d_recv if out is None else out
 
   def immediate_exchange(self, data, recv_buffer):
     if not self._active:
@@ -281,6 +311,9 @@ class NeighborCommunication:
       return MPI.REQUEST_NULL
 
     self._prune_pending()
+
+    data = self._send_buffer(data)
+    recv_buffer = self._recv_buffer(recv_buffer)
 
     xp = self._array_module(data)
     mpi_type = self._mpi_type(data)

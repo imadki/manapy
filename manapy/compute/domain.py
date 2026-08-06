@@ -136,6 +136,28 @@ class _Compute:
     self.haloghost_value_slip_2d_cuda = self.manapy_compute.boundary.haloghost_value_slip_2d_cuda
     self.haloghost_value_slip_3d_cuda = self.manapy_compute.boundary.haloghost_value_slip_3d_cuda
 
+    ##############################################
+    ######## Advection
+    # Advection Cpu
+    self.advec_explicitscheme_convective_2d = self.manapy_compute.solvers.advec.explicitscheme_convective_2d
+    self.advec_explicitscheme_convective_3d = self.manapy_compute.solvers.advec.explicitscheme_convective_3d
+    self.advec_time_step = self.manapy_compute.solvers.advec.time_step
+    # Advection Gpu
+    self.advec_explicitscheme_convective_2d_cuda = self.manapy_compute.solvers.advec.explicitscheme_convective_2d_cuda
+    self.advec_explicitscheme_convective_3d_cuda = self.manapy_compute.solvers.advec.explicitscheme_convective_3d_cuda
+    self.advec_time_step_cuda = self.manapy_compute.solvers.advec.time_step_cuda
+
+    ##############################################
+    ######## Solver utilities (common to every solver)
+    # Solver utils Cpu
+    # The two Gaussian-init kernels have no _cuda counterpart: they are CPU-only
+    # (see src/solvers/headers/utils/utils_compute.hpp), so there is nothing to
+    # list under "Gpu" below for them.
+    self.initialisation_gaussian_2d = self.manapy_compute.solvers.utils.initialisation_gaussian_2d
+    self.initialisation_gaussian_3d = self.manapy_compute.solvers.utils.initialisation_gaussian_3d
+    self.update_new_value = self.manapy_compute.solvers.utils.update_new_value
+    # Solver utils Gpu
+    self.update_new_value_cuda = self.manapy_compute.solvers.utils.update_new_value_cuda
 
 
 class DomainCompute:
@@ -158,7 +180,7 @@ class DomainCompute:
 
     # Create node cellid
     node_cellid = np.zeros(shape=(nb_nodes, max_node_cellid + 1), dtype=self.config.int_dtype)
-    self.create_node_cellid(cells, node_cellid)
+    self.compute.create_node_cellid(cells, node_cellid)
     return node_cellid
 
 
@@ -361,7 +383,7 @@ class DomainCompute:
   def create_ghost_info(self, cell_center: 'float[:, :]', cell_faceid: 'int[:, :]', cell_loctoglob: 'int[:]',
                          face_oldname: 'int[:]', face_normal: 'float[:, :]', face_center: 'float[:, :]',
                          face_measure: 'float[:]', faces: 'int[:, :]', nodes: 'float[:, :]', phy_faces: 'int[:, :]',
-                         node_cellid: 'int[:, :]', phyid_to_faceid: 'int[:]', nb_phy_faces, phy_faces_name):
+                         node_cellid: 'int[:, :]', phyid_to_faceid: 'int[:]', nb_phy_faces, phy_faces_name, dim):
 
     ghost_info_size = nb_phy_faces
 
@@ -386,7 +408,7 @@ class DomainCompute:
     ghost_info_int = np.zeros(shape=(ghost_info_size, ghost_info_data_size_int), dtype=self.config.int_dtype)
 
     self.compute.create_ghost_info(bf_cellid, cell_center, cell_faceid, cell_loctoglob, faces, nodes, face_oldname,
-                              face_normal, face_center, face_measure, ghost_info_int, ghost_info_flt, self.dim)
+                              face_normal, face_center, face_measure, ghost_info_int, ghost_info_flt, dim)
 
     return ghost_info_int, ghost_info_flt
 
@@ -408,10 +430,12 @@ class DomainCompute:
       cell_ghostnid
     )
 
-  def create_halo_ghost_tables(self, ext_ghost_info_int: 'float[:, :]', node_halophyid: 'int[:, :]', cell_halophyid: 'int[:]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', max_cell_halophyid, max_node_halophyid, size):
-    nb_nodes = len(node_halophyid)
-    nb_cells = len(cell_halophyid)
-
+  def create_halo_ghost_tables(self, ext_ghost_info_int: 'float[:, :]', node_halophyid: 'int[:]', cell_halophyid: 'int[:]', node_haloid: 'int[:, :]', halo_halosext: 'int[:, :]', max_cell_halophyid, max_node_halophyid, size, nb_nodes, nb_cells):
+    # node_halophyid / cell_halophyid are FLAT run-length lists
+    # ([id, size, phyid...] repeated), not per-node/per-cell tables -- their
+    # length says nothing about the mesh size (it is 0 in serial). The output
+    # tables are indexed by local node/cell id, so they must be sized by the
+    # mesh counts.
     if size == 1:
       # give size to cell_haloghostnid and node_haloghostid to keep the multiprocessing code as it is
       cell_haloghostid = np.zeros(shape=(nb_cells, 1), dtype=self.config.int_dtype)
@@ -923,3 +947,149 @@ class BoundaryCompute:
       r(ghost_ext_info_flt), BCindex, r(d_halonodes)
     )
 
+
+class AdvectionSolverCompute:
+  """Device-agnostic entry points for the advection-solver kernels.
+
+  Same contract as `VariableCompute` and `BoundaryCompute`: the compiled
+  kernels take numpy arrays (CPU build) or CuPy arrays (CUDA build) and never
+  see a ManapyArray:
+
+      r  -> cpu_r  / gpu_r    read-only:  sync in if stale, other side stays valid
+      rw -> cpu_rw / gpu_rw   read-write: sync in if stale, other side invalidated
+      w  -> cpu_w  / gpu_w    write-only: NO transfer, other side invalidated
+
+  `__init__` resolves the CPU/CUDA and 2D/3D kernel plus the matching accessor
+  triple once and binds them with `functools.partial` (see `VariableCompute`
+  for why partial rather than a lambda), so callers keep the same positional
+  argument list the raw kernels take.
+
+  The wrappers are positional-only in practice: one wrapper serves both the 2D
+  and the 3D convective kernel, so keyword calls must not be used. Scalars
+  (`cfl`, `dtime`, `order`, `scheme`, `dim`) are passed straight through --
+  only the array arguments must be ManapyArray.
+
+  `update_new_value` and the two `initialisation_gaussian_*` are not advec
+  kernels: they live in solvers.utils and are shared by every solver, and are
+  exposed here because the advection solver's setup and time loop need them.
+  The Gaussian ones are CPU-only and so always run through the CPU accessors
+  (see `__init__`).
+  """
+
+  def __init__(self, config: ManapyConfig, dim: int):
+    self.config = config
+    self.dim = dim
+    self.compute = _Compute(config)
+
+    if dim not in (2, 3):
+      raise ValueError(f"dim must be 2 or 3, got {dim}")
+
+    if config.device == Device.CUDA:
+      acc = (ManapyArray.gpu_r, ManapyArray.gpu_rw, ManapyArray.gpu_w)
+      k_time_step = self.compute.advec_time_step_cuda
+      k_update_new_value = self.compute.update_new_value_cuda
+      if dim == 2:
+        k_convective = self.compute.advec_explicitscheme_convective_2d_cuda
+      else:
+        k_convective = self.compute.advec_explicitscheme_convective_3d_cuda
+    else:
+      acc = (ManapyArray.cpu_r, ManapyArray.cpu_rw, ManapyArray.cpu_w)
+      k_time_step = self.compute.advec_time_step
+      k_update_new_value = self.compute.update_new_value
+      if dim == 2:
+        k_convective = self.compute.advec_explicitscheme_convective_2d
+      else:
+        k_convective = self.compute.advec_explicitscheme_convective_3d
+
+    # The Gaussian initial conditions are CPU-only -- there is no _cuda kernel
+    # to pick, so they always get the CPU accessor triple, whatever the device.
+    # That is not a fallback but the correct handling: `cpu_w` hands out the
+    # host buffer without a transfer and marks the device copy stale, so the
+    # kernel fills the field on the host and the first `gpu_r` after it syncs
+    # the result up. Only `cell_center` costs a device->host copy under CUDA,
+    # once, at setup.
+    cpu_acc = (ManapyArray.cpu_r, ManapyArray.cpu_rw, ManapyArray.cpu_w)
+
+    self.explicitscheme_convective = partial(
+      AdvectionSolverCompute.explicitscheme_convective, k_convective, acc)
+    self.time_step = partial(AdvectionSolverCompute.time_step, k_time_step, acc)
+    self.update_new_value = partial(
+      AdvectionSolverCompute.update_new_value, k_update_new_value, acc)
+    self.initialisation_gaussian_2d = partial(
+      AdvectionSolverCompute.initialisation_gaussian_2d,
+      self.compute.initialisation_gaussian_2d, cpu_acc)
+    self.initialisation_gaussian_3d = partial(
+      AdvectionSolverCompute.initialisation_gaussian_3d,
+      self.compute.initialisation_gaussian_3d, cpu_acc)
+
+  # ------------------------------------------------------------------ kernels
+
+  @staticmethod
+  def explicitscheme_convective(kernel, acc, rez_w, w_c, w_ghost, w_halo,
+                                u_face, v_face, w_face, w_x, w_y, w_z, wx_halo,
+                                wy_halo, wz_halo, psi, psi_halo, cell_center,
+                                face_center, halo_centvol, face_cellid,
+                                face_normal, face_haloid, face_name,
+                                d_innerfaces, d_halofaces, d_boundaryfaces,
+                                d_periodicboundaryfaces, cell_shift, order,
+                                scheme):
+    """explicitscheme_convective_2d/3d: explicit finite-volume convective
+    residual. Both kernels zero `rez_w` over every cell before scattering the
+    face fluxes into it, so it is write-only. `w_z` / `wz_halo` are read by the
+    3D kernel only; they stay in the signature for parity."""
+    r, rw, w = acc
+    kernel(
+      w(rez_w), r(w_c), r(w_ghost), r(w_halo), r(u_face), r(v_face), r(w_face),
+      r(w_x), r(w_y), r(w_z), r(wx_halo), r(wy_halo), r(wz_halo), r(psi),
+      r(psi_halo), r(cell_center), r(face_center), r(halo_centvol),
+      r(face_cellid), r(face_normal), r(face_haloid), r(face_name),
+      r(d_innerfaces), r(d_halofaces), r(d_boundaryfaces),
+      r(d_periodicboundaryfaces), r(cell_shift), order, scheme
+    )
+
+  @staticmethod
+  def time_step(kernel, acc, u, v, w_, cfl, face_normal, face_measure,
+                cell_volume, cell_faceid, dim):
+    """Explicit CFL time step: min over the cells of cfl * volume / sum(|u.n|).
+    Reads only, and returns the time step as a Python float -- the caller still
+    has to reduce it across ranks. `face_measure` and `dim` are unused by the
+    computation and kept for signature parity."""
+    r, rw, w = acc
+    return kernel(
+      r(u), r(v), r(w_), cfl, r(face_normal), r(face_measure), r(cell_volume),
+      r(cell_faceid), dim
+    )
+
+  @staticmethod
+  def update_new_value(kernel, acc, ne_c, rez_ne, dissip_ne, src_ne, dtime,
+                       cell_volume):
+    """solvers.utils.update_new_value: forward-Euler update of a cell field,
+    ne_c += dtime * ((rez + dissip) / volume + src). `ne_c` is accumulated
+    into, not overwritten, so it is read-write."""
+    r, rw, w = acc
+    kernel(
+      rw(ne_c), r(rez_ne), r(dissip_ne), r(src_ne), dtime, r(cell_volume)
+    )
+
+  @staticmethod
+  def initialisation_gaussian_2d(kernel, acc, ne, u, v, P, cell_center, Pinit):
+    """solvers.utils.initialisation_gaussian_2d: Gaussian bump initial
+    condition -- ne = Gaussian centred at (0.2, 0.2), u = v = 0 and
+    P = Pinit * (0.5 - x).
+
+    The kernel loops over every cell of `cell_center` and assigns (never
+    accumulates) each output, so `ne`, `u`, `v` and `P` are all write-only.
+    They must be at least as long as `cell_center` -- the loop bound comes from
+    `cell_center`, not from the outputs."""
+    r, rw, w = acc
+    kernel(w(ne), w(u), w(v), w(P), r(cell_center), Pinit)
+
+  @staticmethod
+  def initialisation_gaussian_3d(kernel, acc, ne, u, v, w_, P, cell_center,
+                                 Pinit):
+    """solvers.utils.initialisation_gaussian_3d: 3D counterpart of
+    initialisation_gaussian_2d -- Gaussian centred at (0.2, 0.25, 0.45),
+    u = v = w = 0 and P = Pinit * (0.5 - x). Same write-only outputs, plus the
+    z velocity (named `w_` here so it does not shadow the `w` accessor)."""
+    r, rw, w = acc
+    kernel(w(ne), w(u), w(v), w(w_), w(P), r(cell_center), Pinit)

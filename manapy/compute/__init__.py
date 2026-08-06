@@ -1,1 +1,1 @@
-from manapy.compute.domain import BoundaryCompute, DomainCompute, VariableCompute
+from manapy.compute.domain import BoundaryCompute, DomainCompute, VariableCompute, AdvectionSolverCompute

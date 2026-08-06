@@ -2,9 +2,10 @@ from mpi4py import MPI
 import os
 import timeit
 from manapy.domain import Domain, Partitioning
-from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.solvers.advec.system import AdvectionSolver
 from manapy.core.Variable import Variable
+from manapy.backends.ManapyArray import Device, ManapyArray
+from manapy.backends.config import ManapyConfig
 
 
 COMM = MPI.COMM_WORLD
@@ -24,7 +25,20 @@ filename = "uns_square.msh"
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
 
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
+# The config decides the precision pair and the device, and so which compiled
+# kernels every Variable / Boundary / solver below binds -- there is nothing
+# else to switch: the same code runs on both. Overridable from the environment
+# so a GPU run needs no edit:
+#     MANAPY_DEVICE=cuda python3 advection2d.py
+config = ManapyConfig(
+  float_precision=os.environ.get("MANAPY_FLOAT", "float64"),
+  int_precision=os.environ.get("MANAPY_INT", "int64"),
+  device=os.environ.get("MANAPY_DEVICE", "cpu"),
+)
+
+domain = Domain.create_domain(mesh_path, dim, config,
+                              partitioning_method=Partitioning.Par_Nodal,
+                              recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -64,9 +78,16 @@ P = Variable(domain=domain)
 
 S = AdvectionSolver(ne, vel=(u, v), order=2, cfl=0.8)
 
-initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
-f = lambda x, y, z: Pinit * (1. - x)
+S.compute.initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
 COMM.Barrier()
+
+# Write-only accessor for the device this run is on. `cpu_w` / `gpu_w` hand out
+# the buffer with no transfer and mark the other side stale, which is what the
+# prescribed velocity below wants: it overwrites every face, and the kernels
+# that read it next sync it in themselves. Taking it from the config keeps the
+# face field on the device the solver runs on -- hardcoding `cpu_w` would push
+# a host->device copy of it into every iteration of a CUDA run.
+face_w = ManapyArray.gpu_w if config.device == Device.CUDA else ManapyArray.cpu_w
 
 ts = MPI.Wtime()
 
@@ -75,8 +96,8 @@ if RANK == 0: print("Start While loop ...")
 
 while time < tfinal:
 
-  u.face[:] = 2.
-  v.face[:] = 0.
+  face_w(u.face)[:] = 2.
+  face_w(v.face)[:] = 0.
 
   u.interpolate_facetocell()
   v.interpolate_facetocell()

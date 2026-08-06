@@ -6,7 +6,6 @@ import numpy as np
 import inspect
 import hashlib
 from mpi4py import MPI
-from manapy.backends.types import FLOAT_TYPE, INT_TYPE
 
 
 # =============================================================================

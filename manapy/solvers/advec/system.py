@@ -8,15 +8,13 @@ Created on Sat Apr  8 03:05:46 2023
 
 from mpi4py import MPI
 import numpy as np
-from manapy.backends.types import FLOAT_TYPE
-import manapy.solvers.advec.fvm_utils_compute as fvm_utils_compute
-
 from manapy.core.Variable import Variable
-
+from manapy.compute import AdvectionSolverCompute
 
 class AdvectionSolver:
   # Numerical-flux schemes: name -> integer code used by the compute kernel.
   SCHEMES = ("upwind", "centered", "rusanov", "lax_friedrichs")
+  SCHEME_IDS = {"upwind": 0, "centered": 1, "rusanov": 2, "lax_friedrichs": 2}
 
   _parameters = [('dt', float, 0., 0.,
                   'time step'),
@@ -27,6 +25,7 @@ class AdvectionSolver:
                  ('scheme', str, 'upwind', 'upwind',
                   'numerical flux scheme (upwind or centered)')
                  ]
+  
   def __init__(self,
                var: Variable,
                vel: tuple[Variable, Variable]|tuple[Variable, Variable, Variable],
@@ -36,8 +35,12 @@ class AdvectionSolver:
                scheme="upwind"
           ):
 
+    if scheme not in AdvectionSolver.SCHEMES:
+      raise ValueError(f"unknown scheme '{scheme}'; choose from {list(AdvectionSolver.SCHEMES)}")
+    
     self.var = var
     self.domain = self.var.domain
+    self.config = self.domain.config
     self.dim = self.var.dim
     self.comm = self.domain.halo_comm.graph_comm
 
@@ -47,39 +50,20 @@ class AdvectionSolver:
     self.dt = dt
     self.order = order
     self.cfl = cfl
-
-    if scheme not in AdvectionSolver.SCHEMES:
-      raise ValueError(f"unknown scheme '{scheme}'; choose from {list(AdvectionSolver.SCHEMES)}")
     self.scheme = scheme
-    # Integer code passed to the (single, cached) convective kernel at call time.
-    self._scheme_id = fvm_utils_compute.SCHEME_IDS[scheme]
+    self._scheme_id = AdvectionSolver.SCHEME_IDS[scheme]
 
 
     self.var.add_term("convective")
     self.var.add_term("dissipative")
     self.var.add_term("source")
 
-    fvm_utils_compute.setup(self.dim, self.scheme)
-    if self.domain.backend.name == "gpu":
-      from manapy.solvers.advec.cuda_fvm_utils import (
-        get_kernel_explicitscheme_convective_2d,
-        get_kernel_explicitscheme_convective_3d,
-        get_kernel_time_step,
-        get_kernel_update_new_value,
-      )
-      if self.dim == 2:
-        self._explicitscheme_convective = get_kernel_explicitscheme_convective_2d()
-      else:
-        self._explicitscheme_convective = get_kernel_explicitscheme_convective_3d()
-      self._time_step = get_kernel_time_step()
-      self._update_new_value = get_kernel_update_new_value()
-    else:
-      if self.dim == 2:
-        self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_2d
-      elif self.dim == 3:
-        self._explicitscheme_convective = fvm_utils_compute.explicitscheme_convective_3d
-      self._time_step = fvm_utils_compute.time_step
-      self._update_new_value = fvm_utils_compute.update_new_value
+    # Resolves the (device, dim) kernels once, here.
+    self.compute = AdvectionSolverCompute(self.config, self.dim)
+    self._explicitscheme_convective = self.compute.explicitscheme_convective
+    self._time_step = self.compute.time_step
+    self._update_new_value = self.compute.update_new_value
+
 
   def explicit_convective(self):
     if self.order == 2:
@@ -103,7 +87,6 @@ class AdvectionSolver:
     return self.dt
 
   def compute_fluxes(self):
-
     # interpolate cell to node
     self.var.update_halo_value()
     self.var.update_ghost_value()

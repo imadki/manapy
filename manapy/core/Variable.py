@@ -7,14 +7,31 @@ Created on Wed Feb 16 20:53:35 2022
 """
 
 import numpy as np
+from dataclasses import dataclass
+from numbers import Real
+from typing import Any, Callable, Mapping, Optional, Union
 
 from manapy.backends import ManapyArray
-from manapy.backends.ManapyArray import Device
-from manapy.backends.config import ManapyConfig
+from manapy.backends.ManapyArray import Device, cp
 from manapy.domain import Domain
-from manapy.boundary.Boundary import Boundary, update_slip_ghost
-from types import LambdaType
+from manapy.boundary.Boundary import Boundary
 from manapy.compute import VariableCompute
+
+
+BoundaryValue = Union[Real, Callable[[Any, Any, Any], Any]]
+
+
+@dataclass(frozen=True)
+class BoundarySetup:
+  """Boundary groups used by reconstruction and linear-system kernels."""
+
+  neumann_faces: ManapyArray
+  neumann_indices: ManapyArray
+  dirichlet_faces: ManapyArray
+  dirichlet_indices: ManapyArray
+  neumann_nh_faces: ManapyArray
+  neumann_nh_indices: ManapyArray
+  boundaries: dict[str, Boundary]
 
 """
 # self, domain=None, terms=None, comm=None, name=None, BC=None, values=None, *args, **kwargs
@@ -49,14 +66,18 @@ class Variable:
                       'venkatakrishnan': 'vanalbadalimiter'}
 
 
-  def __init__(self, domain:Domain, BC:dict=None, values_dict:dict=None, name:str=None,
-               limiter:str='barth'):
+  def __init__(
+      self,
+      domain: Domain,
+      BC: Optional[Mapping[str, str]] = None,
+      values_dict: Optional[Mapping[str, BoundaryValue]] = None,
+      name: Optional[str] = None,
+      limiter: str = "barth",
+  ) -> None:
     if domain is None:
       raise ValueError("domain must be given")
 
     self._limiter = str(limiter).lower() if limiter else 'barth'
-    if self._limiter == 'none':
-      self._limiter = 'barth'
     self._domain = domain
     self.config = self._domain.config
     self._values = values_dict
@@ -98,32 +119,31 @@ class Variable:
 
     # Alloues sur le backend (device sous GPU) : ecrits par les kernels BC.
     # these are ManapyArray
-    (self.neumannfaces,
-    self.BCneumann,
-    self.dirichletfaces,
-    self.BCdirichlet,
-    self.neumannNHfaces,
-    self.BCneumannNH,
-    self._BCs) = self._update_boundaries(BC, self._values)
+    boundary_setup = self._update_boundaries(BC, self._values)
+    self.neumannfaces = boundary_setup.neumann_faces
+    self.BCneumann = boundary_setup.neumann_indices
+    self.dirichletfaces = boundary_setup.dirichlet_faces
+    self.BCdirichlet = boundary_setup.dirichlet_indices
+    self.neumannNHfaces = boundary_setup.neumann_nh_faces
+    self.BCneumannNH = boundary_setup.neumann_nh_indices
+    self._BCs = boundary_setup.boundaries
 
     # A "slip" wall is a coupled (vector) BC: it needs every velocity component
     # together. Variables carrying a slip BC auto-register on the domain in
     # creation order (u, v[, w]), so update_ghost_value() can apply the coupled
     # slip automatically without the user wiring update_slip_ghost() by hand.
-    self._has_slip = any(bc is not None and bc.BCtype in Boundary._VECTOR_TYPES
-                         for bc in self._BCs.values())
+    self._has_slip = any(boundary.is_vector for boundary in self._BCs.values())
     if self._has_slip:
-      if getattr(self._domain, "slip_velocity", None) is None:
+      if self._domain.slip_velocity is None:
         self._domain.slip_velocity = []
-        from mpi4py import MPI
-        if MPI.COMM_WORLD.Get_rank() == 0:
-          print("WARNING: 'slip' boundary detected (coupled vector BC).\n"
-                "         Create the velocity components in spatial order "
-                "(u, v[, w]), each with the slip BC;\n"
-                "         only velocity components must carry 'slip'. They "
-                "auto-register and the reflection\n"
-                "         is applied by update_ghost_value() in that order.")
       self._domain.slip_velocity.append(self)
+      if self._domain.rank == 0:
+        print("WARNING: 'slip' boundary detected (coupled vector BC).\n"
+              "         Create the velocity components in spatial order "
+              "(u, v[, w]), each with the slip BC;\n"
+              "         only velocity components must carry 'slip'. They "
+              "auto-register and the reflection\n"
+              "         is applied by update_ghost_value() in that order.")
 
     self._BCin = self.BCs["in"]
     self._BCout = self.BCs["out"]
@@ -145,21 +165,30 @@ class Variable:
     if self._limiter == 'vanalbada' or self._limiter == 'venkatakrishnan':
       self._barthlimiter = self.compute.vanalbadalimiter
 
-  def add_term(self, name):
+  def add_term(self, name: str) -> None:
     # Alloue dans la memoire du backend (device sous GPU, host sous CPU).
     self.__dict__[name] = ManapyArray.zeros(self._nbcells, self.config.float_dtype, self.config.device)
 
-  def _fill_bc_values(self, value, bcfaces, bctypeindex, valueface, valuenode, valuehalo):
+  def _fill_bc_values(
+      self,
+      value: BoundaryValue,
+      bcfaces: np.ndarray,
+      bctypeindex: int,
+      valueface: np.ndarray,
+      valuenode: np.ndarray,
+      valuehalo: np.ndarray,
+  ) -> None:
     """Fill the face / node / haloghost boundary arrays from a prescribed value.
 
     `value` may be a constant (int/float) or a callable ``lambda x, y, z``.
     Shared by the dirichlet and neumannNH branches of `_update_boundaries`.
     """
-    bcnodes = np.where(self._domain.nodes.oldname == bctypeindex)[0]
+    node_boundary_indices = self._domain.nodes.oldname.cpu_r()
+    bcnodes = np.where(node_boundary_indices == bctypeindex)[0]
 
     # Flatten the ragged (node -> haloghost ids) map for the boundary nodes:
     # the last column holds the per-node count, the others the ghost ids.
-    haloghostid = self._domain.nodes.haloghostid
+    haloghostid = self._domain.nodes.haloghostid.cpu_r()
     if len(bcnodes):
       maxg = haloghostid.shape[1] - 1
       counts = haloghostid[bcnodes, -1]
@@ -168,11 +197,11 @@ class Variable:
     else:
       ghost_ids = np.empty(0, dtype=haloghostid.dtype)
 
-    fc = self._domain.faces.center
-    vx = self._domain.nodes.vertex
-    gfc = self._domain.ghost.ext_info_flt
+    fc = self._domain.faces.center.cpu_r()
+    vx = self._domain.nodes.vertex.cpu_r()
+    gfc = self._domain.ghost.ext_info_flt.cpu_r()
 
-    if isinstance(value, LambdaType):
+    if callable(value):
       try:
         valueface[bcfaces] = value(fc[bcfaces, 0], fc[bcfaces, 1], fc[bcfaces, 2])
         valuenode[bcnodes] = value(vx[bcnodes, 0], vx[bcnodes, 1], vx[bcnodes, 2])
@@ -187,7 +216,7 @@ class Variable:
         for gid in ghost_ids:
           valuehalo[gid] = value(gfc[gid, 4], gfc[gid, 5], gfc[gid, 6])
 
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, Real):
       valueface[bcfaces] = value
       valuenode[bcnodes] = value
       if len(ghost_ids):
@@ -196,186 +225,181 @@ class Variable:
     else:
       raise ValueError("BC value must be a number or a callable lambda(x, y, z)")
 
-  def _update_boundaries(self, BC:dict, values_dict:dict):
-    valueface = np.zeros(self._domain.nbfaces, dtype=self.config.float_dtype)
-    valuenode = np.zeros(self._domain.nbnodes, dtype=self.config.float_dtype)
-    valuehalo = np.zeros(self._domain.halos.sizehaloghost, dtype=self.config.float_dtype)
-    # Constantes de BC : remplies sur host (_fill_bc_values) ; transferees au bord
-    # des kernels (read-only). Pas de wrap GPUArray.
+  def _update_boundaries(
+      self,
+      requested_bcs: Optional[Mapping[str, str]],
+      values_dict: Optional[Mapping[str, BoundaryValue]],
+  ) -> BoundarySetup:
+    """Build every domain boundary and the face groups used by FV kernels."""
+    prescribed_face_values = np.zeros(
+      self._domain.nbfaces, dtype=self.config.float_dtype
+    )
+    prescribed_node_values = np.zeros(
+      self._domain.nbnodes, dtype=self.config.float_dtype
+    )
+    prescribed_halo_values = np.zeros(
+      self._domain.halos.sizehaloghost, dtype=self.config.float_dtype
+    )
 
-    neumannfaces = []
-    BCneumann = []
-    dirichletfaces = []
-    BCdirichlet = []
-    neumannNHfaces = []
-    BCneumannNH = []
+    neumann_faces: list[int] = []
+    neumann_indices: list[int] = []
+    dirichlet_faces: list[int] = []
+    dirichlet_indices: list[int] = []
+    neumann_nh_faces: list[int] = []
+    neumann_nh_indices: list[int] = []
 
-    BCs : dict[str, Boundary] = {"in":  None, "out": None, "bottom": None, "upper": None}
-    if self._dim == 3:
-      BCs = {"in": None, "out": None, "bottom": None, "upper": None, "front": None, "back": None}
-    domain_BCs = self._domain.BCs # See LocalDomainClass._define_BCs
-
-    if BC is None:
-      for loc in BCs.keys():
-        domain_bc_typename = domain_BCs[loc][0]
-        domain_bc_type_idx = domain_BCs[loc][1]
-        if domain_bc_typename == "periodic":
-          BCs[loc] = Boundary(BCtype="periodic",
-                              BCloc=loc,
-                              BCvalueface=np.array([],dtype=self.config.float_dtype),
-                              BCvaluenode=np.array([], dtype=self.config.float_dtype),
-                              BCvaluehalo=np.array([], dtype=self.config.float_dtype),
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
-
-        elif domain_bc_typename == "neumann":
-          BCs[loc] = Boundary(BCtype="neumann",
-                              BCloc=loc,
-                              BCvalueface=self.cell,
-                              BCvaluenode=self.cell,
-                              BCvaluehalo=self.halo,
-                              BCtypeindex=domain_bc_type_idx,
-                              domain=self._domain)
-
-          BCneumann.append(BCs[loc].BCtypeindex)
-          neumannfaces.extend(BCs[loc].BCfaces)
-
-          valueface = self.cell
-          valuenode = self.node
-          valuehalo = self.halo
-        else:
-          raise RuntimeError("Unknown BCtype")
-
-        BCs[loc].BCvalueface = valueface
-        BCs[loc].BCvaluenode = valuenode
-        BCs[loc].BCvaluehalo = valuehalo
-
+    if self._dim == 2:
+      locations = ("in", "out", "bottom", "upper")
     else:
-      for loc, bct in BC.items():
-        domain_bc_typename = domain_BCs[loc][0]
-        domain_bc_type_idx = domain_BCs[loc][1]
-        if domain_bc_typename == "periodic":
-          if bct != "periodic":
-            raise ValueError("BC must be periodic for " + str(loc))
+      locations = ("in", "out", "bottom", "upper", "front", "back")
 
-        elif domain_bc_typename != "periodic":
-          if bct == "periodic":
-            raise ValueError("BC must be not periodic for " + str(loc))
+    if requested_bcs is not None:
+      for location in requested_bcs:
+        if location not in locations:
+          raise ValueError(f"Unknown boundary location: {location}")
 
-        # Build the Boundary once: the constructor arguments are identical for
-        # every BC type (only BCtype differs).
-        BCs[loc] = Boundary(BCtype=bct,
-                            BCloc=loc,
-                            BCvalueface=self.cell,
-                            BCvaluenode=self.cell,
-                            BCvaluehalo=self.halo,
-                            BCtypeindex=domain_bc_type_idx,
-                            domain=self._domain)
-        bc = BCs[loc]
+    boundaries: dict[str, Boundary] = {}
+    dirichlet_boundaries: list[Boundary] = []
+    neumann_nh_boundaries: list[Boundary] = []
 
-        if bct == "dirichlet":
-          BCdirichlet.append(bc.BCtypeindex)
-          dirichletfaces.extend(bc.BCfaces)
+    for location in locations:
+      domain_bc_type = self._domain.BCs[location][0]
+      domain_bc_index = self._domain.BCs[location][1]
 
-          if values_dict is None or loc not in values_dict.keys():
-            raise ValueError("Value of dirichlet BC for " + str(loc) + " faces must be given")
+      if requested_bcs is None or location not in requested_bcs:
+        bc_type = domain_bc_type
+      else:
+        bc_type = requested_bcs[location]
 
-          # TODO check valuehalo (face center miss)
-          self._fill_bc_values(values_dict[loc], bc.BCfaces, bc.BCtypeindex,
-                               valueface, valuenode, valuehalo)
+      if domain_bc_type == "periodic" and bc_type != "periodic":
+        raise ValueError(f"Boundary {location} must be periodic")
+      if domain_bc_type != "periodic" and bc_type == "periodic":
+        raise ValueError(f"Boundary {location} is not periodic in the domain")
 
-          bc.BCvalueface = valueface
-          bc.BCvaluenode = valuenode
-          bc.BCvaluehalo = valuehalo
+      boundary = Boundary(
+        BCtype=bc_type,
+        BCloc=location,
+        BCtypeindex=domain_bc_index,
+        domain=self._domain,
+        default_value_face=self.cell,
+        default_value_node=self.node,
+        default_value_halo=self.halo,
+      )
+      boundaries[location] = boundary
+      boundary_faces = boundary.BCfaces.cpu_r()
 
-        elif bct == "neumannNH":
-          BCneumannNH.append(bc.BCtypeindex)
-          neumannNHfaces.extend(bc.BCfaces)
+      if bc_type == "dirichlet":
+        if values_dict is None or location not in values_dict:
+          raise ValueError(
+            f"Value of dirichlet BC for {location} faces must be given"
+          )
+        dirichlet_indices.append(boundary.BCtypeindex)
+        dirichlet_faces.extend(boundary_faces.tolist())
+        dirichlet_boundaries.append(boundary)
+        self._fill_bc_values(
+          values_dict[location],
+          boundary_faces,
+          boundary.BCtypeindex,
+          prescribed_face_values,
+          prescribed_node_values,
+          prescribed_halo_values,
+        )
+      elif bc_type == "neumannNH":
+        if values_dict is None or location not in values_dict:
+          raise ValueError(
+            f"Value of neumannNH BC for {location} faces must be given"
+          )
+        neumann_nh_indices.append(boundary.BCtypeindex)
+        neumann_nh_faces.extend(boundary_faces.tolist())
+        neumann_nh_boundaries.append(boundary)
+        self._fill_bc_values(
+          values_dict[location],
+          boundary_faces,
+          boundary.BCtypeindex,
+          prescribed_face_values,
+          prescribed_node_values,
+          prescribed_halo_values,
+        )
+      elif bc_type == "neumann":
+        neumann_indices.append(boundary.BCtypeindex)
+        neumann_faces.extend(boundary_faces.tolist())
+      elif bc_type == "slip":
+        neumann_indices.append(boundary.BCtypeindex)
+        neumann_faces.extend(boundary_faces.tolist())
+      elif bc_type == "nonslip":
+        neumann_indices.append(boundary.BCtypeindex)
+        neumann_faces.extend(boundary_faces.tolist())
+      elif bc_type == "periodic":
+        pass
+      else:
+        # Boundary validates the type before this point. Keeping this branch
+        # makes the bookkeeping decision explicit if new types are added.
+        raise ValueError(f"Boundary type {bc_type} has no face-group rule")
 
-          if values_dict is None or loc not in values_dict.keys():
-            raise ValueError("Value of neumannNH BC for " + str(loc) + " faces must be given")
+    prescribed_faces = ManapyArray.array(
+      prescribed_face_values,
+      dtype=self.config.float_dtype,
+      device=self.config.device,
+    )
+    prescribed_nodes = ManapyArray.array(
+      prescribed_node_values,
+      dtype=self.config.float_dtype,
+      device=self.config.device,
+    )
+    prescribed_halos = ManapyArray.array(
+      prescribed_halo_values,
+      dtype=self.config.float_dtype,
+      device=self.config.device,
+    )
 
-          # TODO check valuehalo (face center miss)
-          self._fill_bc_values(values_dict[loc], bc.BCfaces, bc.BCtypeindex,
-                               valueface, valuenode, valuehalo)
+    for boundary in dirichlet_boundaries:
+      boundary.BCvalueface = prescribed_faces
+      boundary.BCvaluenode = prescribed_nodes
+      boundary.BCvaluehalo = prescribed_halos
 
-          bc.constNH = valueface
-          # Per halo ghost, evaluated at the ghost's face centre -- the halo
-          # counterpart of valueface. A per-node array cannot be used here: a
-          # halo ghost is reachable from every node of its face (and corner
-          # nodes carry a neighbouring boundary's tag), so the gradient applied
-          # would depend on which node reached the ghost last.
-          bc.constNHGhost = valuehalo
+    for boundary in neumann_nh_boundaries:
+      boundary.constNH = prescribed_faces
+      boundary.constNHGhost = prescribed_halos
 
-          bc.BCvalueface = self.cell
-          bc.BCvaluenode = self.node
-          bc.BCvaluehalo = self.halo
+    neumann_faces.sort()
+    dirichlet_faces.sort()
 
-        elif bct == "neumann":
-          BCneumann.append(bc.BCtypeindex)
-          neumannfaces.extend(bc.BCfaces)
+    return BoundarySetup(
+      neumann_faces=ManapyArray.array(
+        neumann_faces, dtype=self.config.int_dtype, device=self.config.device
+      ),
+      neumann_indices=ManapyArray.array(
+        neumann_indices, dtype=self.config.int_dtype, device=self.config.device
+      ),
+      dirichlet_faces=ManapyArray.array(
+        dirichlet_faces, dtype=self.config.int_dtype, device=self.config.device
+      ),
+      dirichlet_indices=ManapyArray.array(
+        dirichlet_indices, dtype=self.config.int_dtype, device=self.config.device
+      ),
+      neumann_nh_faces=ManapyArray.array(
+        neumann_nh_faces, dtype=self.config.int_dtype, device=self.config.device
+      ),
+      neumann_nh_indices=ManapyArray.array(
+        neumann_nh_indices, dtype=self.config.int_dtype, device=self.config.device
+      ),
+      boundaries=boundaries,
+    )
 
-          bc.BCvalueface = self.cell  # TODO why not self.face
-          bc.BCvaluenode = self.node
-          bc.BCvaluehalo = self.halo
-
-        elif bct == "periodic":
-          bc.BCvalueface = np.array([], dtype=self.config.float_dtype)
-          bc.BCvaluenode = np.array([], dtype=self.config.float_dtype)
-          bc.BCvaluehalo = np.array([], dtype=self.config.float_dtype)
-
-        elif bct == "slip":
-          BCneumann.append(bc.BCtypeindex)
-          neumannfaces.extend(bc.BCfaces)
-
-          bc.BCvalueface = self.cell
-          bc.BCvaluenode = self.node
-          bc.BCvaluehalo = self.halo
-
-        elif bct == "nonslip":
-          BCneumann.append(bc.BCtypeindex)
-          neumannfaces.extend(bc.BCfaces)
-
-          bc.BCvalueface = self.cell
-          bc.BCvaluenode = self.node
-          bc.BCvaluehalo = self.halo
-
-        else:
-          raise ValueError(f"Invalid BCtype {bct}")
-
-
-    neumannfaces.sort()
-    dirichletfaces.sort()
-    neumannfaces = ManapyArray(np.asarray(neumannfaces, dtype=self.config.int_dtype), self.config.device)
-    BCneumann = ManapyArray(np.asarray(BCneumann, dtype=self.config.int_dtype), self.config.device)
-    dirichletfaces = ManapyArray(np.asarray(dirichletfaces, dtype=self.config.int_dtype), self.config.device)
-    BCdirichlet = ManapyArray(np.asarray(BCdirichlet, dtype=self.config.int_dtype), self.config.device)
-    neumannNHfaces = ManapyArray(np.asarray(neumannNHfaces, dtype=self.config.int_dtype), self.config.device)
-    BCneumannNH = ManapyArray(np.asarray(BCneumannNH, dtype=self.config.int_dtype), self.config.device)
-
-
-    return (neumannfaces,
-            BCneumann,
-            dirichletfaces,
-            BCdirichlet,
-            neumannNHfaces,
-            BCneumannNH,
-            BCs)
-
-  def update_halo_value(self):
+  def update_halo_value(self) -> None:
     # update the halo values
     self.domain.halo_comm.exchange(self.cell, recv_buffer=self.halo)
 
 
-  def interpolate_facetocell(self):
+  def interpolate_facetocell(self) -> None:
     self._facetocell(self.face, self.cell, self._domain.cells.faceid, self._dim)
 
-  def interpolate_celltoface(self):
+  def interpolate_celltoface(self) -> None:
     self._celltoface(self.cell, self.face, self.ghost, self.halo, self._domain.faces.cellid,
                          self._domain.faces.halofid,
                          self._domain.innerfaces, self._domain.boundaryfaces, self._domain.halofaces)
 
-  def interpolate_celltonode(self):
+  def interpolate_celltonode(self) -> None:
     # self.update_halo_value()
     # self.update_ghost_value()
     self._func_interp(self.cell, self.ghost, self.halo, self.haloghost, self._domain.cells.center,
@@ -389,7 +413,7 @@ class Variable:
                           self._domain.nodes.lambda_y, self._domain.nodes.lambda_z,
                           self._domain.nodes.number, self._domain.cells.shift, self.node, self.domain.ghost.faceid)
 
-  def compute_cell_gradient(self):
+  def compute_cell_gradient(self) -> None:
     self._cell_gradient(self.cell, self.ghost, self.halo, self.haloghost, self._domain.cells.center,
                             self._domain.cells.cellnid, self._domain.ghost.info_flt, self._domain.ghost.ext_info_flt, self._domain.cells.ghostnid, self._domain.cells.haloghostnid,
                             self._domain.cells.halonid, self._domain.cells.nodeid, self._domain.cells.periodicnid,
@@ -410,8 +434,7 @@ class Variable:
     self.domain.halo_comm.exchange(self.gradcellz, recv_buffer=self.gradhalocellz)
     self.domain.halo_comm.exchange(self.psi, recv_buffer=self.psihalo)
 
-  def compute_face_gradient(self):
-
+  def compute_face_gradient(self) -> None:
     self._face_gradient(self.cell, self.ghost, self.halo, self.node, self._domain.faces.cellid,
                             self._domain.faces.nodeid,
                             self._domain.faces.halofid, self._domain.faces.airDiamond,
@@ -421,7 +444,7 @@ class Variable:
                             self._domain.halofaces, self.dirichletfaces, self.neumannfaces,
                             self._domain.periodicboundaryfaces)
 
-  def update_ghost_value(self):
+  def update_ghost_value(self) -> None:
     for BC in self._BCs.values():
       # vector (component-coupled) BCs such as slip have no per-scalar kernel;
       # they are applied below via the coupled update_slip_ghost.
@@ -436,52 +459,69 @@ class Variable:
     # Coupled slip walls: apply the reflection on the whole velocity group that
     # auto-registered on the domain (in creation order u, v[, w]).
     if self._has_slip:
-      update_slip_ghost(self._domain.slip_velocity)
+      Boundary.update_slip_ghost(self._domain.slip_velocity)
 
-  def norml2(self, exact, order=None):
+  def norml2(
+      self, exact: Union[ManapyArray, np.ndarray], order: Optional[int] = None
+  ) -> float:
+    """Volume-weighted relative error against an exact solution.
 
+    `exact` may be a ManapyArray, a numpy array or any array-like. Everything
+    is read on the config device and reduced there, so on the GPU path only the
+    scalar result crosses the bus -- the per-element indexing this used to do
+    would have forced a sync per cell.
+
+    Read-only throughout: `cell` and `cells.volume` keep their copy on the
+    other device valid, so calling this does not invalidate anything.
+    """
     if order is None:
       order = 1
     assert self._nbcells == len(exact), 'exact solution must have length of cells'
 
-    Error = np.zeros(self._nbcells, dtype=self.config.float_dtype)
-    Ex = np.zeros(self._nbcells, dtype=self.config.float_dtype)
+    if self.config.device == Device.CUDA:
+      xp = cp
+      cell = self.cell.gpu_r()
+      volume = self._domain.cells.volume.gpu_r()
+      exact = exact.gpu_r() if isinstance(exact, ManapyArray) else cp.asarray(exact)
+    else:
+      xp = np
+      cell = self.cell.cpu_r()
+      volume = self._domain.cells.volume.cpu_r()
+      exact = exact.cpu_r() if isinstance(exact, ManapyArray) else np.asarray(exact)
 
-    for i in range(len(exact)):
-      Error[i] = np.fabs(self.cell[i] - exact[i]) * self._domain.cells.volume[i]
-      Ex[i] = np.fabs(exact[i]) * self._domain.cells.volume[i]
+    error = xp.abs(cell - exact) * volume
+    ex = xp.abs(exact) * volume
 
-    ErrorL2 = np.linalg.norm(Error, ord=order) / np.linalg.norm(Ex, ord=order)
-
-    return ErrorL2
+    # float() also forces the CuPy reduction to land before we return it.
+    return float(xp.linalg.norm(error, ord=order) / xp.linalg.norm(ex, ord=order))
 
   @property
   def domain(self) -> Domain:
     return self._domain
 
   @property
-  def dim(self):
+  def dim(self) -> int:
     return self._dim
 
 
   @property
-  def nbfaces(self):
+  def nbfaces(self) -> int:
     return self._nbfaces
 
   @property
-  def nbcells(self):
+  def nbcells(self) -> int:
     return self._nbcells
 
   @property
-  def nbnodes(self):
+  def nbnodes(self) -> int:
     return self._nbnodes
 
   @property
-  def nbhalos(self):
+  def nbhalos(self) -> int:
     return self._nbhalos
 
   @property
-  def name(self):
+  def name(self) -> Optional[str]:
     return self._name
 
   @property
@@ -489,25 +529,25 @@ class Variable:
     return self._BCs
 
   @property
-  def BCin(self):
+  def BCin(self) -> Boundary:
     return self._BCin
 
   @property
-  def BCout(self):
+  def BCout(self) -> Boundary:
     return self._BCout
 
   @property
-  def BCupper(self):
+  def BCupper(self) -> Boundary:
     return self._BCupper
 
   @property
-  def BCbottom(self):
+  def BCbottom(self) -> Boundary:
     return self._BCbottom
 
   @property
-  def BCback(self):
+  def BCback(self) -> Optional[Boundary]:
     return self._BCback
 
   @property
-  def BCfront(self):
+  def BCfront(self) -> Optional[Boundary]:
     return self._BCfront

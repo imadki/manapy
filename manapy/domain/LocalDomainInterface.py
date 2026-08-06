@@ -3,7 +3,7 @@ import h5py
 import os
 from concurrent.futures import ThreadPoolExecutor
 from mpi4py import MPI
-from backends.config import ManapyConfig
+from manapy.backends.config import ManapyConfig
 
 
 

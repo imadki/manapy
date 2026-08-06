@@ -1,6 +1,6 @@
 import os
 
-from backends.ManapyArray import Device
+from manapy.backends.ManapyArray import Device
 from manapy.domain.LocalDomainClass import LocalDomain
 from manapy.domain.MeshClass import Mesh
 from manapy.domain.PartitioningClass import Partitioning
@@ -13,6 +13,10 @@ from manapy.backends.debug import log_step
 from manapy.backends.config import ManapyConfig
 from manapy.backends import ManapyArray
 import numpy as np
+from typing import TYPE_CHECKING, List
+
+if TYPE_CHECKING:
+  from manapy.core import Variable
 
 class Domain:
   PartitioningClass = Partitioning
@@ -191,6 +195,7 @@ class Domain:
     self.frontnodes = self._frontnodes
     self.backnodes = self._backnodes
     self.bounds = self._bounds
+    self.slip_velocity : List[Variable] = None # List of variables defined at Variable.py.__init__
 
     # From variable
     self.Pbordnode = np.zeros(self.nbnodes, self.config.float_dtype)
@@ -239,6 +244,7 @@ class Domain:
     print(f"  Partitioning: {Domain._partitioning_method_name(partitioning_method)}", flush=True)
     print(f"  Local domains: {'recreate' if recreate else 'reuse if available'}", flush=True)
     print(f"  Precision: {config.int_precision} {config.float_precision}", flush=True)
+    print(f"  Device: {'CPU' if config.device == Device.CPU else "CUDA"}", flush=True)
     if mesh is not None:
       print(f"  Cells: {len(mesh.cells)}", flush=True)
       print(f"  Nodes: {len(mesh.points)}", flush=True)
@@ -255,7 +261,7 @@ class Domain:
     if size == 1:
       if recreate == True or not Domain._all_local_mesh_files_exist(size):
         mesh = Mesh(mesh_path, dim, config)
-        Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
+        Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, config, mesh)
         partitioner = Partitioning(mesh)
         local_domain_data = partitioner.create_sub_domains()
         LocalDomainInterface.save_local_domains(local_domain_data, size, config)
@@ -278,14 +284,14 @@ class Domain:
             print("here====>")
             Domain._delete_local_domain_folder(size)
             mesh = Mesh(mesh_path, dim, config)
-            Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
+            Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, config, mesh)
             partitioner = Partitioning(mesh)
             partitioner.set_part_vert(size, partitioning_method)
             local_domains = partitioner.create_sub_domains()
             LocalDomainInterface.save_local_domains(local_domains, size, config)
             print("====> Domain ready <=====", flush=True)
           else:
-            Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate)
+            Domain._print_run_info(mesh_path, dim, size, partitioning_method, config, recreate)
         except Exception as e:
           import traceback
           print(f"[Rank 0] failed: {e} {traceback.format_exc()}")

@@ -91,7 +91,7 @@ class VTKWriter:
             print("*************** Saving Results ***************")
             print(f"Iteration = {niter}, time = {time}, dt = {dt}")
             for var in variables:
-                print(f"max({var}) = {maxvals[var]}")
+                print(f"max({var}) = {maxvals[var]}", flush=True)
 
     # --------------------------------------------------
     def _write_vtu(self, filename, points, point_data=None, cell_data=None):
@@ -192,7 +192,7 @@ class VTKWriter:
             assert len(item) == self.nbnodes
 
         self._log(niter, time, dt, variables, values)
-        points = np.asarray(self.nodes.vertex.cpu_r()[:, :3], dtype=types.np_float_type)
+        points = np.asarray(self.nodes.vertex.cpu_r()[:, :3])
 
         point_data = {var: val.cpu_r() for var, val in zip(variables, values)}
         fname = f"visu{self.rank}-{miter}.vtu"
@@ -210,7 +210,7 @@ class VTKWriter:
             assert len(item) == self.nbcells
 
         self._log(niter, time, dt, variables, values)
-        points = np.asarray(self.nodes.vertex.cpu_r()[:, :3], dtype=types.np_float_type)
+        points = np.asarray(self.nodes.vertex.cpu_r()[:, :3])
 
         cell_data = self._format_cell_data(variables, values)
         fname = f"visu{self.rank}-{miter}.vtu"

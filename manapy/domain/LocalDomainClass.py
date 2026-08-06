@@ -114,7 +114,7 @@ class LocalDomain:
 
 
     log_step.log("_create_shared_ghost_info")
-    (self.ghost_info_int, self.ghost_info_flt) = self.compute.create_ghost_info(self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, self.faces, self.nodes, self.phy_faces, self.node_cellid, self.phyid_to_faceid, self.nb_phy_faces, self.phy_faces_name)
+    (self.ghost_info_int, self.ghost_info_flt) = self.compute.create_ghost_info(self.cell_center, self.cell_faceid, self.cell_loctoglob, self.face_oldname, self.face_normal, self.face_center, self.face_measure, self.faces, self.nodes, self.phy_faces, self.node_cellid, self.phyid_to_faceid, self.nb_phy_faces, self.phy_faces_name, self.dim)
     log_step.out()
 
     log_step.log("_share_ghost_info_flt and _share_ghost_info_int")
@@ -135,7 +135,7 @@ class LocalDomain:
     (
       self.cell_haloghostid,
       self.node_haloghostid
-    ) = self.compute.create_halo_ghost_tables(self.ext_ghost_info_int, self.node_halophyid, self.cell_halophyid, self.node_haloid, self.halo_halosext, self.max_cell_halophyid, self.max_node_halophyid, self.size)
+    ) = self.compute.create_halo_ghost_tables(self.ext_ghost_info_int, self.node_halophyid, self.cell_halophyid, self.node_haloid, self.halo_halosext, self.max_cell_halophyid, self.max_node_halophyid, self.size, self.nb_nodes, self.nb_cells)
     log_step.out()
 
     # Check if mesh is will constructed
