@@ -24,6 +24,7 @@ _manapy_compute = {
 class _Compute:
   # TODO need description
   def __init__(self, config: ManapyConfig):
+    # c_api folder contains the implementation c/c++/cuda
     self.config = config
     self.manapy_compute = _manapy_compute[self.config.float_precision][self.config.int_precision]
 

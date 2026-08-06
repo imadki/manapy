@@ -120,6 +120,8 @@ def meshes(tmp_path_factory):
     for cid, (geo, n, dim) in _GEOS.items():
         try:
             path = _gen(geo, n, dim, str(d / (cid + ".msh")))
+        except ImportError:                          # broken manapy import, not a
+            raise                                    # missing tool -- fail loudly
         except Exception as e:                       # gmsh missing / geo error
             pytest.skip(f"could not generate periodic mesh {cid}: {e}")
         out[cid] = (path, dim)
