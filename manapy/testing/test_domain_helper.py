@@ -5,8 +5,26 @@ import os
 import pickle
 import shutil
 import numpy as np
+from manapy.backends.config import ManapyConfig
 from manapy.testing.ReferenceTables import ReferenceTables
 from manapy.helpers.mesh_files import test_meshes_folder
+
+
+def make_test_config(**overrides) -> ManapyConfig:
+  """The ManapyConfig every test builds its domain with.
+
+  Defaults to the float64/int64 CPU pair the reference tables were generated
+  with, and stays overridable from the environment so the same suite can be run
+  against another precision pair or on the GPU without editing a test:
+      MANAPY_DEVICE=cuda pytest tests/
+  """
+  kwargs = {
+    "float_precision": os.environ.get("MANAPY_FLOAT", "float64"),
+    "int_precision": os.environ.get("MANAPY_INT", "int64"),
+    "device": os.environ.get("MANAPY_DEVICE", "cpu"),
+  }
+  kwargs.update(overrides)
+  return ManapyConfig(**kwargs)
 
 
 def _supports_oversubscribe(mpi_exec_path):
@@ -49,11 +67,16 @@ def sort_float_arr(dim, arr):
   return arr, indices
 
 
-def get_local_domains(nb_parts: int, mesh_path: str, dim: int, partitioning_type: str = "Partitioning.Par_Nodal"):
+def get_local_domains(nb_parts: int, mesh_path: str, dim: int, partitioning_type: str = "Partitioning.Par_Nodal",
+                      config: ManapyConfig = None):
   print(mesh_path)
+  # The partitions are built in a spawned mpirun, so the config cannot be handed
+  # over as an object: the worker rebuilds an identical one from its fields.
+  config = config if config is not None else make_test_config()
   create_partitions_mpi_worker = f"""
 import pickle
 from manapy.domain import Domain, Partitioning, Mesh
+from manapy.backends.config import ManapyConfig
 from manapy.helpers import get_test_mesh
 from mpi4py import MPI
 import os
@@ -62,9 +85,13 @@ import numpy as np
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-local_domain = Domain.create_domain('{mesh_path}', {dim}, {partitioning_type}, recreate=True)
+config = ManapyConfig(float_precision='{config.float_precision}',
+                      int_precision='{config.int_precision}',
+                      device='{config.device.name.lower()}',
+                      verbose={config.verbose})
+local_domain = Domain.create_domain('{mesh_path}', {dim}, config, {partitioning_type}, recreate=True)
 
-mesh = Mesh('{mesh_path}', {dim})
+mesh = Mesh('{mesh_path}', {dim}, config)
 partitioner = Partitioning(mesh)
 if size > 1:
   part_vert, nb_parts = partitioner.set_part_vert(size, {partitioning_type})
@@ -168,7 +195,7 @@ if __name__ == "__main__":
   from manapy.helpers import get_mesh
 
   dim, mesh_path, mesh_name = get_mesh("rectangles.msh")
-  lds = get_local_domains(4, mesh_path, dim, "Partitioning.Par_Nodal")
+  lds = get_local_domains(4, mesh_path, dim, "Partitioning.Par_Nodal", make_test_config())
 
   reference_domain = get_reference_domain("rectangles.hd5", dim)
   print(lds[0].cells.nodeid)

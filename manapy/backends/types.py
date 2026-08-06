@@ -1,5 +1,7 @@
-# -*- coding: utf-8 -*-
+import numpy as np
 
+FLOAT_TYPE = "float32"
+np_float_type = np.float32
 # TODO use it inside mesh class
 class MeshCell:
     ALLOWED_2D = ['quad', 'triangle']

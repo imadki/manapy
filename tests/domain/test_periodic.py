@@ -28,6 +28,18 @@ import pytest
 
 from manapy.domain import Domain, Partitioning
 from manapy.core.Variable import Variable
+from manapy.testing.test_domain_helper import make_test_config
+
+# Precision pair + device the periodic domains below are built with (see
+# make_test_config: float64/int64 CPU unless overridden from the environment).
+CONFIG = make_test_config()
+
+# Mass conservation is exact up to accumulated round-off, so the tolerances below
+# have to follow the working precision rather than assume float64: one float32
+# step already costs ~1e-7 relative, which no fixed 1e-12 bound can absorb.
+_EPS = np.finfo(np.dtype(CONFIG.float_precision)).eps
+MASS_RTOL = max(1e-12, 1e3 * _EPS)       # serial: sum over a few hundred steps
+RANK_RTOL = max(1e-9, 1e3 * _EPS)        # parallel vs serial: different sum order
 
 # --------------------------------------------------------------------- geo
 _SQUARE = """
@@ -126,7 +138,7 @@ def _field(c):
 @pytest.mark.parametrize("case", CASES)
 def test_periodic_build(meshes, case):
     path, dim = meshes[case]
-    dom = Domain.create_domain(path, dim, Partitioning.Par_Nodal, recreate=True)
+    dom = Domain.create_domain(path, dim, CONFIG, Partitioning.Par_Nodal, recreate=True)
     assert dom.nbcells > 0
     assert len(dom.periodicboundaryfaces) > 0        # periodicity was detected + wired
 
@@ -137,17 +149,17 @@ def test_periodic_node_interpolation(meshes, case):
     accurate -- this exercises node_periodicid including edge/corner nodes, which
     used to blow up (division by zero) in 3D."""
     path, dim = meshes[case]
-    dom = Domain.create_domain(path, dim, Partitioning.Par_Nodal, recreate=True)
+    dom = Domain.create_domain(path, dim, CONFIG, Partitioning.Par_Nodal, recreate=True)
     nb = dom.nbcells
     h = Variable(domain=dom)
-    h.cell[:nb] = _field(np.asarray(dom.cells.center)[:nb])
+    h.cell.cpu_rw()[:nb] = _field(dom.cells.center.cpu_r()[:nb])
     h.update_halo_value()
     h.update_ghost_value()
     h.interpolate_celltonode()
-    hn = np.asarray(h.node)
+    hn = h.node.cpu_r()
     assert np.isfinite(hn).all()
     assert np.abs(hn).max() < 2.0                    # bounded (no blow-up)
-    exact = _field(np.asarray(dom.nodes.vertex)[:len(hn)])
+    exact = _field(dom.nodes.vertex.cpu_r()[:len(hn)])
     assert np.abs(hn - exact).max() < 0.06           # accurate on these coarse meshes
 
 
@@ -157,28 +169,28 @@ def test_periodic_advection_conserves_mass(meshes, case):
     precision (nothing leaves the domain across the periodic seams)."""
     from manapy.solvers.advec.system import AdvectionSolver
     path, dim = meshes[case]
-    dom = Domain.create_domain(path, dim, Partitioning.Par_Nodal, recreate=True)
+    dom = Domain.create_domain(path, dim, CONFIG, Partitioning.Par_Nodal, recreate=True)
     nb = dom.nbcells
     ne = Variable(domain=dom)
     vel = [Variable(domain=dom) for _ in range(dim)]
     S = AdvectionSolver(ne, vel=tuple(vel), order=1, cfl=0.8)
-    ne.cell[:nb] = _field(np.asarray(dom.cells.center)[:nb])
-    vol = np.asarray(dom.cells.volume)[:nb]
-    m0 = float(np.sum(ne.cell[:nb] * vol))
+    ne.cell.cpu_rw()[:nb] = _field(dom.cells.center.cpu_r()[:nb])
+    vol = dom.cells.volume.cpu_r()[:nb]
+    m0 = float(np.sum(ne.cell.cpu_r()[:nb] * vol))
 
     t = 0.0
     while t < 0.2:
         for w in vel:
-            w.face[:] = 1.0
+            w.face.cpu_w()[:] = 1.0
             w.interpolate_facetocell()
         dt = S.stepper()
         t += dt
         S.compute_fluxes()
         S.compute_new_val()
 
-    m1 = float(np.sum(ne.cell[:nb] * vol))
-    assert np.isfinite(ne.cell[:nb]).all()
-    assert abs(m1 - m0) / m0 < 1e-12                 # mass conserved
+    m1 = float(np.sum(ne.cell.cpu_r()[:nb] * vol))
+    assert np.isfinite(ne.cell.cpu_r()[:nb]).all()
+    assert abs(m1 - m0) / m0 < MASS_RTOL             # mass conserved
 
 
 # ------------------------------------------------------------------- MPI test
@@ -191,22 +203,25 @@ from mpi4py import MPI
 from manapy.domain import Domain, Partitioning
 from manapy.core.Variable import Variable
 from manapy.solvers.advec.system import AdvectionSolver
+from manapy.testing.test_domain_helper import make_test_config
 C = MPI.COMM_WORLD
 dim = int(os.environ["DIM"])
-dom = Domain.create_domain(os.environ["MESH"], dim, Partitioning.Par_Nodal, recreate=True)
+# Same env-driven config as the serial run above -- the two masses are only
+# comparable if both runs use the same precision pair.
+dom = Domain.create_domain(os.environ["MESH"], dim, make_test_config(), Partitioning.Par_Nodal, recreate=True)
 nb = dom.nbcells
 ne = Variable(domain=dom); vel = [Variable(domain=dom) for _ in range(dim)]
 S = AdvectionSolver(ne, vel=tuple(vel), order=1, cfl=0.8)
-c = np.asarray(dom.cells.center)[:nb]
+c = dom.cells.center.cpu_r()[:nb]
 f = 1.0 + 0.1*np.cos(2*np.pi*c[:,0]) + 0.05*np.cos(2*np.pi*c[:,1])
 if dim > 2: f = f + 0.03*np.cos(2*np.pi*c[:,2])
-ne.cell[:nb] = f
-vol = np.asarray(dom.cells.volume)[:nb]
-def mass(): return C.allreduce(float(np.sum(ne.cell[:nb]*vol)), MPI.SUM)
+ne.cell.cpu_rw()[:nb] = f
+vol = dom.cells.volume.cpu_r()[:nb]
+def mass(): return C.allreduce(float(np.sum(ne.cell.cpu_r()[:nb]*vol)), MPI.SUM)
 m0 = mass(); t = 0.0
 while t < 0.2:
     for w in vel:
-        w.face[:] = 1.0; w.interpolate_facetocell()
+        w.face.cpu_w()[:] = 1.0; w.interpolate_facetocell()
     dt = S.stepper(); t += dt; S.compute_fluxes(); S.compute_new_val()
 m1 = mass()
 if C.Get_rank() == 0:
@@ -241,4 +256,4 @@ def test_periodic_cross_rank_matches_serial(meshes, tmp_path, case):
     except Exception as e:                            # e.g. oversubscribe refusal
         pytest.skip(f"parallel run unavailable: {e}")
     assert m1_serial != 0.0
-    assert abs(m1_par - m1_serial) / abs(m1_serial) < 1e-9
+    assert abs(m1_par - m1_serial) / abs(m1_serial) < RANK_RTOL

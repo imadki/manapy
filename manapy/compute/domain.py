@@ -8,10 +8,6 @@ import manapy_compute_64_64
 import manapy_compute_64_32
 import manapy_compute_32_32
 import manapy_compute_32_64
-import manapy_part32_32
-import manapy_part32_64
-import manapy_part64_32
-import manapy_part64_64
 
 _manapy_compute = {
   "float64": {
@@ -24,23 +20,12 @@ _manapy_compute = {
   }
 }
 
-_manapy_part = {
-  "int32": {
-    "float32": manapy_part32_32,
-    "float64": manapy_part32_64,
-  },
-  "int64": {
-    "float32": manapy_part64_32,
-    "float64": manapy_part64_64,
-  }
-}
 
 class _Compute:
   # TODO need description
   def __init__(self, config: ManapyConfig):
     self.config = config
     self.manapy_compute = _manapy_compute[self.config.float_precision][self.config.int_precision]
-    self.manapy_part = _manapy_part[self.config.int_precision][self.config.float_precision]
 
     # Functions
     self.compute_face_info_2d = self.manapy_compute.domain.compute_face_info_2d
@@ -73,13 +58,13 @@ class _Compute:
     self.accum_periodic_dir = self.manapy_compute.domain.accum_periodic_dir
     self.node_periodic_bits = self.manapy_compute.domain.node_periodic_bits
     self.pair_periodic_faces = self.manapy_compute.domain.pair_periodic_faces
+    self.compute_cell_center_area_2d = self.manapy_compute.domain.compute_cell_center_area_2d
+    self.compute_cell_center_volume_3d = self.manapy_compute.domain.compute_cell_center_volume_3d
 
-    self.make_n_part_graph_k_way = self.manapy_part.make_n_part_graph_k_way
-    self.make_n_part_mesh_dual = self.manapy_part.make_n_part_mesh_dual
-    self.make_n_part_mesh_nodal = self.manapy_part.make_n_part_mesh_nodal
-    self.create_local_domains = self.manapy_part.create_local_domains
-    self.compute_cell_center_area_2d = self.manapy_part.compute_cell_center_area_2d
-    self.compute_cell_center_volume_3d = self.manapy_part.compute_cell_center_volume_3d
+    self.make_n_part_graph_k_way = self.manapy_compute.partitioning.make_n_part_graph_k_way
+    self.make_n_part_mesh_dual = self.manapy_compute.partitioning.make_n_part_mesh_dual
+    self.make_n_part_mesh_nodal = self.manapy_compute.partitioning.make_n_part_mesh_nodal
+    self.create_local_domains = self.manapy_compute.partitioning.create_local_domains
 
 
     # Variable Cpu
@@ -235,8 +220,6 @@ class DomainCompute:
       cells,
       node_cellid,
       cell_type,
-      max_cell_faceid,
-      max_face_nodeid,
       cell_cellfid
     )
 

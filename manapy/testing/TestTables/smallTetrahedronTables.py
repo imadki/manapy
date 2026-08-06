@@ -2,6 +2,8 @@ import numpy as np
 from manapy.domain import Mesh
 from manapy.helpers import get_test_mesh
 from manapy.testing.TestTables.aTestTables import ATestTables
+from manapy.backends.config import ManapyConfig
+
 
 class SmallTetrahedronTables(ATestTables):
   """
@@ -58,7 +60,7 @@ class SmallTetrahedronTables(ATestTables):
 
   def __init__(self):
     super().__init__()
-    mesh = Mesh(get_test_mesh("smallTetrahedrons.msh")[1], 3)
+    mesh = Mesh(get_test_mesh("smallTetrahedrons.msh")[1], 3, ManapyConfig.getDefaultConfig())
     self.meshio_cells = np.copy(mesh.cells)
     self.nb_cells = 6
     self.nb_faces = 18

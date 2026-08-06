@@ -2,6 +2,8 @@ import numpy as np
 from manapy.domain import Mesh
 from manapy.helpers import get_test_mesh
 from manapy.testing.TestTables.aTestTables import ATestTables
+from manapy.backends.config import ManapyConfig
+
 
 class SmallTrianglesTables(ATestTables):
   """
@@ -27,7 +29,7 @@ class SmallTrianglesTables(ATestTables):
 
   def __init__(self):
     super().__init__()
-    mesh = Mesh(get_test_mesh("smallTriangles.msh")[1], 2)
+    mesh = Mesh(get_test_mesh("smallTriangles.msh")[1], 2, ManapyConfig.getDefaultConfig())
     self.meshio_cells = np.copy(mesh.cells)
     self.nb_cells = 8
     self.nb_faces = 16

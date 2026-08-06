@@ -1,5 +1,6 @@
 from manapy.domain import Mesh, Partitioning
 from manapy.testing import LocalDomain1Cpu
+from manapy.testing.test_domain_helper import make_test_config
 import h5py
 import numpy as np
 from manapy.helpers import get_mesh, get_test_mesh
@@ -8,7 +9,7 @@ from manapy.helpers import get_mesh, get_test_mesh
 
 # Create global domain
 dim, mesh_path, mesh_name = get_test_mesh("smallHybrid3d.msh")
-mesh = Mesh(mesh_path, dim)
+mesh = Mesh(mesh_path, dim, make_test_config())
 partitioning = Partitioning(mesh)
 local_domain_data = partitioning.create_sub_domains()
 global_domain = LocalDomain1Cpu.create_local_domains(local_domain_data)

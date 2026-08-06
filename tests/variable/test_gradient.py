@@ -1,6 +1,7 @@
 from manapy.core import Variable
 from manapy.domain import Domain
 from manapy.helpers import get_test_mesh, get_mesh
+from manapy.testing.test_domain_helper import make_test_config
 import numpy as np
 import pytest
 
@@ -211,7 +212,7 @@ def main():
   dim, mesh_path, mesh_name = get_mesh("big/carre.msh")
   # dim, mesh_path, mesh_name = get_mesh("rectangles.msh")
   # dim, mesh_path, mesh_name = get_mesh("triangles.msh")
-  domain = Domain.create_domain(mesh_path, dim, Domain.PartitioningClass.Par_Nodal)
+  domain = Domain.create_domain(mesh_path, dim, make_test_config(), Domain.PartitioningClass.Par_Nodal)
 
 
   fun = lambda x, y: x + y

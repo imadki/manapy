@@ -2,6 +2,8 @@ import numpy as np
 from manapy.domain import Mesh
 from manapy.helpers import get_test_mesh
 from manapy.testing.TestTables.aTestTables import ATestTables
+from manapy.backends.config import ManapyConfig
+
 
 class TrianglesTables(ATestTables):
   def __init__(self):
@@ -23,7 +25,7 @@ class TrianglesTables(ATestTables):
     self.x_length = self.WIDTH / self.width
     self.y_length = self.HEIGHT / self.width
 
-    mesh = Mesh(get_test_mesh("triangles.msh")[1], 2)
+    mesh = Mesh(get_test_mesh("triangles.msh")[1], 2, ManapyConfig.getDefaultConfig())
     self.meshio_cells = np.copy(mesh.cells)
     self.cells = np.zeros((self.nb_cells, 4), dtype=np.int32)
     self.nodes = np.zeros((self.nb_nodes, 3), dtype=np.float64)

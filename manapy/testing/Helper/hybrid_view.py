@@ -2,7 +2,6 @@ import tkinter as tk
 import numpy as np
 from manapy.domain import Domain, Mesh, Partitioning
 from manapy.tests import LocalDomain1Cpu
-from manapy.backends.types import FLOAT_TYPE
 from manapy.helpers import get_mesh
 
 ########################################################

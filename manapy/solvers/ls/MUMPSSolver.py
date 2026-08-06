@@ -2,7 +2,6 @@ import numpy as np
 from mpi4py import MPI
 from manapy.core.Variable import Variable
 from manapy.domain import Domain
-from manapy.backends.types import FLOAT_TYPE
 from manapy.solvers.ls.LinearSolver import LinearSolver
 import numpy.typing as npt
 from typing import Union

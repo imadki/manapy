@@ -306,6 +306,29 @@ class ManapyArray:
     def __len__(self):
         return self._shape[0]
 
+    def __array__(self, dtype=None, copy=None):
+        """Host view for NumPy interop: `np.asarray`, matplotlib, `np.sum`...
+
+        Read-only intent -- this is `cpu_r()`, so the device copy stays valid.
+        Without it NumPy sees an object that has `__len__` but cannot be
+        indexed and silently builds a 0-d object array, which only fails much
+        later at the first `[i]`.
+
+        The buffer is returned as-is when no copy is requested (same contract
+        as `np.asarray(ndarray)`), so writing through it bypasses the validity
+        bits. Write through `cpu_rw()` / `cpu_w()` instead.
+        """
+        host = self.cpu_r()
+        want = None if dtype is None else np.dtype(dtype)
+        if copy is False:                       # NumPy >= 2 "never copy"
+            if want is not None and want != host.dtype:
+                raise ValueError(
+                    "Unable to avoid copy while creating an array as requested")
+            return host
+        if want is None:
+            return host.copy() if copy else host
+        return host.astype(want, copy=bool(copy))
+
     def __repr__(self):
         return (f"ManapyArray(shape={self._shape}, dtype={self._dtype}, "
                 f"cpu_ok={self._np_ok}, gpu_ok={self._cp_ok})")

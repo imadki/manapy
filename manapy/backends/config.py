@@ -1,5 +1,5 @@
 import numpy as np
-
+import os
 from manapy.backends.ManapyArray import Device
 
 _DTYPES = {
@@ -34,4 +34,21 @@ class ManapyConfig:
     self.manapy_save_threads = 1
     self.verbose_save_local_domains = True
     self.gpu_aware_mpi = False
+
+  @staticmethod
+  def getDefaultConfig(**overrides) -> "ManapyConfig":
+    """The ManapyConfig every test builds its domain with.
+
+    Defaults to the float64/int64 CPU pair the reference tables were generated
+    with, and stays overridable from the environment so the same suite can be run
+    against another precision pair or on the GPU without editing a test:
+        MANAPY_DEVICE=cuda pytest tests/
+    """
+    kwargs = {
+      "float_precision": os.environ.get("MANAPY_FLOAT", "float32"),
+      "int_precision": os.environ.get("MANAPY_INT", "int64"),
+      "device": os.environ.get("MANAPY_DEVICE", "cpu"),
+    }
+    kwargs.update(overrides)
+    return ManapyConfig(**kwargs)
         

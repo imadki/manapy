@@ -1,108 +1,108 @@
-# Manapy C API Setup Guide
+# manapy_compute
 
-This project supports installation via the modern `pyproject.toml` (recommended) and the legacy `setup.py` method.
+2D unstructured-mesh cell-gradient kernels (least squares) implemented once as a
+shared `__host__ __device__` routine and run both in C++ on the CPU and as a CUDA
+kernel on the GPU — exposed to Python with [nanobind](https://github.com/wjakob/nanobind).
+NumPy arrays feed the CPU path; CuPy arrays feed the CUDA path zero-copy via DLPack.
 
-## Project Structure & Dependencies
-The library consists of several package variants based on integer precision:
-- `manapy_part32_32`
-- `manapy_part32_64`
-- `manapy_part64_32`
-- `manapy_part64_64`
+The kernel is shipped once per precision pair as
+`manapy_compute_<float bits>_<int bits>` (e.g. `manapy_compute_32_64` = float32
+data, int64 indices), each exposing `cell_gradient_2d` (CPU) and
+`cell_gradient_2d_cuda` (GPU).
 
-These rely on **GKlib** and **METIS** (configured for 32-bit or 64-bit integers accordingly) as core dependencies.
+Built with CMake through [scikit-build-core](https://scikit-build-core.readthedocs.io/)
+(`pyproject.toml` is the only build entry point). Linux-only, CPython 3.8+.
 
----
+## Layout
 
-## 1. Installation from PyPI
-To install the pre-compiled package directly from PyPI (if available for your platform):
-```bash
-pip install manapy_part
+```
+pyproject.toml                       scikit-build-core + cibuildwheel config
+CMakeLists.txt                       C++/CUDA build, GPU arch list, cudart linkage
+src/base/array_view.hpp              host/device non-owning strided array view
+src/base/precision.hpp               real_t / index_t per precision pair
+src/base/manapy_compute_types.hpp    nanobind ndarray aliases (CPU + CUDA) + make_view
+src/base/owned_array.hpp             owning array that hands its buffer to NumPy
+src/base/print_debug.hpp             project-wide debug tracing (env-gated)
+src/core/variable_compute.hpp     shared per-cell math + CPU entry point decl
+src/core/variable_compute.cpp     CPU loop over cells
+src/core/variable_compute.cu      CUDA kernel + launcher (one thread per cell)
+src/core/variable_compute_2d_cuda.hpp   GPU launcher declaration
+src/core/bindings/cell_gradient_2d.cpp  nanobind module (_core), CPU + GPU bindings
+src/domain/                          mesh connectivity/geometry kernels (CPU)
+src/boundary/                        boundary-condition kernels (CPU + CUDA)
+src/solvers/                         advec / advecdiff / diffusion / utils
+src/partitioning/                    METIS-backed domain decomposition (CPU)
+third_party/                         vendored METIS + GKlib, built four ways
+python/manapy_compute_*/             Python packages wrapping each precision's _core
+main.py                              Example driving the CPU path
 ```
 
-## 2. Installation from Source (Modern `.toml` method)
-To install from the local source directory using the `pyproject.toml` configuration (which uses `scikit-build-core` and `CMake`):
+Each `manapy_compute_<float bits>_<int bits>` package exposes its kernels as
+submodules — `core`, `domain`, `boundary`, `partitioning` and `solvers` — loaded
+lazily, so importing one does not dlopen the others (nor pull in libcudart for
+the CPU-only ones).
+
+### Debug tracing
+
+Every module can trace through `src/base/print_debug.hpp`, off unless one of
+`MANAPY_DEBUG`, `MANAPY_DEBUG_TIMING` or `MANAPY_TIMING_DEBUG` is set to a
+truthy value (`1`, `true`, `yes`, `on`, `all`, `rank0`):
 
 ```bash
-# Ensure you are in the project root containing pyproject.toml
-pip install .
+MANAPY_DEBUG=1 python main.py
 ```
 
-> [!IMPORTANT]
-> If you have a legacy `setup.py` present, modern `pip` (>=19.0) will prefer `pyproject.toml` by default. If you suspect `setup.py` is being used, you can explicitly force the PEP 517 build (which will use `pyproject.toml`) via:
-> `pip install . --use-pep517`
+## Local build
 
-## 3. Standard Wheel Build & Local Installation
-To build a wheel for your specific system and then install it:
+Needs: CUDA toolkit (nvcc), CMake ≥ 3.26, a C++17 compiler.
 
 ```bash
-# 1. Build the wheel
-python3 -m build --wheel
-
-# 2. Install the generated wheel
-pip install dist/*.whl
+pip install .          # or: pip install -e . for development
+python main.py
+pip install cupy-cuda12x   # for the GPU path (or: pip install .[gpu])
 ```
 
-## 4. Manylinux Wheel Build (Linux Platform)
-To build portable Linux wheels (`manylinux`) that will work across different distributions without compilation, use `cibuildwheel`:
+## GPU architecture coverage
+
+The wheel ships SASS for every generation from Turing to Blackwell, plus a PTX
+fallback for future GPUs — the CMake equivalent of:
+
+```
+-gencode arch=compute_75,code=sm_75      Turing    (RTX 20xx, T4)
+-gencode arch=compute_80,code=sm_80      Ampere    (A100)
+-gencode arch=compute_86,code=sm_86      Ampere    (RTX 30xx, A40)
+-gencode arch=compute_89,code=sm_89      Ada       (RTX 40xx, L40)
+-gencode arch=compute_90,code=sm_90      Hopper    (H100)
+-gencode arch=compute_100,code=sm_100    Blackwell (B100/B200)
+-gencode arch=compute_120,code=sm_120    Blackwell (RTX 50xx)
+-gencode arch=compute_120,code=compute_120   PTX fallback
+```
+
+`sm_100`/`sm_120` need CUDA ≥ 12.8; on older toolkits CMake drops them and
+ships `compute_90` PTX as the forward-compat fallback instead (with a warning).
+
+## manylinux wheels (Linux only, cp38+)
 
 ```bash
-python3 -m cibuildwheel --platform linux
+pipx run cibuildwheel --platform linux
 ```
 
----
+`[tool.cibuildwheel]` in `pyproject.toml` does the rest:
 
-## 5. Pre-requisite Libraries for Build
-Before using the build tools above, ensure you have the necessary libraries installed:
+- **Image**: `manylinux_2_28` (manylinux2014's toolchain is too old for CUDA 12.8).
+- **Toolkit**: `before-all` installs `cuda-nvcc-12-8` + `cuda-cudart-devel-12-8`
+  from NVIDIA's RHEL 8 repo inside the container — nothing needed on the host.
+- **One wheel per CPython version** 3.8 → latest, x86_64, musllinux skipped.
 
-```bash
-python3 -m pip install scikit-build-core cibuildwheel build
-```
+### Library bundling policy
 
-**Requirements for `cibuildwheel`:**
-- **Python 3.11** must be installed.
-- **Docker** must be installed, running, and accessible to your user (e.g., your user must be in the `docker` group) because `cibuildwheel` runs inside manylinux Docker containers. Use `sudo usermod -aG docker $USER` to add your user to the docker group. and `newgrp docker` to apply the changes.
-
----
-
-## 6. Legacy Method using `setup.py`
-If you need to use the old installation method via `setup.py` instead of the modern CMake + `pyproject.toml` workflow, you are required to manage dependencies manually:
-
-1. **Manual Dependency Installation:** You must manually install `GKlib` and `METIS` (with 32/64 bit int support) on your system.
-2. **Path Modification:** You will need to edit the `setup.py` file to modify the library paths (`include_dirs` and `library_dirs`) so they point to your local installations of `GKlib` and `METIS`.
-
----
-
-## 7. Uploading the Package to PyPI
-Once you have successfully built your wheels (they will be located in the `wheelhouse/` or `dist/` directories depending on the build method), you can upload them to the Python Package Index using `twine`:
-
-```bash
-# First, install twine
-python3 -m pip install twine
-
-# Then, upload the built wheels
-python3 -m twine upload wheelhouse/*.whl
-```
-
-## Notes
-
-### Build and Distribution Configuration
-
-This project uses `cibuildwheel` and `scikit-build-core` to build and distribute precompiled Python wheels for Linux. The configuration is designed to maximize compatibility while ensuring reliable builds for native C/C++ extensions.
-
-#### `pyproject.toml` Settings Reference
-
-| Setting | Value | Description |
-| :--- | :--- | :--- |
-| `build` | `cp38-* … cp314-*` | Builds wheels for CPython 3.8 – 3.14 |
-| `skip` | `*-musllinux*` | Excludes musl-based Linux (e.g. Alpine Linux) |
-| `manylinux-x86_64-image` | `manylinux2014` | Based on CentOS 7 / glibc ≥ 2.17 |
-| `cmake.build-type` | `Release` | Enables full compiler optimizations |
-
-#### manylinux2014
-
-Wheels are built against the `manylinux2014` standard. This ensures that binaries produced inside a controlled Docker container are compatible with a wide range of modern Linux distributions (Ubuntu, Debian, Fedora, etc.) — without users needing to compile anything themselves.
-
-#### Skipped Platforms
-
-`musllinux` targets (e.g. Alpine Linux) are excluded because they rely on the `musl` C library instead of `glibc`, which is not currently supported by this project.
-
+- **`libcudart.so.12` — bundled.** The extension links the *shared* CUDA
+  runtime (`CUDA_RUNTIME_LIBRARY Shared`) and `auditwheel repair` grafts the
+  exact `libcudart` matching the build's CUDA version into the wheel.
+  Target machines need no CUDA toolkit installed.
+- **`libcuda.so` — never bundled.** It is the driver library, provided by the
+  NVIDIA driver on the target node, and must resolve at runtime against
+  whatever driver that node runs — hence
+  `auditwheel repair --exclude libcuda.so --exclude libcuda.so.1`.
+  (libcudart `dlopen`s it lazily, so wheels also import fine on GPU-less
+  machines; only the CUDA path requires a driver.)

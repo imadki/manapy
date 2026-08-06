@@ -1,28 +1,63 @@
 [build-system]
-requires = ["scikit-build-core", "numpy"]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.1"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "manapy_part"
-version = "1.0.2"
-description = "Manapy C API with vendored METIS/GKlib"
-requires-python = ">=3.9"
-dependencies = ["numpy"]
+name = "manapy_compute"
+version = "0.1.0"
+description = "2D cell-gradient kernels on CPU (C++) and GPU (CUDA), bound with nanobind"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Ayoub Benhamou", email = "ayoubbenhamou0731@gmail.com" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: GPU :: NVIDIA CUDA :: 12",
+]
+dependencies = ["numpy>=1.17"]
+
+[project.optional-dependencies]
+gpu = ["cupy-cuda12x"]
 
 [tool.scikit-build]
-cmake.build-type = "Release"
+minimum-version = "0.10"
+cmake.version = ">=3.26"
+build-dir = "build/{wheel_tag}"
+wheel.packages = [
+    "python/manapy_compute_32_32",
+    "python/manapy_compute_32_64",
+    "python/manapy_compute_64_32",
+    "python/manapy_compute_64_64",
+]
 
-[tool.setuptools.packages.find]
-namespaces = true
-
+# ---------------------------------------------------------------------------
+# cibuildwheel: Linux-only manylinux wheels, CPython 3.8+.
+# manylinux_2_28 (AlmaLinux 8) is required: the CUDA 12.8 toolkit needs a
+# glibc/gcc newer than what manylinux2014 provides.
+# ---------------------------------------------------------------------------
 [tool.cibuildwheel]
-build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+build = "cp3*"
 skip = "*-musllinux*"
+build-verbosity = 1
 manylinux-x86_64-image = "manylinux_2_28"
 
-#for installation details see CMakeLists.txt and third_party/CmakeLists.txt
-#sudo usermod -aG docker $USER
-#newgrp docker
-#python3 -m pip install scikit-build-core cibuildwheel build
-#python3 -m build --wheel
-#python3 -m cibuildwheel --platform linux
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+# Install a minimal CUDA 12.8 toolchain inside the manylinux container
+# (nvcc + cudart headers/libs; the full toolkit is not needed).
+# CUDA >= 12.8 is what enables the Blackwell targets (sm_100 / sm_120).
+before-all = """
+dnf install -y dnf-utils
+dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
+dnf install -y cuda-nvcc-12-8 cuda-cudart-devel-12-8
+"""
+environment = { CUDA_HOME = "/usr/local/cuda-12.8", PATH = "/usr/local/cuda-12.8/bin:$PATH", LD_LIBRARY_PATH = "/usr/local/cuda-12.8/lib64" }
+# Bundle every shared-library dependency into the wheel (libcudart.so.12
+# included), but NEVER libcuda.so: that is the driver library and must be
+# resolved at runtime against the driver installed on the target node.
+# (libcudart dlopens libcuda.so.1 itself, so excluding it is safe.)
+repair-wheel-command = "auditwheel repair --exclude libcuda.so --exclude libcuda.so.1 -w {dest_dir} {wheel}"
+# CI machines have no GPU: exercise import and that the bindings are present.
+test-command = "python -c \"from manapy_compute_64_32 import core as m; assert callable(m.cell_gradient_2d) and callable(m.cell_gradient_2d_cuda); print('import ok')\""

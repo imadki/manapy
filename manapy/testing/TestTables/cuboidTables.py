@@ -2,6 +2,8 @@ import numpy as np
 from manapy.domain import Mesh
 from manapy.helpers import get_test_mesh
 from manapy.testing.TestTables.aTestTables import ATestTables
+from manapy.backends.config import ManapyConfig
+
 
 class CuboidTables(ATestTables):
   """
@@ -49,7 +51,7 @@ class CuboidTables(ATestTables):
     self.y_length = self.HEIGHT / self.width
     self.z_length = self.DEPTH / self.width
 
-    mesh = Mesh(get_test_mesh("cuboid.msh")[1], 3)
+    mesh = Mesh(get_test_mesh("cuboid.msh")[1], 3, ManapyConfig.getDefaultConfig())
     self.meshio_cells = np.copy(mesh.cells)
 
     self.cells = np.zeros((self.nb_cells, 9), dtype=np.int32)

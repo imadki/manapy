@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+# scikit-build-core / CMake build tree (build-dir = "build/{wheel_tag}")
+/build/
+_skbuild/
+dist/
+wheelhouse/
+*.egg-info/
+.eggs/
+
+# Compiled extension modules dropped into the python/ packages
+python/**/_core*.so
+*.so
+*.pyd
+*.dylib
+
+# CMake leftovers if configured in-source
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---------------------------------------------------------------------------
+# Generated run artifacts (mesh partitions, VTK output)
+# ---------------------------------------------------------------------------
+/local_domain_*/
+/vtk_results/
+*.hdf5
+*.vtk
+*.vtu
+*.pvtu
+
+# ---------------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+vtk_results

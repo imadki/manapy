@@ -7,7 +7,6 @@ Created on Sat Apr  8 03:05:46 2023
 """
 from mpi4py import MPI
 import numpy as np
-from manapy.backends.types import FLOAT_TYPE
 import manapy.solvers.advecdiff.fvm_utils_compute as fvm_utils_compute
 
 from manapy.core.Variable import Variable

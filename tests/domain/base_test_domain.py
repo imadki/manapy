@@ -1,4 +1,5 @@
 from manapy.domain import Domain
+from manapy.backends import ManapyArray
 import numpy as np
 from manapy.testing.test_domain_helper import sort_float_arr
 from manapy.testing.ReferenceTables import ReferenceTables
@@ -7,13 +8,31 @@ from manapy.testing.ReferenceTables import ReferenceTables
 local_domains and reference_domains fixture are defined on conftest.py thery are loaded automatically from the subclasses using pytest.
 """
 
+
+class _NumpyDomainView:
+  """Read-only host view of a domain for NumPy-based assertions."""
+
+  _table_names = {"cells", "faces", "nodes", "ghost", "halos"}
+
+  def __init__(self, obj):
+    self._obj = obj
+
+  def __getattr__(self, name):
+    value = getattr(self._obj, name)
+    if isinstance(value, ManapyArray):
+      return value.cpu_r()
+    if name in self._table_names:
+      return _NumpyDomainView(value)
+    return value
+
+
 class BaseTestDomain:
   def setup_method(self):
     self.decimal = 5
 
   def test_cell_vertices(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         node_ids = ld.cells.nodeid[i]
@@ -29,7 +48,7 @@ class BaseTestDomain:
 
   def test_cell_center(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         d_cell_center = ld.cells.center[i]
@@ -41,7 +60,7 @@ class BaseTestDomain:
 
   def test_cell_area(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         d_cell_area = ld.cells.volume[i]
@@ -53,7 +72,7 @@ class BaseTestDomain:
 
   def test_cell_neighbor_by_face(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_cellfid = ld.cells.cellfid[i]
@@ -71,7 +90,7 @@ class BaseTestDomain:
 
   def test_cell_neighbor_by_node(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_cellnid = ld.cells.cellnid[i]
@@ -91,7 +110,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -113,7 +132,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_halonid = ld.cells.halonid[i]
@@ -131,7 +150,7 @@ class BaseTestDomain:
 
   def test_cell_ghostid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -157,7 +176,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -182,7 +201,7 @@ class BaseTestDomain:
   def test_nb_cells(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     nb_cells = 0
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       nb_cells += len(ld.cells.nodeid)
 
     np.testing.assert_equal(nb_cells, reference_domain.nb_cells)
@@ -191,7 +210,7 @@ class BaseTestDomain:
 
   def test_node_cellid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_nodes = ld.cells.nodeid[i]
@@ -222,7 +241,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_nodes = ld.cells.nodeid[i]
@@ -240,7 +259,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_nodes = ld.cells.nodeid[i]
@@ -269,7 +288,7 @@ class BaseTestDomain:
 
   def test_node_oldname(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_nodes = ld.cells.nodeid[i]
@@ -285,7 +304,7 @@ class BaseTestDomain:
 
   def test_node_name(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_nodes = ld.cells.nodeid[i]
@@ -302,7 +321,7 @@ class BaseTestDomain:
 
   def test_node_ghostnid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -339,7 +358,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -375,7 +394,7 @@ class BaseTestDomain:
   def test_nb_nodes(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     all_nodes = []
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       all_nodes.append(ld.nodes.vertex[:, 0:3])
 
     a = np.concatenate(all_nodes)
@@ -388,7 +407,7 @@ class BaseTestDomain:
 
   def test_face_vertices(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -423,7 +442,7 @@ class BaseTestDomain:
 
   def test_face_measure(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -443,7 +462,7 @@ class BaseTestDomain:
 
   def test_face_center(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -463,7 +482,7 @@ class BaseTestDomain:
 
   def test_face_name(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -483,7 +502,7 @@ class BaseTestDomain:
 
   def test_face_oldname(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -505,7 +524,7 @@ class BaseTestDomain:
 
   def test_face_normal(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -525,7 +544,7 @@ class BaseTestDomain:
 
   def test_face_cellid(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(ld.cells.nodeid.shape[0]):
         cell_faces = ld.cells.faceid[i]
@@ -560,7 +579,7 @@ class BaseTestDomain:
 
   def test_face_ghostcenter(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -600,7 +619,7 @@ class BaseTestDomain:
   def test_nb_faces(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     all_faces = []
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       all_faces.append(ld.faces.center[:, 0:3])
 
     a = np.concatenate(all_faces)
@@ -614,7 +633,7 @@ class BaseTestDomain:
 
   def test_ghost_info(self, local_domains: 'list[Domain]', reference_domain: ReferenceTables):
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(ld.cells.nodeid.shape[0]):
@@ -675,7 +694,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
       dim = ld.dim
 
       for i in range(len(ld.cells.nodeid)):
@@ -729,7 +748,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       for i in range(len(ld.halos.halosext)):
         halo_id = ld.halos.halosext[i, 0] # halo cell Global ID
@@ -746,7 +765,7 @@ class BaseTestDomain:
       return
     # Halo_neigh, Halosint
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       start = 0
       for neigh in range(ld.halos.neigh.shape[1]):
@@ -765,7 +784,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       halosext_ids = ld.halos.halosext[:, 0]
       r_halosext_center = reference_domain.cell_center[halosext_ids]
@@ -781,7 +800,7 @@ class BaseTestDomain:
     if len(local_domains) <= 1:
       return
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       arr = []
       r_node_haloghostnid = reference_domain.locals[part].node_haloghostnid
@@ -799,7 +818,7 @@ class BaseTestDomain:
     comm = {}
 
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       start = 0
       for i in range(ld.halos.neigh.shape[1]):
@@ -812,7 +831,7 @@ class BaseTestDomain:
 
     # Test Communication
     for part in range(len(local_domains)):
-      ld = local_domains[part]
+      ld = _NumpyDomainView(local_domains[part])
 
       start = 0
       for i in range(ld.halos.neigh.shape[1]):
@@ -823,6 +842,3 @@ class BaseTestDomain:
         halos_ext = halos_ext[:, 0] # select only cells global ID.
         np.testing.assert_almost_equal(recv, halos_ext, decimal=self.decimal, err_msg=f"Send and recv differ! from {neighbor} to {part}")
         start += recv_count
-
-
-

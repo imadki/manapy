@@ -3,6 +3,7 @@ from manapy.domain import Domain
 from manapy.helpers import get_mesh
 import numpy as np
 from manapy.backends import FLOAT_TYPE
+from manapy.testing.test_domain_helper import make_test_config
 import sys
 import os
 
@@ -124,7 +125,7 @@ def main():
     dim, mesh_path, mesh_name = get_mesh(f"big/var/{mesh}", 2)
     old_stdout = sys.stdout
     sys.stdout = open(os.devnull, 'w')
-    domain = Domain.create_domain(mesh_path, dim, Domain.PartitioningClass.Par_Nodal)
+    domain = Domain.create_domain(mesh_path, dim, make_test_config(), Domain.PartitioningClass.Par_Nodal)
     sys.stdout.close()
     sys.stdout = old_stdout
 
