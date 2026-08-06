@@ -7,6 +7,8 @@
 
 #include <cuda_runtime_api.h>
 
+#include "cuda_launch.hpp"
+
 #include <stdexcept>
 #include <string>
 
@@ -61,11 +63,12 @@ void haloghost_value_slip_2d_cuda_py(DCFVec u_halo, DCFVec v_halo,
       make_view<const real_t, 2>(ghost_ext_info_flt), BCindex,
       make_view<const index_t, 1>(d_halonodes), /*stream=*/nullptr);
 
-  // Surface launch errors, then block until the in-place writes are visible.
-  cudaError_t err = cudaGetLastError();
-  if (err == cudaSuccess)
-    err = cudaDeviceSynchronize();
-  cuda_check(err, "haloghost_value_slip_2d kernel");
+  // Cheap, non-blocking: catches a bad launch config (grid/block dims,
+  // invalid args) without waiting for the kernel to finish. The legacy
+  // default stream already orders these kernels against the caller's CuPy
+  // ops, so no sync is needed for correctness; see base/cuda_launch.hpp,
+  // and set MANAPY_CUDA_SYNC=1 to restore a per-launch device sync.
+  cuda_check(manapy_cuda_post_launch(), "haloghost_value_slip_2d kernel launch");
 }
 
 } // namespace

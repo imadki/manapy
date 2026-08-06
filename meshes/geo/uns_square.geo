@@ -1,7 +1,7 @@
 // Unstructured TRIANGLE mesh of the unit square [0,1]^2.
 // manapy boundary tags: 1=in(x=0) 2=out(x=1) 3=upper(y=1) 4=bottom(y=0).
 //   gmsh -2 uns_square.geo -o uns_square.msh
-lc = 0.02;   // target edge length
+lc = 0.002;   // target edge length
 
 Point(1) = {0, 0, 0, lc};
 Point(2) = {1, 0, 0, lc};

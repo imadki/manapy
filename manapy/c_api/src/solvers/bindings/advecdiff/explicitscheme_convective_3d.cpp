@@ -6,6 +6,8 @@
 
 #include <cuda_runtime_api.h>
 
+#include "cuda_launch.hpp"
+
 #include <stdexcept>
 #include <string>
 
@@ -88,10 +90,12 @@ void explicitscheme_convective_3d_cuda_py(
       make_view<const index_t, 1>(d_periodicboundaryfaces),
       make_view<const real_t, 2>(cell_shift), order, scheme, /*stream=*/nullptr);
 
-  cudaError_t err = cudaGetLastError();
-  if (err == cudaSuccess)
-    err = cudaDeviceSynchronize();
-  cuda_check(err, "explicitscheme_convective_3d kernel");
+  // Cheap, non-blocking: catches a bad launch config (grid/block dims,
+  // invalid args) without waiting for the kernel to finish. The legacy
+  // default stream already orders these kernels against the caller's CuPy
+  // ops, so no sync is needed for correctness; see base/cuda_launch.hpp,
+  // and set MANAPY_CUDA_SYNC=1 to restore a per-launch device sync.
+  cuda_check(manapy_cuda_post_launch(), "explicitscheme_convective_3d kernel launch");
 }
 
 } // namespace

@@ -71,7 +71,7 @@ values = {"in": Pinit,
           "out": 0.,
           }
 
-ne = Variable(domain=domain, limiter='vanalbada')
+ne = Variable(domain=domain, limiter='barth')
 u = Variable(domain=domain)
 v = Variable(domain=domain)
 P = Variable(domain=domain)

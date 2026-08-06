@@ -23,7 +23,7 @@
 6. Create `bindings/<kernel>.cpp`
    - `#include "manapy_compute_types.hpp"`, `<cuda_runtime_api.h>`, `"bindings/registry.hpp"`, `"variable_compute.cuh"`, `"variable_compute.hpp"`
    - define `<kernel>_py(...)` taking `CFVec`/`CFMat`/`CIVec`/`CIMat`/`FVec` args, calling `<kernel>(...)` via `make_view<...>`
-   - define `<kernel>_cuda_py(...)` taking `DCFVec`/`DCFMat`/`DCIVec`/`DCIMat`/`DFVec` args, calling `launch_<kernel>(...)`, checking `cudaGetLastError`/`cudaDeviceSynchronize`
+   - define `<kernel>_cuda_py(...)` taking `DCFVec`/`DCFMat`/`DCIVec`/`DCIMat`/`DFVec` args, calling `launch_<kernel>(...)`, then `cuda_check(manapy_cuda_post_launch(), "<kernel> kernel launch")`. That check is non-blocking: the binding returns as soon as the kernel is enqueued. Do NOT add a `cudaDeviceSynchronize()` — see `base/cuda_launch.hpp` for why, and for the `MANAPY_CUDA_SYNC=1` debug switch.
    - define `void register_<kernel>(nb::module_ &m)` with `m.def("<kernel>", ...)` and `m.def("<kernel>_cuda", ...)`
 
 7. Edit `bindings/registry.hpp`

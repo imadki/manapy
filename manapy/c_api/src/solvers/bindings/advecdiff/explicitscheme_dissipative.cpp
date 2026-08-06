@@ -6,6 +6,8 @@
 
 #include <cuda_runtime_api.h>
 
+#include "cuda_launch.hpp"
+
 #include <stdexcept>
 #include <string>
 
@@ -52,10 +54,12 @@ void explicitscheme_dissipative_cuda_py(DCFVec wx_face, DCFVec wy_face,
       make_view<const index_t, 1>(face_name), make_view<real_t, 1>(dissip_w),
       Dxx, Dyy, Dzz, /*stream=*/nullptr);
 
-  cudaError_t err = cudaGetLastError();
-  if (err == cudaSuccess)
-    err = cudaDeviceSynchronize();
-  cuda_check(err, "explicitscheme_dissipative kernel");
+  // Cheap, non-blocking: catches a bad launch config (grid/block dims,
+  // invalid args) without waiting for the kernel to finish. The legacy
+  // default stream already orders these kernels against the caller's CuPy
+  // ops, so no sync is needed for correctness; see base/cuda_launch.hpp,
+  // and set MANAPY_CUDA_SYNC=1 to restore a per-launch device sync.
+  cuda_check(manapy_cuda_post_launch(), "explicitscheme_dissipative kernel launch");
 }
 
 } // namespace

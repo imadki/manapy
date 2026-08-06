@@ -7,6 +7,8 @@
 
 #include <cuda_runtime_api.h>
 
+#include "cuda_launch.hpp"
+
 #include <stdexcept>
 #include <string>
 
@@ -59,11 +61,12 @@ void haloghost_value_cuda_py(DCFVec w, DFVec w_haloghost,
          make_view<const index_t, 1>(d_halonodes),
          make_view<const real_t, 1>(cst), /*stream=*/nullptr);
 
-  // Surface launch errors, then block until the in-place writes are visible.
-  cudaError_t err = cudaGetLastError();
-  if (err == cudaSuccess)
-    err = cudaDeviceSynchronize();
-  cuda_check(err, what);
+  // Cheap, non-blocking: catches a bad launch config (grid/block dims,
+  // invalid args) without waiting for the kernel to finish. The legacy
+  // default stream already orders these kernels against the caller's CuPy
+  // ops, so no sync is needed for correctness; see base/cuda_launch.hpp,
+  // and set MANAPY_CUDA_SYNC=1 to restore a per-launch device sync.
+  cuda_check(manapy_cuda_post_launch(), what);
 }
 
 void haloghost_value_dirichlet_cuda_py(DCFVec value_haloghost,
@@ -76,7 +79,7 @@ void haloghost_value_dirichlet_cuda_py(DCFVec value_haloghost,
   haloghost_value_cuda_py<&launch_haloghost_value_dirichlet>(
       value_haloghost, w_haloghost, node_haloghostid, ghost_ext_info_int,
       ghost_ext_info_flt, BCindex, d_halonodes, cst,
-      "haloghost_value_dirichlet kernel");
+      "haloghost_value_dirichlet kernel launch");
 }
 
 void haloghost_value_neumann_cuda_py(DCFVec w_halo, DFVec w_haloghost,
@@ -87,7 +90,7 @@ void haloghost_value_neumann_cuda_py(DCFVec w_halo, DFVec w_haloghost,
   haloghost_value_cuda_py<&launch_haloghost_value_neumann>(
       w_halo, w_haloghost, node_haloghostid, ghost_ext_info_int,
       ghost_ext_info_flt, BCindex, d_halonodes, cst,
-      "haloghost_value_neumann kernel");
+      "haloghost_value_neumann kernel launch");
 }
 
 void haloghost_value_neumannNH_cuda_py(DCFVec w_halo, DFVec w_haloghost,
@@ -99,7 +102,7 @@ void haloghost_value_neumannNH_cuda_py(DCFVec w_halo, DFVec w_haloghost,
   haloghost_value_cuda_py<&launch_haloghost_value_neumannNH>(
       w_halo, w_haloghost, node_haloghostid, ghost_ext_info_int,
       ghost_ext_info_flt, BCindex, d_halonodes, cst,
-      "haloghost_value_neumannNH kernel");
+      "haloghost_value_neumannNH kernel launch");
 }
 
 void haloghost_value_nonslip_cuda_py(DCFVec w_halo, DFVec w_haloghost,
@@ -110,7 +113,7 @@ void haloghost_value_nonslip_cuda_py(DCFVec w_halo, DFVec w_haloghost,
   haloghost_value_cuda_py<&launch_haloghost_value_nonslip>(
       w_halo, w_haloghost, node_haloghostid, ghost_ext_info_int,
       ghost_ext_info_flt, BCindex, d_halonodes, cst,
-      "haloghost_value_nonslip kernel");
+      "haloghost_value_nonslip kernel launch");
 }
 
 } // namespace
