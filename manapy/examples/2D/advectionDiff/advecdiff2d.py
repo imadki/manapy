@@ -56,7 +56,12 @@ if RANK == 0:
 
 if RANK == 0: print("Start Computation ...")
 time = 0
-tfinal = .25
+# Once the diffusion is on, the diffusive CFL (dt ~ cfl * h^2 / D) sets the step,
+# not the convective one, so the iteration count scales with D * tfinal. D = 0.01
+# over tfinal = 0.05 advects the initial Gaussian by u * tfinal = 0.1 while
+# visibly spreading it, in a few thousand steps. Raising either one makes the run
+# proportionally longer, not harder.
+tfinal = .05
 miter = 0
 niter = 1
 Pinit = 2.

@@ -182,6 +182,16 @@ class _Compute:
     self.advecdiff_explicitscheme_dissipative_cuda = self.manapy_compute.solvers.advecdiff.explicitscheme_dissipative_cuda
     self.advecdiff_time_step_cuda = self.manapy_compute.solvers.advecdiff.time_step_cuda
 
+    # ---------------------------------------------------------------------
+    # Diffusion compute -> DiffusionSolverCompute class
+    # ---------------------------------------------------------------------
+    # Diffusion Cpu
+    self.diffusion_explicitscheme_dissipative = self.manapy_compute.solvers.diffusion.explicitscheme_dissipative
+    self.diffusion_time_step = self.manapy_compute.solvers.diffusion.time_step
+    # Diffusion Gpu
+    self.diffusion_explicitscheme_dissipative_cuda = self.manapy_compute.solvers.diffusion.explicitscheme_dissipative_cuda
+    self.diffusion_time_step_cuda = self.manapy_compute.solvers.diffusion.time_step_cuda
+
 
   @staticmethod
   def getComputeInstance(config: ManapyConfig) -> _Compute:

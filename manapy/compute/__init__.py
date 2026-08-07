@@ -3,3 +3,4 @@ from manapy.compute.variable_compute import VariableCompute
 from manapy.compute.boundary_compute import BoundaryCompute
 from manapy.compute.advection_solver_compute import AdvectionSolverCompute
 from manapy.compute.advection_diffusion_solver_compute import AdvectionDiffusionSolverCompute
+from manapy.compute.diffusion_solver_compute import DiffusionSolverCompute

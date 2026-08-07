@@ -1,18 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Feb 16 09:13:21 2022
-
-@author: kissami
-"""
-
 from mpi4py import MPI
-import timeit
 import os
+import timeit
 from manapy.domain import Domain, Partitioning
-from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 from manapy.solvers.diffusion.system import DiffusionSolver
 from manapy.core.Variable import Variable
+from manapy.backends.config import ManapyConfig
+
 
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
@@ -27,10 +20,24 @@ except KeyError:
   BASE_DIR = os.path.join(BASE_DIR, '..', '..', '..', '..')
   MESH_DIR = os.path.join(BASE_DIR, 'meshes', 'geo')
 
-filename = 'uns_square.msh'
+filename = "uns_square.msh"
 dim = 2
 mesh_path = os.path.join(MESH_DIR, filename)
-domain = Domain.create_domain(mesh_path, dim, Partitioning.Par_Nodal, recreate=True)
+
+# The config decides the precision pair and the device, and so which compiled
+# kernels every Variable / Boundary / solver below binds -- there is nothing
+# else to switch: the same code runs on both. Overridable from the environment
+# so a GPU run needs no edit:
+#     MANAPY_DEVICE=cuda python3 diffusion2d.py
+config = ManapyConfig(
+  float_precision=os.environ.get("MANAPY_FLOAT", "float64"),
+  int_precision=os.environ.get("MANAPY_INT", "int64"),
+  device=os.environ.get("MANAPY_DEVICE", "cpu"),
+)
+
+domain = Domain.create_domain(mesh_path, dim, config,
+                              partitioning_method=Partitioning.Par_Nodal,
+                              recreate=True)
 faces = domain.faces
 cells = domain.cells
 halos = domain.halos
@@ -48,7 +55,12 @@ if RANK == 0:
 
 if RANK == 0: print("Start Computation ...")
 time = 0
-tfinal = .25
+# The diffusive CFL is dt ~ cfl * h^2 / D, so the iteration count scales with
+# D * tfinal. D = 0.01 over tfinal = 0.05 spreads the initial sigma = 0.05
+# Gaussian to about sqrt(sigma^2/2 + 2*D*tfinal) -- a clearly visible spread --
+# in a few thousand steps. Raising either one makes the run proportionally
+# longer, not harder.
+tfinal = .05
 miter = 0
 niter = 1
 Pinit = 2.
@@ -68,10 +80,12 @@ u = Variable(domain=domain)
 v = Variable(domain=domain)
 P = Variable(domain=domain, BC=boundaries, values_dict=values)
 
-S = DiffusionSolver(ne, vel=(u, v), Dxx=.1, Dyy=0., order=2, cfl=0.8)
+# Pure diffusion: no convective residual and no prescribed velocity, so u and v
+# stay zero and only enter the time step for signature parity.
+S = DiffusionSolver(ne, vel=(u, v), Dxx=.01, Dyy=.01, order=2, cfl=0.8)
 
-initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
-f = lambda x, y, z: Pinit * (1. - x)
+S.compute.initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
+COMM.Barrier()
 
 ts = MPI.Wtime()
 
@@ -115,5 +129,3 @@ te = MPI.Wtime()
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 if RANK == 0:
   print("Time to do calculation", tt)
-
-

@@ -5,11 +5,9 @@ Created on Sat Apr  8 03:05:46 2023
 
 @author: kissami
 """
-from numpy import zeros
 from mpi4py import MPI
 from manapy.core.Variable import Variable
-import manapy.solvers.diffusion.fvm_utils_compute as fvm_utils_compute
-from manapy.backends.types import FLOAT_TYPE
+from manapy.compute import DiffusionSolverCompute
 
 
 class DiffusionSolver:
@@ -41,6 +39,7 @@ class DiffusionSolver:
 
     self.var = var
     self.domain = self.var.domain
+    self.config = self.domain.config
     self.dim = self.var.dim
     self.comm = self.domain.halo_comm.graph_comm
 
@@ -59,15 +58,18 @@ class DiffusionSolver:
     if self.Dxx == self.Dyy == self.Dzz == 0:
       self.diffusion = False
 
+    # Use add_term so these become GPUArray under the GPU backend (a raw np.zeros
+    # would be a plain ndarray -> the dissipative kernel's writes would land on a
+    # throwaway device copy and update_new_value would read zeros).
+    self.var.add_term("convective")
+    self.var.add_term("dissipative")
+    self.var.add_term("source")
 
-    self.var.__dict__["convective"] = zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    self.var.__dict__["dissipative"] = zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-    self.var.__dict__["source"] = zeros(self.domain.nbcells, dtype=FLOAT_TYPE)
-
-    fvm_utils_compute.setup(self.dim)
-    self._explicitscheme_dissipative = fvm_utils_compute.explicitscheme_dissipative
-    self._time_step = fvm_utils_compute.time_step
-    self._update_new_value = fvm_utils_compute.update_new_value
+    # Resolves the device kernels once, here.
+    self.compute = DiffusionSolverCompute(self.config, self.dim)
+    self._explicitscheme_dissipative = self.compute.explicitscheme_dissipative
+    self._time_step = self.compute.time_step
+    self._update_new_value = self.compute.update_new_value
 
   def explicit_dissipative(self):
     self.var.compute_face_gradient()
@@ -96,10 +98,3 @@ class DiffusionSolver:
   def compute_new_val(self):
     self._update_new_value(self.var.cell, self.var.convective, self.var.dissipative, self.var.source, self.dt,
                            self.domain.cells.volume)
-
-
-
-
-
-
-
