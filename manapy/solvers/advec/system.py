@@ -14,7 +14,7 @@ from manapy.compute import AdvectionSolverCompute
 class AdvectionSolver:
   # Numerical-flux schemes: name -> integer code used by the compute kernel.
   SCHEMES = ("upwind", "centered", "rusanov", "lax_friedrichs")
-  SCHEME_IDS = {"upwind": 0, "centered": 1, "rusanov": 2, "lax_friedrichs": 2}
+  SCHEME_IDS = {"upwind": 0, "centered": 1, "rusanov": 2, "lax_friedrichs": 3}
 
   _parameters = [('dt', float, 0., 0.,
                   'time step'),

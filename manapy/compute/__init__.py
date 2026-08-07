@@ -1,1 +1,5 @@
-from manapy.compute.domain import BoundaryCompute, DomainCompute, VariableCompute, AdvectionSolverCompute
+from manapy.compute.domain_compute import DomainCompute
+from manapy.compute.variable_compute import VariableCompute
+from manapy.compute.boundary_compute import BoundaryCompute
+from manapy.compute.advection_solver_compute import AdvectionSolverCompute
+from manapy.compute.advection_diffusion_solver_compute import AdvectionDiffusionSolverCompute
