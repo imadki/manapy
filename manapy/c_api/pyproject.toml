@@ -7,7 +7,7 @@ name = "manapy_compute"
 version = "0.1.0"
 description = "2D cell-gradient kernels on CPU (C++) and GPU (CUDA), bound with nanobind"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Ayoub Benhamou", email = "ayoubbenhamou0731@gmail.com" }]
 classifiers = [
