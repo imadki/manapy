@@ -3,7 +3,8 @@ Advection 2D sur GPU.
 
 Variante GPU de advection2d.py : meme maillage, meme solveur, memes kernels
 sources (annotes en chaines) ; seul le backend change. Le portage est valide
-numeriquement contre le CPU (ecart ~1e-16) dans les tests de developpement.
+numeriquement contre le CPU (meme maillage, meme dt : ecart max ~1e-13 sur ne,
+les kernels GPU etant compiles avec fastmath).
 
 Mono-rang pour l'instant (le multi-rang necessite des halos GPU). Lancer :
 
@@ -21,6 +22,7 @@ from manapy.core.Variable import Variable
 from manapy.solvers.advec.system import AdvectionSolver
 from manapy.solvers.advec.tools_utils_compute import initialisation_gaussian_2d
 
+import manapy.backends.types as types
 from manapy.backends.gpu import GPUBackend
 
 COMM = MPI.COMM_WORLD
@@ -52,9 +54,16 @@ v = Variable(domain=domain)
 P = Variable(domain=domain)
 S = AdvectionSolver(ne, vel=(u, v), order=2, cfl=0.8)
 
-# --- initialisation sur l'hote (avant bascule GPU) ---
+# --- initialisation : calculee sur l'hote, poussee vers les tableaux device ---
+# Les champs d'une Variable vivent dans la memoire du backend (device sous GPU) :
+# le kernel d'init CPU travaille sur des tableaux hote, puis on transfere.
 Pinit = 2.0
-initialisation_gaussian_2d(ne.cell, u.cell, v.cell, P.cell, cells.center, Pinit)
+centers_h = np.asarray(gpu.to_host(cells.center))
+ne_h, u_h, v_h, P_h = (np.zeros(len(centers_h), dtype=types.np_float_type)
+                       for _ in range(4))
+initialisation_gaussian_2d(ne_h, u_h, v_h, P_h, centers_h, Pinit)
+for dst, src in ((ne.cell, ne_h), (u.cell, u_h), (v.cell, v_h), (P.cell, P_h)):
+  gpu.copy(dst, src)
 
 if RANK == 0:
   print("Start GPU computation ...")
@@ -96,7 +105,7 @@ te = MPI.Wtime()
 tt = COMM.reduce(te - ts, op=MPI.MAX, root=0)
 
 # rapatriement du resultat pour inspection / sauvegarde
-ne_host = np.asarray(ne.cell.to_host())
+ne_host = np.asarray(gpu.to_host(ne.cell))
 if RANK == 0:
   print(f"iterations: {niter}")
   print(f"Time to do calculation (GPU): {tt}")
