@@ -98,7 +98,8 @@ def haloghost_value_nonslip(start: 'int', stride: 'int', w_halo: 'float[:]', w_h
     for j in range(node_haloghostid[i, -1]):
       ghost_id = node_haloghostid[i, j]
       if ghost_ext_info_int[ghost_id, 1] == BCindex:
-        w_haloghost[ghost_id] = -1.0 * w_halo[ghost_id]
+        cell = ghost_ext_info_int[ghost_id, 0]
+        w_haloghost[ghost_id] = -1.0 * w_halo[cell]
 
 
 # ---------------------------------------------------------------------------
