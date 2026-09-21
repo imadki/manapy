@@ -284,7 +284,6 @@ class Domain:
       if rank == 0:
         try:
           if recreate == True or not Domain._all_local_mesh_files_exist(size):
-            print("here====>")
             Domain._delete_local_domain_folder(size)
             mesh = Mesh(mesh_path, dim, show_info=True)
             Domain._print_run_info(mesh_path, dim, size, partitioning_method, recreate, mesh)
@@ -330,4 +329,3 @@ class Domain:
 
   def save_on_cell_multi(self, variables, values, dt=0, time=0, niter=0, miter=0):
     self.vtk_writer.save_cell_multi(variables, values, miter, niter, time, dt)
-
